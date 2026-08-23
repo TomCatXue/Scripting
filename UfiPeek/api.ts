@@ -41,6 +41,15 @@ export function readSetting(key: string, fallback?: string): string {
     return fallback || "";
 }
 
+/** 保存配置到 Storage（供设置页使用，key 与 readSetting 的 Storage 前缀一致） */
+export function saveSetting(key: string, value: string): void {
+    try {
+        Storage.set("UfiPeek." + key, String(value).trim());
+    } catch (e) {
+        console.log("保存配置失败:", key, String(e));
+    }
+}
+
 function trimSlash(s: string): string {
     return String(s || "").replace(/\/+$/, "");
 }
