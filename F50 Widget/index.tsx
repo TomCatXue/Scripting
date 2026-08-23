@@ -1,5 +1,5 @@
 // @ts-nocheck
-// UfiPeek 设置界面：配置 UFI-TOOLS 地址与密码，支持测试连接与小组件预览
+// F50 Widget 设置界面：配置 UFI-TOOLS 地址与密码，支持测试连接与小组件预览
 import {
     Script, Navigation, NavigationStack, List, Section, Text, Button,
     TextField, SecureField, HStack, Spacer, Image, Toolbar, ToolbarItem,
@@ -169,7 +169,7 @@ function MainView() {
     return (
         <NavigationStack>
             <List
-                navigationTitle="UfiPeek"
+                navigationTitle="F50 Widget"
                 navigationBarTitleDisplayMode="inline"
                 toolbar={
                     <Toolbar>

@@ -1,5 +1,5 @@
 // @ts-nocheck
-// UfiPeek 数据层：将 API 原始数据组装为小组件状态，并提供缓存读写与格式化工具
+// F50 Widget 数据层：将 API 原始数据组装为小组件状态，并提供缓存读写与格式化工具
 import { Storage } from "scripting";
 import { fetchDeviceInfo, fetchGoformAll, fetchSystemInfo } from "./api";
 
@@ -34,7 +34,7 @@ export interface WidgetState {
     error: string | null;
 }
 
-const CACHE_KEY = "UfiPeek.widget.cache.v3";
+const CACHE_KEY = "F50Widget.widget.cache.v4";
 
 // ===================== 状态组装 =====================
 

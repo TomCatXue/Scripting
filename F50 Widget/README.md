@@ -1,4 +1,4 @@
-# UfiPeek
+# F50 Widget
 
 UFI-TOOLS / ZTE F50 网络状态**小组件**（Small / Medium / Large），展示今日/本月流量、信号、电池、CPU、内存、Wi-Fi，支持**点击刷新**与**离线缓存**。
 
@@ -7,7 +7,7 @@ UFI-TOOLS / ZTE F50 网络状态**小组件**（Small / Medium / Large），展�
 ## 订阅
 
 ```
-https://github.com/TomCatXue/Scripting/tree/main/UfiPeek
+https://github.com/TomCatXue/Scripting/tree/main/F50%20Widget
 ```
 
 ## 文件
@@ -20,6 +20,7 @@ https://github.com/TomCatXue/Scripting/tree/main/UfiPeek
 | `widget_data.ts` | 数据组装与缓存 |
 | `api.ts` | UFI-TOOLS / ZTE 网络层（签名、登录、shell） |
 | `app_intents.tsx` | 点击刷新 AppIntent |
+| `icons/` | 脚本图标（UFI-TOOLS 官方图标，透明背景） |
 
 ## 配置参数
 

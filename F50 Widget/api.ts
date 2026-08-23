@@ -1,5 +1,5 @@
 // @ts-nocheck
-// UfiPeek API 层：UFI-TOOLS / ZTE 的设备信息拉取、签名、登录与 shell 执行
+// F50 Widget API 层：UFI-TOOLS / ZTE 的设备信息拉取、签名、登录与 shell 执行
 import { fetch, Request, Script, Widget, Storage } from "scripting";
 
 // ===================== 常量 / 配置读取 =====================
@@ -14,7 +14,7 @@ const ZREQ_BIN = "/data/data/com.minikano.f50_sms/files/zreq";
 /** UFI-TOOLS 客户端通用签名常量（非个人凭据，公开的算法常数） */
 const SECRET_KEY = "minikano_kOyXz0Ciz4V7wR0IeKmJFYFQ20jd";
 
-/** 读取脚本参数 / 小组件参数 / Storage 中的配置 */
+/** 读取脚本参数 / 小组件参数 / Storage 中的配置（兼容旧 UfiPeek. 前缀） */
 export function readSetting(key: string, fallback?: string): string {
     try {
         let params = Script.queryParameters || {};
@@ -29,7 +29,7 @@ export function readSetting(key: string, fallback?: string): string {
         if (v !== undefined && v !== null && String(v).trim() !== "") return String(v).trim();
     } catch (_) { }
     try {
-        const saved = Storage.get("UfiPeek." + key);
+        const saved = Storage.get("F50Widget." + key) ?? Storage.get("UfiPeek." + key);
         if (saved !== undefined && saved !== null && String(saved).trim() !== "") return String(saved).trim();
     } catch (_) { }
     if (key === "password") {
@@ -41,10 +41,10 @@ export function readSetting(key: string, fallback?: string): string {
     return fallback || "";
 }
 
-/** 保存配置到 Storage（供设置页使用，key 与 readSetting 的 Storage 前缀一致） */
+/** 保存配置到 Storage（key 与 readSetting 的 Storage 前缀一致） */
 export function saveSetting(key: string, value: string): void {
     try {
-        Storage.set("UfiPeek." + key, String(value).trim());
+        Storage.set("F50Widget." + key, String(value).trim());
     } catch (e) {
         console.log("保存配置失败:", key, String(e));
     }

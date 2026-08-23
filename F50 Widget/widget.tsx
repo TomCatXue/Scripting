@@ -1,8 +1,8 @@
 // @ts-nocheck
-// UfiPeek 小组件 UI：Small / Medium / Large 三种尺寸，支持点击刷新与缓存容错
+// F50 Widget 小组件 UI：Small / Medium / Large 三种尺寸，支持点击刷新与缓存容错
 // 配色统一使用系统语义色（自动适配深色模式）
 import { Widget, VStack, HStack, Text, Spacer, Image, Button, Script, modifiers } from "scripting";
-import { RefreshUfiPeekIntent } from "./app_intents";
+import { RefreshF50WidgetIntent } from "./app_intents";
 import { WidgetState, ColorName, emptyState, textValue, readWidgetCache, saveWidgetCache, fetchWidgetSnapshot } from "./widget_data";
 
 const RELOAD_MS = 15 * 60 * 1000; // 每 15 分钟自动刷新一次数据
@@ -281,13 +281,13 @@ export function WidgetView({ data, error, family }: { data: WidgetState; error: 
   const isEmpty = !data || !data.update_time || data.update_time === "--";
 
   return (
-    <Button intent={RefreshUfiPeekIntent(undefined as any)} buttonStyle="plain">
+    <Button intent={RefreshF50WidgetIntent(undefined as any)} buttonStyle="plain">
       <VStack widgetBackground={widgetBg()} frame={{ maxWidth: "infinity", maxHeight: "infinity" }}>
         {isEmpty
           ? (
             <VStack spacing={6} alignment="center" frame={{ maxWidth: "infinity", maxHeight: "infinity" }}>
               <Image systemName="exclamationmark.icloud" frame={{ width: 28, height: 28 }} modifiers={modifiers().foregroundStyle("systemRed")} />
-              <Text font={11} fontWeight="semibold" modifiers={modifiers().foregroundStyle("label")}>{error ? "获取失败" : "UfiPeek"}</Text>
+              <Text font={11} fontWeight="semibold" modifiers={modifiers().foregroundStyle("label")}>{error ? "获取失败" : "F50 Widget"}</Text>
               <Text font={10} modifiers={modifiers().foregroundStyle("secondaryLabel")}>点击重试</Text>
             </VStack>
           )
