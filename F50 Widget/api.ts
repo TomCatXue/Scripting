@@ -209,6 +209,9 @@ function applyHeaders(req: any, values: Record<string, string>): void {
 async function readJSONResponse(resp: any, label: string): Promise<any> {
     const status = resp && resp.status;
     const raw = await resp.text();
+    if (status === 401) {
+        throw new Error(label + " HTTP 401：UFI-TOOLS 口令错误或设备锁定，请在设置中核对「UFI-TOOLS 密码」");
+    }
     if (!raw || !raw.trim()) throw new Error(label + " HTTP " + String(status) + " empty response");
     try { return JSON.parse(raw); } catch (_) { throw new Error(label + " HTTP " + String(status) + " invalid JSON: " + raw.slice(0, 120)); }
 }
@@ -246,9 +249,45 @@ async function getGoform(cmdList: string[]): Promise<any> {
     return await readJSONResponse(await fetch(req), "request");
 }
 
+// ===================== 设备登录锁定检测（防触发锁机） =====================
+
+let lastLockCheckAt = 0;    // 上次锁定检查时间戳
+let cachedLockSec = 0;      // 缓存的剩余锁定秒数
+const LOCK_CHECK_CACHE_MS = 10000; // 锁定状态缓存 10 秒
+
+/**
+ * 查询设备登录锁定状态（psw_fail_num_str / login_lock_time，ZTE 固件字段）。
+ * @returns 剩余锁定秒数；0 表示未锁定
+ */
+async function queryLockState(): Promise<number> {
+    const now = Date.now();
+    if (now - lastLockCheckAt < LOCK_CHECK_CACHE_MS) return cachedLockSec;
+    lastLockCheckAt = now;
+    cachedLockSec = 0;
+    try {
+        const resp = await getGoform(["psw_fail_num_str", "login_lock_time"]);
+        const failNum = String(resp && resp.psw_fail_num_str);
+        const lockTime = parseInt(String(resp && resp.login_lock_time), 10);
+        // 锁定状态：失败次数字段为空且锁定时间 > 0
+        if (isFinite(lockTime) && lockTime > 0 && (failNum === "0" || failNum === "")) {
+            cachedLockSec = lockTime;
+        }
+    } catch (e) {
+        console.log("锁定状态查询失败（可能口令错误或服务不可达）:", String(e));
+    }
+    return cachedLockSec;
+}
+
 /** 通过 zreq（设备本机二进制）自动完成 ZTE 登录后批量读取 goform 字段 */
 async function zreqGoform(cmdList: string[]): Promise<{ data: any; used: boolean }> {
     const ztePassword = getZtePassword();
+    if (ztePassword === "") {
+        throw new Error("未配置 ZTE 后台密码，跳过 zreq 登录（避免触发设备锁定）");
+    }
+    const lockSec = await queryLockState();
+    if (lockSec > 0) {
+        throw new Error("设备已因密码错误次数过多锁定，请等待约 " + lockSec + " 秒后再试");
+    }
     const params = "cmd=" + cmdList.join(",") + "&multi_data=1&isTest=false";
     const cmd = ZREQ_BIN + " -pwd " + shellQuote(ztePassword)
         + " -method GET"
@@ -270,10 +309,13 @@ export async function fetchGoformAll(): Promise<{ data: any; zreqUsed: boolean }
     let zreqUsed = false;
     let basic: any = null;
 
-    try {
-        const zr = await zreqGoform(getBasicFields());
-        zreqUsed = zr.used;
-        basic = zr.data;
+    // 未配置 ZTE 后台密码时跳过登录取数，避免空密码反复触发设备登录锁定
+    const zteConfigured = getZtePassword() !== "";
+    if (zteConfigured) {
+        try {
+            const zr = await zreqGoform(getBasicFields());
+            zreqUsed = zr.used;
+            basic = zr.data;
         // 单独查询 network_information 补充 RSRQ/SNR（批量请求不返回质量字段）
         if (zreqUsed) {
             try {
@@ -290,6 +332,9 @@ export async function fetchGoformAll(): Promise<{ data: any; zreqUsed: boolean }
     } catch (e) {
         console.log("zreq fail:", String(e));
     }
+    } else {
+        console.log("未配置 ZTE 后台密码，跳过 zreq 登录");
+    }
 
     // 回退：直接 GET goform
     if (!zreqUsed) {
@@ -298,8 +343,8 @@ export async function fetchGoformAll(): Promise<{ data: any; zreqUsed: boolean }
         } catch (e2) {
             console.log("GET goform fail:", String(e2));
         }
-        // 兼容：loginfo=no 且 GET-only 时尝试 POST 登录
-        if (basic && String(basic.loginfo) === "no") {
+        // 兼容：loginfo=no 且 GET-only 时尝试 POST 登录（仅当已配置密码）
+        if (basic && String(basic.loginfo) === "no" && getZtePassword() !== "") {
             try {
                 await loginZTE();
                 basic = await getGoform(getBasicFields());
@@ -316,6 +361,13 @@ export async function fetchGoformAll(): Promise<{ data: any; zreqUsed: boolean }
 
 async function loginZTE(): Promise<void> {
     const ztePassword = getZtePassword();
+    if (ztePassword === "") {
+        throw new Error("未配置 ZTE 后台密码，跳过 POST 登录（避免触发设备锁定）");
+    }
+    const lockSec = await queryLockState();
+    if (lockSec > 0) {
+        throw new Error("设备已因密码错误次数过多锁定，请等待约 " + lockSec + " 秒后再试");
+    }
     const ldUrl = getKanoUrl() + GOFORM_GET_PATH + "?multi_data=1&isTest=false&cmd=LD&_=" + Date.now();
     const ldReq = new Request(ldUrl);
     ldReq.allowInsecureRequest = true;
