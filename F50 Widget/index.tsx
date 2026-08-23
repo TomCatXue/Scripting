@@ -96,13 +96,13 @@ function MainView() {
                                 title="UFI-TOOLS 密码"
                                 value={password}
                                 onChanged={setPassword}
-                                prompt="用于接口签名"
+                                prompt="UFI-TOOLS 访问密码"
                             />
                             <TextField
                                 title="ZTE 后台密码"
                                 value={ztePassword}
                                 onChanged={setZtePassword}
-                                prompt="用于登录设备管理页"
+                                prompt="ZTE 路由器后台密码"
                             />
                         </>
                     ) : (
@@ -111,13 +111,13 @@ function MainView() {
                                 title="UFI-TOOLS 密码"
                                 value={password}
                                 onChanged={setPassword}
-                                prompt="用于接口签名"
+                                prompt="UFI-TOOLS 访问密码"
                             />
                             <SecureField
                                 title="ZTE 后台密码"
                                 value={ztePassword}
                                 onChanged={setZtePassword}
-                                prompt="用于登录设备管理页"
+                                prompt="ZTE 路由器后台密码"
                             />
                         </>
                     )}
