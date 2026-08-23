@@ -1,6 +1,7 @@
 // @ts-nocheck
 // F50 Widget API 层：UFI-TOOLS / ZTE 的设备信息拉取、签名、登录与 shell 执行
-import { fetch, Request, Script, Widget, Storage, Keychain, FileManager } from "scripting";
+// 注意：Storage / Keychain / FileManager 是全局 API，不能从 "scripting" 导入（导入会是 undefined）
+import { fetch, Request, Script, Widget } from "scripting";
 
 // ===================== 常量 / 配置读取 =====================
 
@@ -86,7 +87,7 @@ function sessionValue(key: string): string | undefined {
     return undefined;
 }
 
-/** 读取配置：参数 / 小组件参数（历史优先）→ Keychain（密码类）→ Storage */
+/** 读取配置：参数 / 小组件参数（历史优先）→ Storage（主存储）→ Keychain（冗余）→ 配置文件（冗余） */
 export function readSetting(key: string, fallback?: string): string {
     try {
         let params = Script.queryParameters || {};
@@ -99,6 +100,11 @@ export function readSetting(key: string, fallback?: string): string {
         }
         const v = params[key];
         if (v !== undefined && v !== null && String(v).trim() !== "") return String(v).trim();
+    } catch (_) { }
+    // 主存储：Storage（设置页 / 小组件 / 预览共享同一脚本域）
+    try {
+        const saved = Storage.get("F50Widget." + key);
+        if (saved !== undefined && saved !== null && String(saved).trim() !== "") return String(saved).trim();
     } catch (_) { }
     if (isSecretKey(key)) {
         try {
@@ -113,53 +119,79 @@ export function readSetting(key: string, fallback?: string): string {
             if (v !== undefined && v !== null && String(v).trim() !== "") return String(v).trim();
         }
     } catch (_) { }
+    return fallback || "";
+}
+
+/**
+ * 直接从 App Group 配置文件读取（绕过 Keychain / Storage 缓存，用于持久化校验与诊断）。
+ */
+export function readSettingFromFile(key: string, fallback?: string): string {
     try {
-        const saved = Storage.get("F50Widget." + key);
-        if (saved !== undefined && saved !== null && String(saved).trim() !== "") return String(saved).trim();
+        const cfg = readConfigFile();
+        if (cfg) {
+            const v = cfg[key];
+            if (v !== undefined && v !== null && String(v).trim() !== "") return String(v).trim();
+        }
     } catch (_) { }
     return fallback || "";
 }
 
 /**
- * 保存配置：写入配置文件（同步落盘，最可靠） + Keychain(密码) / Storage(尽力而为) 多层冗余。
- * 只要有一层成功即返回 true，供调用方回读校验。
+ * 保存配置：主存储为 Storage（Scripting 官方持久化存储，设置页 / 小组件 / 预览共享同一脚本域，
+ * 异步落盘由 app 后台保证），App Group 配置文件与 Keychain 作为冗余（尽力而为）。
+ * 返回 true 仅当主存储写入成功，或任一冗余层写入并通过验证。
  */
 export function saveSetting(key: string, value: string): boolean {
     const val = String(value).trim();
-    let anyOk = false;
+    let stOk = false;
+    let fileOk = false;
+    let kcOk = false;
 
-    // 1) 配置文件：同步写入（read-modify-write），保证进程退出后仍在
+    const fullKey = "F50Widget." + key;
+
+    // 1) 主存储：Storage（per-script 私有域，设置页与小组件共享）
+    try {
+        if (val === "") {
+            Storage.remove(fullKey);
+            stOk = true;
+        } else {
+            stOk = Storage.set(fullKey, val) === true;
+        }
+    } catch (se) {
+        console.log("Storage 写入失败:", key, String(se));
+    }
+
+    // 2) 冗余：App Group 配置文件（同步落盘；部分环境不可用时自动忽略）
     try {
         const patch: Record<string, string> = {};
         patch[key] = val;
-        if (writeConfigFile(patch)) anyOk = true;
+        if (writeConfigFile(patch)) fileOk = true;
     } catch (e) {
-        console.log("配置文件写入失败:", key, String(e));
+        console.log("配置文件写入失败（冗余层）:", key, String(e));
     }
 
-    // 2) Keychain(密码类) / Storage：尽力而为的冗余
-    try {
-        const fullKey = "F50Widget." + key;
-        if (isSecretKey(key)) {
-            let kcOk = false;
-            try {
-                if (val === "") kcOk = Keychain.remove(fullKey) === true;
-                else kcOk = Keychain.set(fullKey, val) === true;
-            } catch (ke) {
-                console.log("Keychain 写入失败，回退 Storage:", key, String(ke));
-            }
-            if (kcOk) { anyOk = true; return anyOk; }
-        }
+    // 3) 冗余：Keychain（密码类）——写后读回验证；写入失败时清除旧值，避免读到过期密码
+    if (isSecretKey(key)) {
         try {
-            if (val === "") { Storage.remove(fullKey); anyOk = true; }
-            else if (Storage.set(fullKey, val) === true) anyOk = true;
-        } catch (se) {
-            console.log("Storage 写入失败:", key, String(se));
+            if (val === "") {
+                Keychain.remove(fullKey);
+                const rb = Keychain.get(fullKey);
+                kcOk = rb === null || rb === undefined || rb === "";
+            } else {
+                const setOk = Keychain.set(fullKey, val) === true;
+                const rb = Keychain.get(fullKey);
+                kcOk = setOk && String(rb === null || rb === undefined ? "" : rb).trim() === val;
+                if (!kcOk) {
+                    // 写入失败则清掉残留旧值，避免读取时命中过期密码
+                    try { Keychain.remove(fullKey); } catch (_) { }
+                }
+            }
+        } catch (ke) {
+            console.log("Keychain 写入失败（冗余层）:", key, String(ke));
         }
-    } catch (e) {
-        console.log("保存配置失败:", key, String(e));
     }
-    return anyOk;
+
+    return stOk || fileOk || kcOk;
 }
 
 function trimSlash(s: string): string {
