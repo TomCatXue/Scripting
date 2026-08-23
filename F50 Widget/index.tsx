@@ -22,17 +22,16 @@ function MainView() {
     const [previewMsg, setPreviewMsg] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(true);  // 默认明文显示，方便确认已保存的密码
 
-    /** 保存表单配置并回读校验，返回是否真正持久化成功 */
+    /** 保存表单配置（Storage 主存储 + Keychain/文件冗余，saveSetting 内部已完成写后验证），返回是否成功 */
     function doSave(): boolean {
-        const r: Record<string, [boolean, string]> = {
-            URL: [saveSetting("URL", url.trim()), readSetting("URL", "")],
-            password: [saveSetting("password", password.trim()), readSetting("password", "")],
-            zte_password: [saveSetting("zte_password", ztePassword.trim()), readSetting("zte_password", "")],
-        };
-        console.log("[F50] 保存校验 (写入成功, 读回值):", JSON.stringify(r));
-        const okW = r.URL[0] && r.password[0] && r.zte_password[0];
-        const okR = r.URL[1] === url.trim() && r.password[1] === password.trim() && r.zte_password[1] === ztePassword.trim();
-        return okW && okR;
+        const urlV = url.trim();
+        const pwdV = password.trim();
+        const zteV = ztePassword.trim();
+        const okUrl = saveSetting("URL", urlV);
+        const okPwd = saveSetting("password", pwdV);
+        const okZte = saveSetting("zte_password", zteV);
+        console.log("[F50] 保存校验:", JSON.stringify({ URL: okUrl, password: okPwd, zte_password: okZte }));
+        return okUrl && okPwd && okZte;
     }
 
     function handleSave() {
@@ -75,6 +74,11 @@ function MainView() {
     }
 
     async function handlePreview(family: string) {
+        // 先持久化当前表单值，确保小组件预览读到的是刚填写的配置
+        if (!doSave()) {
+            setPreviewMsg("预览失败：配置未能保存，请先确认保存配置成功");
+            return;
+        }
         try {
             setPreviewMsg("预览中…");
             await Widget.preview({ family: family as any });
@@ -114,7 +118,7 @@ function MainView() {
                     <TextField
                         title="URL"
                         value={url}
-                        onChanged={setUrl}
+                        onChanged={(v) => { setUrl(v); saveSetting("URL", v.trim()); }}
                         prompt={DEFAULT_URL}
                     />
                     {showPassword ? (
@@ -122,13 +126,13 @@ function MainView() {
                             <TextField
                                 title="UFI-TOOLS 密码"
                                 value={password}
-                                onChanged={setPassword}
+                                onChanged={(v) => { setPassword(v); saveSetting("password", v.trim()); }}
                                 prompt="UFI-TOOLS 访问密码"
                             />
                             <TextField
                                 title="ZTE 后台密码"
                                 value={ztePassword}
-                                onChanged={setZtePassword}
+                                onChanged={(v) => { setZtePassword(v); saveSetting("zte_password", v.trim()); }}
                                 prompt="ZTE 路由器后台密码"
                             />
                         </>
@@ -137,13 +141,13 @@ function MainView() {
                             <SecureField
                                 title="UFI-TOOLS 密码"
                                 value={password}
-                                onChanged={setPassword}
+                                onChanged={(v) => { setPassword(v); saveSetting("password", v.trim()); }}
                                 prompt="UFI-TOOLS 访问密码"
                             />
                             <SecureField
                                 title="ZTE 后台密码"
                                 value={ztePassword}
-                                onChanged={setZtePassword}
+                                onChanged={(v) => { setZtePassword(v); saveSetting("zte_password", v.trim()); }}
                                 prompt="ZTE 路由器后台密码"
                             />
                         </>

@@ -1,6 +1,6 @@
 // @ts-nocheck
 // F50 Widget 数据层：将 API 原始数据组装为小组件状态，并提供缓存读写与格式化工具
-import { Storage } from "scripting";
+// 注意：Storage 是全局 API，不能从 "scripting" 导入（导入会是 undefined）
 import { fetchDeviceInfo, fetchGoformAll, fetchSystemInfo } from "./api";
 
 export type ColorName = "systemBlue" | "systemRed" | "systemGreen" | "systemOrange" | "systemYellow" | "systemTeal" | "systemIndigo" | "systemPurple" | "systemPink" | "systemCyan" | "systemGray" | "label" | "secondaryLabel";
