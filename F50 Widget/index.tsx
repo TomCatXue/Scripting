@@ -1,5 +1,5 @@
 // @ts-nocheck
-// F50 Widget 设置界面：配置 UFI-TOOLS 地址与密码，支持测试连接与小组件预览
+// F50 Widget 设置界面：直接配置 UFI-TOOLS 地址与密码，支持测试连接与小组件预览
 import {
     Script, Navigation, NavigationStack, List, Section, Text, Button,
     TextField, SecureField, HStack, Spacer, Image, Toolbar, ToolbarItem,
@@ -10,15 +10,19 @@ import { Widget } from "scripting";
 
 const DEFAULT_URL = "http://192.168.0.1:2333";
 
-// ===================== 设置页 =====================
+// ===================== 主界面（含设置表单） =====================
 
-function SettingsView({ onClose }: { onClose: () => void }) {
+function MainView() {
     const [url, setUrl] = useState(readSetting("URL", DEFAULT_URL));
     const [password, setPassword] = useState("");
     const [ztePassword, setZtePassword] = useState("");
     const [savedMsg, setSavedMsg] = useState<string | null>(null);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
+    const [previewMsg, setPreviewMsg] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(false);
+
+    const hasPwd = readSetting("password", "") !== "";
+    const hasZte = readSetting("zte_password", "") !== "";
 
     function handleSave() {
         let changed = false;
@@ -38,7 +42,7 @@ function SettingsView({ onClose }: { onClose: () => void }) {
         try {
             const info = await fetchDeviceInfo();
             if (info && (info.model || info.cpu_temp || info.daily_data)) {
-                setSavedMsg("连接成功 ✓ 设备型号: " + String(info.model || info.model_name || "?"));
+                setSavedMsg("连接成功 ✓ 设备: " + String(info.model || info.model_name || "?"));
             } else {
                 setSavedMsg("连接成功 ✓（返回了数据）");
             }
@@ -48,35 +52,54 @@ function SettingsView({ onClose }: { onClose: () => void }) {
         }
     }
 
+    async function handlePreview(family: string) {
+        try {
+            setPreviewMsg("预览中…");
+            await Widget.preview({ family: family as any });
+            setPreviewMsg(null);
+        } catch (e) {
+            setPreviewMsg("预览失败: " + String((e as Error)?.message || e));
+        }
+    }
+
     return (
         <NavigationStack>
             <List
-                navigationTitle="设置"
+                navigationTitle="F50 Widget"
                 navigationBarTitleDisplayMode="inline"
                 toolbar={
                     <Toolbar>
                         <ToolbarItem placement="topBarTrailing">
-                            <Button title="完成" action={onClose} />
+                            <Button title="预览" systemImage="eye" action={() => handlePreview("systemMedium")} />
                         </ToolbarItem>
                     </Toolbar>
                 }
             >
                 <Section
-                    header={<Text>连接</Text>}
-                    footer={<Text>UFI-TOOLS 反向代理地址，用于访问 ZTE F50 设备接口。</Text>}
+                    header={<Text>连接状态</Text>}
+                    footer={<Text>密码仅保存在本机 Storage，不会上传。</Text>}
                 >
-                    <TextField
-                        title="URL"
-                        value={url}
-                        onChanged={setUrl}
-                        prompt={DEFAULT_URL}
-                    />
+                    <HStack>
+                        <Text>URL</Text>
+                        <Spacer />
+                        <Text foregroundStyle="secondaryLabel">{url}</Text>
+                    </HStack>
+                    <HStack>
+                        <Text>UFI-TOOLS 密码</Text>
+                        <Spacer />
+                        <Text foregroundStyle={hasPwd ? "systemGreen" : "systemRed"}>{hasPwd ? "已设置" : "未设置"}</Text>
+                    </HStack>
+                    <HStack>
+                        <Text>ZTE 后台密码</Text>
+                        <Spacer />
+                        <Text foregroundStyle={hasZte ? "systemGreen" : "systemRed"}>{hasZte ? "已设置" : "未设置"}</Text>
+                    </HStack>
                 </Section>
 
                 <Section
                     header={
                         <HStack>
-                            <Text>密码</Text>
+                            <Text>配置</Text>
                             <Spacer />
                             <Button
                                 title={showPassword ? "隐藏" : "显示"}
@@ -85,8 +108,14 @@ function SettingsView({ onClose }: { onClose: () => void }) {
                             />
                         </HStack>
                     }
-                    footer={<Text>密码仅保存在本机 Storage，不会上传。留空表示保持原值。</Text>}
+                    footer={<Text>UFI-TOOLS 反向代理地址（默认 2333 端口）。URL 改后点保存生效。</Text>}
                 >
+                    <TextField
+                        title="URL"
+                        value={url}
+                        onChanged={setUrl}
+                        prompt={DEFAULT_URL}
+                    />
                     {showPassword ? (
                         <>
                             <TextField
@@ -118,11 +147,10 @@ function SettingsView({ onClose }: { onClose: () => void }) {
                             />
                         </>
                     )}
-                </Section>
-
-                <Section>
-                    <Button title="保存配置" action={handleSave} />
-                    <Button title="测试连接" action={handleTest} />
+                    <HStack spacing={8}>
+                        <Button title="保存配置" action={handleSave} />
+                        <Button title="测试连接" action={handleTest} />
+                    </HStack>
                 </Section>
 
                 {savedMsg ? (
@@ -142,77 +170,6 @@ function SettingsView({ onClose }: { onClose: () => void }) {
                         </HStack>
                     </Section>
                 ) : null}
-            </List>
-        </NavigationStack>
-    );
-}
-
-// ===================== 主界面 =====================
-
-function MainView() {
-    const [showSettings, setShowSettings] = useState(false);
-    const [previewMsg, setPreviewMsg] = useState<string | null>(null);
-    const url = readSetting("URL", DEFAULT_URL);
-    const hasPwd = readSetting("password", "") !== "";
-    const hasZte = readSetting("zte_password", "") !== "";
-
-    async function handlePreview(family: string) {
-        try {
-            setPreviewMsg("预览中…");
-            await Widget.preview({ family: family as any });
-            setPreviewMsg(null);
-        } catch (e) {
-            setPreviewMsg("预览失败: " + String((e as Error)?.message || e));
-        }
-    }
-
-    return (
-        <NavigationStack>
-            <List
-                navigationTitle="F50 Widget"
-                navigationBarTitleDisplayMode="inline"
-                toolbar={
-                    <Toolbar>
-                        <ToolbarItem placement="topBarTrailing">
-                            <Button title="设置" systemImage="gearshape" action={() => setShowSettings(true)} />
-                        </ToolbarItem>
-                    </Toolbar>
-                }
-                sheet={{
-                    isPresented: showSettings,
-                    onChanged: setShowSettings,
-                    content: (<SettingsView onClose={() => setShowSettings(false)} />),
-                }}
-            >
-                <Section
-                    header={<Text>连接状态</Text>}
-                    footer={<Text>在设置页配置 UFI-TOOLS 地址与密码，密码仅保存在本机。</Text>}
-                >
-                    <HStack>
-                        <Text>URL</Text>
-                        <Spacer />
-                        <Text foregroundStyle="secondaryLabel">{url}</Text>
-                    </HStack>
-                    <HStack>
-                        <Text>UFI-TOOLS 密码</Text>
-                        <Spacer />
-                        <Text foregroundStyle={hasPwd ? "systemGreen" : "systemRed"}>{hasPwd ? "已设置" : "未设置"}</Text>
-                    </HStack>
-                    <HStack>
-                        <Text>ZTE 后台密码</Text>
-                        <Spacer />
-                        <Text foregroundStyle={hasZte ? "systemGreen" : "systemRed"}>{hasZte ? "已设置" : "未设置"}</Text>
-                    </HStack>
-                </Section>
-
-                <Section
-                    header={<Text>小组件预览</Text>}
-                    footer={<Text>在 App 内预览小组件效果，会真实拉取设备数据。添加到桌面后点击小组件即可手动刷新。</Text>}
-                >
-                    <HStack spacing={8}>
-                        <Button title="预览" action={() => handlePreview("systemMedium")} />
-                    </HStack>
-                </Section>
 
                 {previewMsg ? (
                     <Section>
