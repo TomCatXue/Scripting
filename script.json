@@ -1,0 +1,15 @@
+{
+  "name": "UfiPeek",
+  "entry": "index.tsx",
+  "icon": "wifi.router.fill",
+  "color": "#0A84FF",
+  "version": "3.0.0",
+  "description": "UFI-TOOLS / ZTE F50 network status monitoring widget",
+  "localizedNames": {
+    "zh": "UfiPeek"
+  },
+  "localizedDescriptions": {
+    "zh": "Displays ZTE F50 traffic, signal, battery, CPU and Wi-Fi status"
+  },
+  "runInApp": false
+}
