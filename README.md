@@ -13,6 +13,7 @@
 ```
 Scripting/
 ├── README.md          # 本文件
+├── WIDGET_GUIDE.md    # 小组件开发指南（创建/调试/审查）
 └── F50 Widget/        # 脚本 1：F50 Widget
     ├── script.json    # 项目配置（含订阅 remoteResource）
     ├── index.tsx      # 入口（设置页：配置 URL/密码、测试连接、预览）
