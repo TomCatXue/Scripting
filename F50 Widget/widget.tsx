@@ -4,6 +4,7 @@
 import { Widget, VStack, HStack, Text, Spacer, Image, Button, Script, modifiers } from "scripting";
 import { RefreshF50WidgetIntent } from "./app_intents";
 import { WidgetState, ColorName, emptyState, textValue, readWidgetCache, saveWidgetCache, fetchWidgetSnapshot } from "./widget_data";
+import { readSetting } from "./api";
 
 const RELOAD_MS = 15 * 60 * 1000; // 每 15 分钟自动刷新一次数据
 
@@ -287,8 +288,10 @@ export function WidgetView({ data, error, family }: { data: WidgetState; error: 
           ? (
             <VStack spacing={6} alignment="center" frame={{ maxWidth: "infinity", maxHeight: "infinity" }}>
               <Image systemName="exclamationmark.icloud" frame={{ width: 28, height: 28 }} modifiers={modifiers().foregroundStyle("systemRed")} />
-              <Text font={11} fontWeight="semibold" modifiers={modifiers().foregroundStyle("label")}>{error ? "获取失败" : "F50 Widget"}</Text>
-              <Text font={10} modifiers={modifiers().foregroundStyle("secondaryLabel")}>点击重试</Text>
+              <Text font={11} fontWeight="semibold" modifiers={modifiers().foregroundStyle("label")}>
+                {error?.includes("未设置") ? "未配置密码" : (error ? "获取失败" : "F50 Widget")}
+              </Text>
+              <Text font={10} modifiers={modifiers().foregroundStyle("secondaryLabel")}>{error?.includes("未设置") ? "打开脚本配置" : "点击重试"}</Text>
             </VStack>
           )
           : inner}
@@ -303,6 +306,17 @@ async function run() {
   const cached = readWidgetCache();
   let data = cached ?? emptyState();
   let error: string | null = null;
+
+  // 没有配置密码时直接显示提示，不发起网络请求（避免卡在加载）
+  const hasPwd = readSetting("password", "") !== "" || readSetting("zte_password", "") !== "";
+  if (!hasPwd) {
+    error = "未设置密码，请在设置页配置";
+    Widget.present(<WidgetView data={data} error={error} />, {
+      reloadPolicy: { policy: "after", date: new Date(Date.now() + RELOAD_MS) },
+    });
+    Script.exit();
+    return;
+  }
 
   try {
     const { state } = await fetchWidgetSnapshot();
