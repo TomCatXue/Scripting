@@ -24,14 +24,15 @@ function MainView() {
 
     /** 保存表单配置并回读校验，返回是否真正持久化成功 */
     function doSave(): boolean {
-        saveSetting("URL", url.trim());
-        saveSetting("password", password.trim());
-        saveSetting("zte_password", ztePassword.trim());
-        // 写入后立即读取验证，避免“假保存”
-        const okUrl = readSetting("URL", "") === url.trim();
-        const okPwd = readSetting("password", "") === password.trim();
-        const okZte = readSetting("zte_password", "") === ztePassword.trim();
-        return okUrl && okPwd && okZte;
+        const r: Record<string, [boolean, string]> = {
+            URL: [saveSetting("URL", url.trim()), readSetting("URL", "")],
+            password: [saveSetting("password", password.trim()), readSetting("password", "")],
+            zte_password: [saveSetting("zte_password", ztePassword.trim()), readSetting("zte_password", "")],
+        };
+        console.log("[F50] 保存校验 (写入成功, 读回值):", JSON.stringify(r));
+        const okW = r.URL[0] && r.password[0] && r.zte_password[0];
+        const okR = r.URL[1] === url.trim() && r.password[1] === password.trim() && r.zte_password[1] === ztePassword.trim();
+        return okW && okR;
     }
 
     function handleSave() {

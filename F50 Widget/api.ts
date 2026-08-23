@@ -1,6 +1,6 @@
 // @ts-nocheck
 // F50 Widget API 层：UFI-TOOLS / ZTE 的设备信息拉取、签名、登录与 shell 执行
-import { fetch, Request, Script, Widget, Storage, Keychain } from "scripting";
+import { fetch, Request, Script, Widget, Storage, Keychain, FileManager } from "scripting";
 
 // ===================== 常量 / 配置读取 =====================
 
@@ -13,6 +13,56 @@ const ZREQ_BIN = "/data/data/com.minikano.f50_sms/files/zreq";
 
 /** UFI-TOOLS 客户端通用签名常量（非个人凭据，公开的算法常数） */
 const SECRET_KEY = "minikano_kOyXz0Ciz4V7wR0IeKmJFYFQ20jd";
+
+// ===================== 配置文件持久化（同步落盘，最可靠兜底） =====================
+
+const CONFIG_FILE_NAME = "F50Widget.config.json";
+
+/** App Group 共享目录（设置页与小组件均可访问）下的配置文件路径 */
+function configFilePath(): string | null {
+    try {
+        return FileManager.appGroupDocumentsDirectory + "/" + CONFIG_FILE_NAME;
+    } catch (_) { return null; }
+}
+
+/** 同步读取配置文件（不存在或损坏时返回 null） */
+function readConfigFile(): Record<string, string> | null {
+    const p = configFilePath();
+    if (!p) return null;
+    try {
+        if (FileManager.existsSync(p)) {
+            const raw = FileManager.readAsStringSync(p);
+            if (raw && raw.trim()) {
+                const obj = JSON.parse(raw);
+                if (obj && typeof obj === "object") return obj;
+            }
+        }
+    } catch (e) {
+        console.log("读取配置文件失败:", String(e));
+    }
+    return null;
+}
+
+/** 同步写入配置到文件（read-modify-write；空值视为删除），返回是否成功 */
+function writeConfigFile(patch: Record<string, string>): boolean {
+    const p = configFilePath();
+    if (!p) return false;
+    try {
+        const cur = readConfigFile() || {};
+        const next: Record<string, string> = {};
+        for (const k in cur) if (Object.prototype.hasOwnProperty.call(cur, k)) next[k] = cur[k];
+        for (const k in patch) {
+            if (!Object.prototype.hasOwnProperty.call(patch, k)) continue;
+            if (String(patch[k]).trim() === "") delete next[k];
+            else next[k] = String(patch[k]).trim();
+        }
+        FileManager.writeAsStringSync(p, JSON.stringify(next));
+        return true;
+    } catch (e) {
+        console.log("写入配置文件失败:", String(e));
+        return false;
+    }
+}
 
 // 会话级临时配置覆盖（仅供「测试连接」使用当前表单值，不落盘）
 let overrideSettings: { url?: string; password?: string; ztePassword?: string } | null = null;
@@ -57,6 +107,13 @@ export function readSetting(key: string, fallback?: string): string {
         } catch (_) { }
     }
     try {
+        const cfg = readConfigFile();
+        if (cfg) {
+            const v = cfg[key];
+            if (v !== undefined && v !== null && String(v).trim() !== "") return String(v).trim();
+        }
+    } catch (_) { }
+    try {
         const saved = Storage.get("F50Widget." + key);
         if (saved !== undefined && saved !== null && String(saved).trim() !== "") return String(saved).trim();
     } catch (_) { }
@@ -64,29 +121,45 @@ export function readSetting(key: string, fallback?: string): string {
 }
 
 /**
- * 保存配置：密码类 key 优先写入 Keychain（不可用时回退 Storage），其余写 Storage。
- * @returns 是否保存成功（供调用方回读校验 / 展示真实结果）
+ * 保存配置：写入配置文件（同步落盘，最可靠） + Keychain(密码) / Storage(尽力而为) 多层冗余。
+ * 只要有一层成功即返回 true，供调用方回读校验。
  */
 export function saveSetting(key: string, value: string): boolean {
     const val = String(value).trim();
+    let anyOk = false;
+
+    // 1) 配置文件：同步写入（read-modify-write），保证进程退出后仍在
+    try {
+        const patch: Record<string, string> = {};
+        patch[key] = val;
+        if (writeConfigFile(patch)) anyOk = true;
+    } catch (e) {
+        console.log("配置文件写入失败:", key, String(e));
+    }
+
+    // 2) Keychain(密码类) / Storage：尽力而为的冗余
     try {
         const fullKey = "F50Widget." + key;
         if (isSecretKey(key)) {
+            let kcOk = false;
             try {
-                if (val === "") return Keychain.remove(fullKey) === true;
-                return Keychain.set(fullKey, val) === true;
+                if (val === "") kcOk = Keychain.remove(fullKey) === true;
+                else kcOk = Keychain.set(fullKey, val) === true;
             } catch (ke) {
                 console.log("Keychain 写入失败，回退 Storage:", key, String(ke));
             }
-            if (val === "") { Storage.remove(fullKey); return true; }
-            return Storage.set(fullKey, val) === true;
+            if (kcOk) { anyOk = true; return anyOk; }
         }
-        if (val === "") { Storage.remove(fullKey); return true; }
-        return Storage.set(fullKey, val) === true;
+        try {
+            if (val === "") { Storage.remove(fullKey); anyOk = true; }
+            else if (Storage.set(fullKey, val) === true) anyOk = true;
+        } catch (se) {
+            console.log("Storage 写入失败:", key, String(se));
+        }
     } catch (e) {
         console.log("保存配置失败:", key, String(e));
-        return false;
     }
+    return anyOk;
 }
 
 function trimSlash(s: string): string {
