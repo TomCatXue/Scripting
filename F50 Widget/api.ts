@@ -94,7 +94,6 @@ async function requestJSON(method: string, path: string, body?: object | string)
         req.body = JSON.stringify(body);
     }
     req.timeout = 15;
-    req.allowInsecureRequest = true;
     return await readJSONResponse(await fetch(req), "request");
 }
 
@@ -232,7 +231,6 @@ export async function postShell(command: string, rootPath?: string): Promise<any
     req.headers.set("Content-Type", "application/json");
     req.body = JSON.stringify({ command: command });
     req.timeout = 15;
-    req.allowInsecureRequest = true;
     const resp = await fetch(req);
     const parsed = await readJSONResponse(resp, "POST " + path);
     return parsed && parsed.result;

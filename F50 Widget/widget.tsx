@@ -199,7 +199,7 @@ function MediumDashboard({ data }: any) {
           <StatusPill icon="dot.radiowaves.left.and.right" text={row2[1]} tint="systemTeal" font={font2} />
           <StatusPill icon="memorychip" text={row2[2]} tint="systemPurple" font={font2} />
           <StatusPill icon="macbook.and.ipod" text={row2[3]} tint="systemPink" font={font2} />
-          <StatusPill icon="envelope.badge" text={row2[4]} tint={Number(data.sms_unread_text) > 0 ? "systemRed" : "systemBlue"} font={font2} />
+          <StatusPill icon="envelope.badge" text={row2[4]} tint={data.sms_icon_color} font={font2} />
         </HStack>
       </VStack>
       <HStack spacing={4} alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity", height: 17 })}>
@@ -260,7 +260,7 @@ function LargeDashboard({ data }: any) {
       </HStack>
       <HStack spacing={5}>
         <Chip icon="macbook.and.ipod" text={textValue(data.wifi_device_count) + "台"} tint="systemPink" />
-        <Chip icon="envelope.badge" text={textValue(data.sms_unread_text) + "未读"} tint={Number(data.sms_unread_text) > 0 ? "systemRed" : "systemBlue"} />
+        <Chip icon="envelope.badge" text={textValue(data.sms_unread_text) + "未读"} tint={data.sms_icon_color} />
       </HStack>
       <Text font={10} modifiers={modifiers().foregroundStyle("secondaryLabel").monospacedDigit()}>{textValue(data.update_time)}{data.error ? " ⚠" : ""}</Text>
     </Card>
@@ -309,23 +309,18 @@ async function run() {
 
   // 没有配置密码时直接显示提示，不发起网络请求（避免卡在加载）
   const hasPwd = readSetting("password", "") !== "" || readSetting("zte_password", "") !== "";
-  if (!hasPwd) {
+  if (hasPwd) {
+    try {
+      const { state } = await fetchWidgetSnapshot();
+      saveWidgetCache(state);
+      data = state;
+      error = state.error;
+    } catch (e) {
+      error = String((e as Error)?.message || e);
+      if (!cached) data = Object.assign(emptyState(), { error });
+    }
+  } else {
     error = "未设置密码，请在设置页配置";
-    Widget.present(<WidgetView data={data} error={error} />, {
-      reloadPolicy: { policy: "after", date: new Date(Date.now() + RELOAD_MS) },
-    });
-    Script.exit();
-    return;
-  }
-
-  try {
-    const { state } = await fetchWidgetSnapshot();
-    saveWidgetCache(state);
-    data = state;
-    error = state.error;
-  } catch (e) {
-    error = String((e as Error)?.message || e);
-    if (!cached) data = Object.assign(emptyState(), { error });
   }
 
   Widget.present(<WidgetView data={data} error={error} />, {

@@ -148,31 +148,35 @@ function buildBandText(nrBands: any, lteBands: any): string {
 /** 抓取完整小组件数据（带错误信息，供 UI 缓存容错展示） */
 export async function fetchWidgetSnapshot(): Promise<{ state: WidgetState; error: string | null; zreqUsed: boolean }> {
     const errors: string[] = [];
+    const [deviceResult, goformResult, systemResult] = await Promise.allSettled([
+        fetchDeviceInfo(),
+        fetchGoformAll(),
+        fetchSystemInfo(),
+    ]);
+
     let deviceInfo: any = {};
-    try {
-        deviceInfo = await fetchDeviceInfo();
-    } catch (e) {
-        errors.push("设备信息: " + String((e as Error).message || e));
+    if (deviceResult.status === "fulfilled") {
+        deviceInfo = deviceResult.value;
+    } else {
+        errors.push("设备信息: " + String((deviceResult.reason as Error)?.message || deviceResult.reason));
     }
 
     let goformData: any = {};
     let zreqUsed = false;
-    try {
-        const gf = await fetchGoformAll();
-        goformData = gf.data;
-        zreqUsed = gf.zreqUsed;
-    } catch (e) {
-        errors.push("goform: " + String((e as Error).message || e));
+    if (goformResult.status === "fulfilled") {
+        goformData = goformResult.value.data;
+        zreqUsed = goformResult.value.zreqUsed;
+    } else {
+        errors.push("goform: " + String((goformResult.reason as Error)?.message || goformResult.reason));
     }
 
     let wifiFreq = 0;
     let memInfo = { total: 0, available: 0 };
-    try {
-        const sys = await fetchSystemInfo();
-        wifiFreq = sys.wifiFreq;
-        memInfo = sys.memInfo;
-    } catch (e) {
-        errors.push("系统信息: " + String((e as Error).message || e));
+    if (systemResult.status === "fulfilled") {
+        wifiFreq = systemResult.value.wifiFreq;
+        memInfo = systemResult.value.memInfo;
+    } else {
+        errors.push("系统信息: " + String((systemResult.reason as Error)?.message || systemResult.reason));
     }
 
     const state = buildState(deviceInfo, goformData, wifiFreq, memInfo);
