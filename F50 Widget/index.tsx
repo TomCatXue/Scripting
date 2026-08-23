@@ -5,7 +5,7 @@ import {
     TextField, SecureField, HStack, Spacer, Image, Toolbar, ToolbarItem,
     useState,
 } from "scripting";
-import { readSetting, saveSetting } from "./api";
+import { readSetting, saveSetting, setSessionSettings } from "./api";
 import { fetchWidgetSnapshot } from "./widget_data";
 import { Widget } from "scripting";
 
@@ -22,30 +22,54 @@ function MainView() {
     const [previewMsg, setPreviewMsg] = useState<string | null>(null);
     const [showPassword, setShowPassword] = useState(true);  // 默认明文显示，方便确认已保存的密码
 
-    function handleSave() {
+    /** 保存表单配置并回读校验，返回是否真正持久化成功 */
+    function doSave(): boolean {
         saveSetting("URL", url.trim());
         saveSetting("password", password.trim());
         saveSetting("zte_password", ztePassword.trim());
-        setSavedMsg("已保存 ✓");
-        setErrorMsg(null);
+        // 写入后立即读取验证，避免“假保存”
+        const okUrl = readSetting("URL", "") === url.trim();
+        const okPwd = readSetting("password", "") === password.trim();
+        const okZte = readSetting("zte_password", "") === ztePassword.trim();
+        return okUrl && okPwd && okZte;
+    }
+
+    function handleSave() {
+        if (doSave()) {
+            setSavedMsg("已保存 ✓");
+            setErrorMsg(null);
+        } else {
+            setSavedMsg(null);
+            setErrorMsg("保存失败：配置未能写入存储，请重试");
+        }
         setTimeout(() => setSavedMsg(null), 2500);
     }
 
     async function handleTest() {
         setErrorMsg(null);
         setSavedMsg(null);
+        const saved = doSave(); // 尽最大努力先持久化
+        // 用表单当前值发起测试（会话级覆盖，避免读到旧配置）
+        setSessionSettings({
+            url: url.trim(),
+            password: password.trim(),
+            ztePassword: ztePassword.trim(),
+        });
         try {
             const { state } = await fetchWidgetSnapshot();
+            const warn = saved ? "" : "（配置未保存成功，请先保存配置）";
             if (state.model_name !== "--") {
-                setSavedMsg("连接成功 ✓ 设备: " + state.model_name + (state.error ? "（部分接口异常）" : ""));
+                setSavedMsg("连接成功 ✓ 设备: " + state.model_name + (state.error ? "（部分接口异常）" : "") + warn);
             } else if (state.error) {
-                setErrorMsg("连接失败: " + state.error);
+                setErrorMsg("连接失败: " + state.error + warn);
             } else {
-                setSavedMsg("连接成功 ✓（返回了数据）");
+                setSavedMsg("连接成功 ✓（返回了数据）" + warn);
             }
-            setTimeout(() => setSavedMsg(null), 3000);
+            setTimeout(() => setSavedMsg(null), 4000);
         } catch (e) {
-            setErrorMsg("连接失败: " + String((e as Error)?.message || e));
+            setErrorMsg("连接失败: " + String((e as Error)?.message || e) + (saved ? "" : "（配置未保存成功，请先保存配置）"));
+        } finally {
+            setSessionSettings(null);
         }
     }
 

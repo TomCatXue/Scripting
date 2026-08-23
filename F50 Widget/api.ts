@@ -1,6 +1,6 @@
 // @ts-nocheck
 // F50 Widget API 层：UFI-TOOLS / ZTE 的设备信息拉取、签名、登录与 shell 执行
-import { fetch, Request, Script, Widget, Storage } from "scripting";
+import { fetch, Request, Script, Widget, Storage, Keychain } from "scripting";
 
 // ===================== 常量 / 配置读取 =====================
 
@@ -14,7 +14,29 @@ const ZREQ_BIN = "/data/data/com.minikano.f50_sms/files/zreq";
 /** UFI-TOOLS 客户端通用签名常量（非个人凭据，公开的算法常数） */
 const SECRET_KEY = "minikano_kOyXz0Ciz4V7wR0IeKmJFYFQ20jd";
 
-/** 读取脚本参数 / 小组件参数 / Storage 中的配置 */
+// 会话级临时配置覆盖（仅供「测试连接」使用当前表单值，不落盘）
+let overrideSettings: { url?: string; password?: string; ztePassword?: string } | null = null;
+
+/** 设置 / 清除会话级配置覆盖（测试连接用） */
+export function setSessionSettings(cfg: { url?: string; password?: string; ztePassword?: string } | null): void {
+    overrideSettings = cfg || null;
+}
+
+/** 密码类 key 判定：写入 / 读取优先走 Keychain（安全、同步持久化），其余走 Storage */
+function isSecretKey(key: string): boolean {
+    return key === "password" || key === "zte_password";
+}
+
+/** 读取当前会话覆盖的配置值（未覆盖时返回 undefined） */
+function sessionValue(key: string): string | undefined {
+    if (!overrideSettings) return undefined;
+    if (key === "URL") return overrideSettings.url;
+    if (key === "password") return overrideSettings.password;
+    if (key === "zte_password") return overrideSettings.ztePassword;
+    return undefined;
+}
+
+/** 读取配置：参数 / 小组件参数（历史优先）→ Keychain（密码类）→ Storage */
 export function readSetting(key: string, fallback?: string): string {
     try {
         let params = Script.queryParameters || {};
@@ -28,6 +50,12 @@ export function readSetting(key: string, fallback?: string): string {
         const v = params[key];
         if (v !== undefined && v !== null && String(v).trim() !== "") return String(v).trim();
     } catch (_) { }
+    if (isSecretKey(key)) {
+        try {
+            const kc = Keychain.get("F50Widget." + key);
+            if (kc !== undefined && kc !== null && String(kc).trim() !== "") return String(kc).trim();
+        } catch (_) { }
+    }
     try {
         const saved = Storage.get("F50Widget." + key);
         if (saved !== undefined && saved !== null && String(saved).trim() !== "") return String(saved).trim();
@@ -35,12 +63,29 @@ export function readSetting(key: string, fallback?: string): string {
     return fallback || "";
 }
 
-/** 保存配置到 Storage（key 与 readSetting 的 Storage 前缀一致） */
-export function saveSetting(key: string, value: string): void {
+/**
+ * 保存配置：密码类 key 优先写入 Keychain（不可用时回退 Storage），其余写 Storage。
+ * @returns 是否保存成功（供调用方回读校验 / 展示真实结果）
+ */
+export function saveSetting(key: string, value: string): boolean {
+    const val = String(value).trim();
     try {
-        Storage.set("F50Widget." + key, String(value).trim());
+        const fullKey = "F50Widget." + key;
+        if (isSecretKey(key)) {
+            try {
+                if (val === "") return Keychain.remove(fullKey) === true;
+                return Keychain.set(fullKey, val) === true;
+            } catch (ke) {
+                console.log("Keychain 写入失败，回退 Storage:", key, String(ke));
+            }
+            if (val === "") { Storage.remove(fullKey); return true; }
+            return Storage.set(fullKey, val) === true;
+        }
+        if (val === "") { Storage.remove(fullKey); return true; }
+        return Storage.set(fullKey, val) === true;
     } catch (e) {
         console.log("保存配置失败:", key, String(e));
+        return false;
     }
 }
 
@@ -48,8 +93,25 @@ function trimSlash(s: string): string {
     return String(s || "").replace(/\/+$/, "");
 }
 
+/** 获取 UFI-TOOLS 地址：会话覆盖 > 持久化配置 > 默认值 */
 function getKanoUrl(): string {
+    const s = sessionValue("URL");
+    if (s !== undefined && s.trim() !== "") return trimSlash(s);
     return trimSlash(readSetting("URL", "http://192.168.0.1:2333"));
+}
+
+/** 获取 UFI-TOOLS 密码：会话覆盖 > 持久化配置 */
+function getPassword(): string {
+    const s = sessionValue("password");
+    if (s !== undefined) return s;
+    return readSetting("password", "");
+}
+
+/** 获取 ZTE 后台密码：会话覆盖 > 持久化配置 */
+function getZtePassword(): string {
+    const s = sessionValue("ztePassword");
+    if (s !== undefined) return s;
+    return readSetting("zte_password", "");
 }
 
 // ===================== goform 字段组 =====================
@@ -113,7 +175,7 @@ async function getGoform(cmdList: string[]): Promise<any> {
 
 /** 通过 zreq（设备本机二进制）自动完成 ZTE 登录后批量读取 goform 字段 */
 async function zreqGoform(cmdList: string[]): Promise<{ data: any; used: boolean }> {
-    const ztePassword = readSetting("zte_password", "");
+    const ztePassword = getZtePassword();
     const params = "cmd=" + cmdList.join(",") + "&multi_data=1&isTest=false";
     const cmd = ZREQ_BIN + " -pwd " + shellQuote(ztePassword)
         + " -method GET"
@@ -180,7 +242,7 @@ export async function fetchGoformAll(): Promise<{ data: any; zreqUsed: boolean }
 // ===================== ZTE 登录（回退方案） =====================
 
 async function loginZTE(): Promise<void> {
-    const ztePassword = readSetting("zte_password", "");
+    const ztePassword = getZtePassword();
     const ldUrl = getKanoUrl() + GOFORM_GET_PATH + "?multi_data=1&isTest=false&cmd=LD&_=" + Date.now();
     const ldReq = new Request(ldUrl);
     ldReq.allowInsecureRequest = true;
@@ -255,7 +317,7 @@ export async function fetchSystemInfo(): Promise<{ wifiFreq: number; memInfo: { 
 
 function buildKanoHeaders(method: string, path: string): Record<string, string> {
     const t = String(Date.now());
-    const auth = sha256HexFromString(readSetting("password", "")).toLowerCase();
+    const auth = sha256HexFromString(getPassword()).toLowerCase();
     const sign = buildKanoSign(method, path, t);
     return { "Authorization": auth, "kano-t": t, "kano-sign": sign };
 }
