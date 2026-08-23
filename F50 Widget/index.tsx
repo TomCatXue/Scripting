@@ -19,10 +19,7 @@ function MainView() {
     const [savedMsg, setSavedMsg] = useState<string | null>(null);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [previewMsg, setPreviewMsg] = useState<string | null>(null);
-    const [showPassword, setShowPassword] = useState(false);
-
-    const hasPwd = readSetting("password", "") !== "";
-    const hasZte = readSetting("zte_password", "") !== "";
+    const [showPassword, setShowPassword] = useState(true);  // 默认明文显示，方便确认已保存的密码
 
     function handleSave() {
         let changed = false;
@@ -74,27 +71,6 @@ function MainView() {
                 }
             >
                 <Section
-                    header={<Text>连接状态</Text>}
-                    footer={<Text>密码仅保存在本机 Storage，不会上传。</Text>}
-                >
-                    <HStack>
-                        <Text>URL</Text>
-                        <Spacer />
-                        <Text foregroundStyle="secondaryLabel">{url}</Text>
-                    </HStack>
-                    <HStack>
-                        <Text>UFI-TOOLS 密码</Text>
-                        <Spacer />
-                        <Text foregroundStyle={hasPwd ? "systemGreen" : "systemRed"}>{hasPwd ? "已设置" : "未设置"}</Text>
-                    </HStack>
-                    <HStack>
-                        <Text>ZTE 后台密码</Text>
-                        <Spacer />
-                        <Text foregroundStyle={hasZte ? "systemGreen" : "systemRed"}>{hasZte ? "已设置" : "未设置"}</Text>
-                    </HStack>
-                </Section>
-
-                <Section
                     header={
                         <HStack>
                             <Text>配置</Text>
@@ -106,7 +82,7 @@ function MainView() {
                             />
                         </HStack>
                     }
-                    footer={<Text>UFI-TOOLS 反向代理地址（默认 2333 端口）。URL 改后点保存生效。</Text>}
+                    footer={<Text>右上角「预览」查看小组件效果；测试连接验证地址与密码是否正确。</Text>}
                 >
                     <TextField
                         title="URL"
