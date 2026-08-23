@@ -117,13 +117,16 @@ function StatusPill({ icon, text, tint, font }: any) {
 }
 
 function Traffic({ title, value, unit, compact = false, titleColor = "systemBlue" }: any) {
+  const fontSize = compact ? 25 : 31;
+  // 估算数值右边缘距中心的偏移（estTextWidth 基于 font=8，按实际字号缩放）
+  const halfValueWidth = (estTextWidth(String(value)) * fontSize / 8) / 2;
   return (
     <VStack spacing={0} alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity" })}>
       <Text font={compact ? 10 : 12} modifiers={modifiers().foregroundStyle(titleColor).bold()}>{title}</Text>
-      <HStack spacing={compact ? 2 : 3} alignment="lastTextBaseline" modifiers={modifiers().frame({ maxWidth: "infinity" })}>
-        <Text font={compact ? 25 : 31} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit().lineLimit(1).minScaleFactor(0.68).frame({ maxWidth: "infinity", alignment: "center" })}>{value}</Text>
-        <Text font={compact ? 12 : 13} modifiers={modifiers().foregroundStyle("label").fontDesign("serif").baselineOffset(1)}>{unit}</Text>
-      </HStack>
+      <ZStack alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity" })}>
+        <Text font={fontSize} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit().lineLimit(1).minScaleFactor(0.68)}>{value}</Text>
+        <Text font={compact ? 12 : 13} modifiers={modifiers().foregroundStyle("label").fontDesign("serif").baselineOffset(1).offset({ x: halfValueWidth + 4, y: 0 })}>{unit}</Text>
+      </ZStack>
     </VStack>
   );
 }
