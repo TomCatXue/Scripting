@@ -125,7 +125,7 @@ function Traffic({ title, value, unit, compact = false, titleColor = "systemBlue
       <Text font={compact ? 10 : 12} modifiers={modifiers().foregroundStyle(titleColor).bold()}>{title}</Text>
       <ZStack alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity" })}>
         <Text font={fontSize} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit().lineLimit(1).minScaleFactor(0.68)}>{value}</Text>
-        <Text font={compact ? 12 : 13} modifiers={modifiers().foregroundStyle("label").fontDesign("serif").baselineOffset(1).offset({ x: halfValueWidth + 15, y: 15 })}>{unit}</Text>
+        <Text font={compact ? 12 : 13} modifiers={modifiers().foregroundStyle("label").fontDesign("serif").baselineOffset(1).offset({ x: halfValueWidth + 15, y: 6 })}>{unit}</Text>
       </ZStack>
     </VStack>
   );
