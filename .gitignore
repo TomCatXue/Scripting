@@ -1,0 +1,15 @@
+# macOS
+.DS_Store
+
+# 日志
+*.log
+
+# Node / TypeScript 构建产物
+node_modules/
+dist/
+*.tsbuildinfo
+
+# 本地临时文件
+*.tmp
+.idea/
+.vscode/

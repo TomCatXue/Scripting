@@ -5,11 +5,16 @@
   "color": "#0A84FF",
   "version": "3.0.0",
   "description": "UFI-TOOLS / ZTE F50 network status monitoring widget",
+  "author": "TomCatXue",
   "localizedNames": {
     "zh": "UfiPeek"
   },
   "localizedDescriptions": {
-    "zh": "Displays ZTE F50 traffic, signal, battery, CPU and Wi-Fi status"
+    "zh": "ZTE F50 流量、信号、电池、CPU、内存与 Wi-Fi 状态监控小组件"
   },
-  "runInApp": false
+  "runInApp": false,
+  "remoteResource": {
+    "url": "https://github.com/TomCatXue/Scripting/tree/main/UfiPeek",
+    "autoUpdateInterval": 86400
+  }
 }
