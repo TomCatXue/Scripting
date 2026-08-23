@@ -14,8 +14,8 @@ const DEFAULT_URL = "http://192.168.0.1:2333";
 
 function MainView() {
     const [url, setUrl] = useState(readSetting("URL", DEFAULT_URL));
-    const [password, setPassword] = useState("");
-    const [ztePassword, setZtePassword] = useState("");
+    const [password, setPassword] = useState(readSetting("password", ""));
+    const [ztePassword, setZtePassword] = useState(readSetting("zte_password", ""));
     const [savedMsg, setSavedMsg] = useState<string | null>(null);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [previewMsg, setPreviewMsg] = useState<string | null>(null);
@@ -29,8 +29,6 @@ function MainView() {
         if (url.trim() !== "") { saveSetting("URL", url.trim()); changed = true; }
         if (password.trim() !== "") { saveSetting("password", password.trim()); changed = true; }
         if (ztePassword.trim() !== "") { saveSetting("zte_password", ztePassword.trim()); changed = true; }
-        setPassword("");
-        setZtePassword("");
         setSavedMsg(changed ? "已保存 ✓" : "没有新内容需要保存");
         setErrorMsg(null);
         setTimeout(() => setSavedMsg(null), 2500);
