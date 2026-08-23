@@ -45,6 +45,27 @@ function tempColor(v: string): ColorName {
   return "systemRed";
 }
 
+/** 信号强度 → cellularbars 填充比例（0.0~1.0），用于 variableValue */
+function signalFill(sig: string): number {
+  const n = parseInt(String(sig), 10);
+  if (!isFinite(n)) return 0;
+  if (n >= 4) return 1;
+  if (n === 3) return 0.75;
+  if (n === 2) return 0.5;
+  if (n === 1) return 0.25;
+  return 0.05;
+}
+
+/** 信号强度动态着色：4 格绿 / 3 格青 / 2 格橙 / 1 格以下红 */
+function signalColor(sig: string): ColorName {
+  const n = parseInt(String(sig), 10);
+  if (!isFinite(n)) return "secondaryLabel";
+  if (n >= 4) return "systemGreen";
+  if (n === 3) return "systemTeal";
+  if (n === 2) return "systemOrange";
+  return "systemRed";
+}
+
 /** 透明/模糊模式背景色 */
 function widgetBg(): string {
   const isTransparent = Widget.isTransparentBackground || Widget.isTransparentMode || Widget.isBlurMode;
@@ -131,7 +152,7 @@ function Header({ data, compact = false }: any) {
       <Text font={compact ? 11 : 12} modifiers={modifiers().foregroundStyle("label").bold()}>{textValue(data.model_name)}</Text>
       <Text font={compact ? 10 : 11} modifiers={modifiers().foregroundStyle("label")}>UFI v{textValue(data.ufi_ver)}</Text>
       <Spacer />
-      <Image systemName="cellularbars" frame={{ width: compact ? 13 : 15, height: compact ? 13 : 15 }} modifiers={modifiers().foregroundStyle("secondaryLabel")} />
+      <Image systemName="cellularbars" variableValue={signalFill(textValue(data.signalbar))} frame={{ width: compact ? 13 : 15, height: compact ? 13 : 15 }} modifiers={modifiers().foregroundStyle(signalColor(textValue(data.signalbar)))} />
       <Text font={compact ? 9 : 10} modifiers={modifiers().foregroundStyle("label")}>{textValue(data.signalbar)}</Text>
       <Image systemName={textValue(data.battery_icon)} frame={{ width: compact ? 14 : 16, height: compact ? 14 : 16 }} modifiers={modifiers().foregroundStyle(data.battery_icon_color)} />
       <Text font={compact ? 9 : 10} modifiers={modifiers().foregroundStyle("label")}>{textValue(data.battery)}%</Text>
@@ -154,7 +175,7 @@ function MediumDashboard({ data }: any) {
         <Text font={11} modifiers={modifiers().foregroundStyle("label").bold().lineLimit(1).minScaleFactor(0.72).frame({ height: 20 }).baselineOffset(2)}>{textValue(data.model_name)}</Text>
         <Text font={10} modifiers={modifiers().foregroundStyle("label").lineLimit(1).minScaleFactor(0.55).frame({ height: 20 }).baselineOffset(2)}>UFI v{textValue(data.ufi_ver)}</Text>
         <Spacer minLength={2} />
-        <Image systemName="cellularbars" font={14} frame={{ width: 16, height: 16 }} modifiers={modifiers().foregroundStyle("secondaryLabel")} />
+        <Image systemName="cellularbars" variableValue={signalFill(textValue(data.signalbar))} font={14} frame={{ width: 16, height: 16 }} modifiers={modifiers().foregroundStyle(signalColor(textValue(data.signalbar)))} />
         <Text font={11} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit().lineLimit(1).minScaleFactor(0.7).frame({ height: 20 })}>{textValue(data.signalbar)}</Text>
         <Text font={12} modifiers={modifiers().foregroundStyle("separator").frame({ height: 20 })}>|</Text>
         <Image systemName={textValue(data.battery_icon)} font={16} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle(data.battery_icon_color)} />
