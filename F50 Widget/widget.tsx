@@ -102,10 +102,6 @@ function Chip({ icon, text, tint = "label", compact = false }: any) {
 
 /** 状态胶囊（状态行用，字号动态计算） */
 function StatusPill({ icon, text, tint, font }: any) {
-  const iconOffset = icon === "envelope.badge" ? -2 : 0;
-  const iconMod = iconOffset !== 0
-    ? modifiers().foregroundStyle(tint).offset({ x: 0, y: iconOffset })
-    : modifiers().foregroundStyle(tint);
   return (
     <HStack
       spacing={3}
@@ -114,7 +110,7 @@ function StatusPill({ icon, text, tint, font }: any) {
       alignment="center"
       modifiers={modifiers().clipShape({ type: "rect", cornerRadius: 11 }).frame({ height: 23, maxWidth: "infinity" })}
     >
-      <Image systemName={icon} font={11} frame={{ width: 13, height: 13 }} modifiers={iconMod} />
+      <Image systemName={icon} font={11} frame={{ width: 13, height: 13 }} modifiers={modifiers().foregroundStyle(tint)} />
       <Text font={font} fontWeight="semibold" modifiers={modifiers().foregroundStyle("label").lineLimit(1).minScaleFactor(0.55)}>{text}</Text>
     </HStack>
   );
@@ -122,7 +118,7 @@ function StatusPill({ icon, text, tint, font }: any) {
 
 function Traffic({ title, value, unit, compact = false, titleColor = "systemBlue" }: any) {
   return (
-    <VStack spacing={1} alignment="center">
+    <VStack spacing={1} alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity" })}>
       <Text font={compact ? 10 : 11} modifiers={modifiers().foregroundStyle(titleColor).bold()}>{title}</Text>
       <HStack spacing={2} alignment="lastTextBaseline">
         <Text font={compact ? 25 : 31} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit()}>{value}</Text>
@@ -148,15 +144,16 @@ function Card({ children, compact = false }: any) {
 
 function Header({ data, compact = false }: any) {
   return (
-    <HStack spacing={compact ? 3 : 5} alignment="center">
+    <HStack spacing={compact ? 3 : 5} alignment="center" modifiers={modifiers().frame({ height: compact ? 22 : 24 })}>
       <Image systemName="wifi.router.fill" frame={{ width: compact ? 14 : 16, height: compact ? 14 : 16 }} modifiers={modifiers().foregroundStyle("systemBlue")} />
-      <Text font={compact ? 11 : 12} modifiers={modifiers().foregroundStyle("label").bold()}>{textValue(data.model_name)}</Text>
-      <Text font={compact ? 10 : 11} modifiers={modifiers().foregroundStyle("label")}>UFI v{textValue(data.ufi_ver)}</Text>
+      <Text font={compact ? 11 : 12} modifiers={modifiers().foregroundStyle("label").bold().lineLimit(1).minScaleFactor(0.7)}>{textValue(data.model_name)}</Text>
+      <Text font={compact ? 10 : 11} modifiers={modifiers().foregroundStyle("label").lineLimit(1).minScaleFactor(0.55)}>UFI v{textValue(data.ufi_ver)}</Text>
       <Spacer />
       <Image systemName="cellularbars" variableValue={signalFill(textValue(data.signalbar))} frame={{ width: compact ? 13 : 15, height: compact ? 13 : 15 }} modifiers={modifiers().foregroundStyle(signalColor(textValue(data.signalbar)))} />
-      <Text font={compact ? 9 : 10} modifiers={modifiers().foregroundStyle("label")}>{textValue(data.signalbar)}</Text>
+      <Text font={compact ? 9 : 10} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit()}>{textValue(data.signalbar)}</Text>
+      <Text font={12} modifiers={modifiers().foregroundStyle("separator")}>|</Text>
       <Image systemName={textValue(data.battery_icon)} frame={{ width: compact ? 14 : 16, height: compact ? 14 : 16 }} modifiers={modifiers().foregroundStyle(data.battery_icon_color)} />
-      <Text font={compact ? 9 : 10} modifiers={modifiers().foregroundStyle("label")}>{textValue(data.battery)}%</Text>
+      <Text font={compact ? 9 : 10} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit()}>{textValue(data.battery)}%</Text>
     </HStack>
   );
 }
@@ -171,18 +168,18 @@ function MediumDashboard({ data }: any) {
 
   return (
     <Card>
-      <HStack spacing={5} alignment="center" modifiers={modifiers().frame({ height: 20 })}>
+      <HStack spacing={5} alignment="center" modifiers={modifiers().frame({ height: 22 })}>
         <Image systemName="wifi.router.fill" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemBlue")} />
-        <Text font={11} modifiers={modifiers().foregroundStyle("label").bold().lineLimit(1).minScaleFactor(0.72).frame({ height: 20 }).baselineOffset(2)}>{textValue(data.model_name)}</Text>
-        <Text font={10} modifiers={modifiers().foregroundStyle("label").lineLimit(1).minScaleFactor(0.55).frame({ height: 20 }).baselineOffset(2)}>UFI v{textValue(data.ufi_ver)}</Text>
+        <Text font={11} modifiers={modifiers().foregroundStyle("label").bold().lineLimit(1).minScaleFactor(0.72)}>{textValue(data.model_name)}</Text>
+        <Text font={10} modifiers={modifiers().foregroundStyle("label").lineLimit(1).minScaleFactor(0.55)}>UFI v{textValue(data.ufi_ver)}</Text>
         <Spacer minLength={2} />
         <Image systemName="cellularbars" variableValue={signalFill(textValue(data.signalbar))} font={14} frame={{ width: 16, height: 16 }} modifiers={modifiers().foregroundStyle(signalColor(textValue(data.signalbar)))} />
-        <Text font={11} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit().lineLimit(1).minScaleFactor(0.7).frame({ height: 20 })}>{textValue(data.signalbar)}</Text>
-        <Text font={12} modifiers={modifiers().foregroundStyle("separator").frame({ height: 20 })}>|</Text>
+        <Text font={11} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit().lineLimit(1).minScaleFactor(0.7)}>{textValue(data.signalbar)}</Text>
+        <Text font={12} modifiers={modifiers().foregroundStyle("separator")}>|</Text>
         <Image systemName={textValue(data.battery_icon)} font={16} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle(data.battery_icon_color)} />
-        <Text font={11} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit().lineLimit(1).minScaleFactor(0.7).frame({ height: 20 })}>{textValue(data.battery)}%</Text>
+        <Text font={11} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit().lineLimit(1).minScaleFactor(0.7)}>{textValue(data.battery)}%</Text>
       </HStack>
-      <HStack spacing={12} alignment="center" modifiers={modifiers().frame({ height: 50 })}>
+      <HStack alignment="center" modifiers={modifiers().frame({ height: 50 })}>
         <Traffic title="今日流量" value={textValue(data.daily_data_value)} unit={textValue(data.daily_data_unit)} />
         <Text font={34} modifiers={modifiers().foregroundStyle("separator")}>│</Text>
         <Traffic title="本月流量" value={textValue(data.monthly_data_value)} unit={textValue(data.monthly_data_unit)} />
@@ -220,12 +217,12 @@ function MediumDashboard({ data }: any) {
 function SmallDashboard({ data }: any) {
   return (
     <Card compact>
-      <HStack spacing={8} alignment="center">
+      <HStack spacing={8} alignment="center" modifiers={modifiers().frame({ height: 22 })}>
         <Image systemName="wifi.router.fill" frame={{ width: 16, height: 16 }} modifiers={modifiers().foregroundStyle("systemBlue")} />
-        <Text font={11} modifiers={modifiers().foregroundStyle("label").bold().minScaleFactor(0.75).frame({ height: 20 }).baselineOffset(2)}>{textValue(data.model_name)}</Text>
+        <Text font={11} modifiers={modifiers().foregroundStyle("label").bold().minScaleFactor(0.75)}>{textValue(data.model_name)}</Text>
         <Spacer />
         <Image systemName={textValue(data.battery_icon)} frame={{ width: 16, height: 16 }} modifiers={modifiers().foregroundStyle(data.battery_icon_color)} />
-        <Text font={10} modifiers={modifiers().foregroundStyle("label").frame({ height: 20 })}>{textValue(data.battery)}%</Text>
+        <Text font={10} modifiers={modifiers().foregroundStyle("label")}>{textValue(data.battery)}%</Text>
       </HStack>
       <Traffic compact title="今日流量" value={textValue(data.daily_data_value)} unit={textValue(data.daily_data_unit)} />
       <HStack spacing={5} alignment="center">
@@ -241,7 +238,7 @@ function LargeDashboard({ data }: any) {
   return (
     <Card>
       <Header data={data} />
-      <HStack spacing={25}>
+      <HStack alignment="center" modifiers={modifiers().frame({ height: 60 })}>
         <Traffic title="今日流量" value={textValue(data.daily_data_value)} unit={textValue(data.daily_data_unit)} />
         <Text font={38} modifiers={modifiers().foregroundStyle("separator")}>│</Text>
         <Traffic title="本月流量" value={textValue(data.monthly_data_value)} unit={textValue(data.monthly_data_unit)} />
