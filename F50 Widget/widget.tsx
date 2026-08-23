@@ -120,13 +120,10 @@ function Traffic({ title, value, unit, compact = false, titleColor = "systemBlue
   return (
     <VStack spacing={0} alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity" })}>
       <Text font={compact ? 10 : 12} modifiers={modifiers().foregroundStyle(titleColor).bold()}>{title}</Text>
-      <ZStack alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity" })}>
-        <Text font={compact ? 25 : 31} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit().lineLimit(1).minScaleFactor(0.68)}>{value}</Text>
-        <HStack spacing={0} modifiers={modifiers().frame({ maxWidth: "infinity" })}>
-          <Spacer />
-          <Text font={compact ? 12 : 13} modifiers={modifiers().foregroundStyle("label").fontDesign("serif").baselineOffset(1).padding({ leading: 3 })}>{unit}</Text>
-        </HStack>
-      </ZStack>
+      <HStack spacing={compact ? 2 : 3} alignment="lastTextBaseline" modifiers={modifiers().frame({ maxWidth: "infinity" })}>
+        <Text font={compact ? 25 : 31} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit().lineLimit(1).minScaleFactor(0.68).frame({ maxWidth: "infinity", alignment: "center" })}>{value}</Text>
+        <Text font={compact ? 12 : 13} modifiers={modifiers().foregroundStyle("label").fontDesign("serif").baselineOffset(1)}>{unit}</Text>
+      </HStack>
     </VStack>
   );
 }
