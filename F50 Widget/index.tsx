@@ -5,7 +5,7 @@ import {
     TextField, SecureField, HStack, Spacer, Image, Toolbar, ToolbarItem,
     useState,
 } from "scripting";
-import { readSetting, saveSetting, fetchDeviceInfo } from "./api";
+import { readSetting, saveSetting } from "./api";
 import { fetchWidgetSnapshot } from "./widget_data";
 import { Widget } from "scripting";
 
