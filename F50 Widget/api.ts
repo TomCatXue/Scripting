@@ -32,12 +32,6 @@ export function readSetting(key: string, fallback?: string): string {
         const saved = Storage.get("F50Widget." + key);
         if (saved !== undefined && saved !== null && String(saved).trim() !== "") return String(saved).trim();
     } catch (_) { }
-    if (key === "password") {
-        try {
-            const old = (Script.queryParameters || {})["pw"];
-            if (old !== undefined && old !== null && String(old).trim() !== "") return String(old).trim();
-        } catch (_) { }
-    }
     return fallback || "";
 }
 

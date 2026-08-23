@@ -6,6 +6,7 @@ import {
     useState,
 } from "scripting";
 import { readSetting, saveSetting, fetchDeviceInfo } from "./api";
+import { fetchWidgetSnapshot } from "./widget_data";
 import { Widget } from "scripting";
 
 const DEFAULT_URL = "http://192.168.0.1:2333";
@@ -22,11 +23,10 @@ function MainView() {
     const [showPassword, setShowPassword] = useState(true);  // 默认明文显示，方便确认已保存的密码
 
     function handleSave() {
-        let changed = false;
-        if (url.trim() !== "") { saveSetting("URL", url.trim()); changed = true; }
-        if (password.trim() !== "") { saveSetting("password", password.trim()); changed = true; }
-        if (ztePassword.trim() !== "") { saveSetting("zte_password", ztePassword.trim()); changed = true; }
-        setSavedMsg(changed ? "已保存 ✓" : "没有新内容需要保存");
+        saveSetting("URL", url.trim());
+        saveSetting("password", password.trim());
+        saveSetting("zte_password", ztePassword.trim());
+        setSavedMsg("已保存 ✓");
         setErrorMsg(null);
         setTimeout(() => setSavedMsg(null), 2500);
     }
@@ -35,9 +35,11 @@ function MainView() {
         setErrorMsg(null);
         setSavedMsg(null);
         try {
-            const info = await fetchDeviceInfo();
-            if (info && (info.model || info.cpu_temp || info.daily_data)) {
-                setSavedMsg("连接成功 ✓ 设备: " + String(info.model || info.model_name || "?"));
+            const { state } = await fetchWidgetSnapshot();
+            if (state.model_name !== "--") {
+                setSavedMsg("连接成功 ✓ 设备: " + state.model_name + (state.error ? "（部分接口异常）" : ""));
+            } else if (state.error) {
+                setErrorMsg("连接失败: " + state.error);
             } else {
                 setSavedMsg("连接成功 ✓（返回了数据）");
             }

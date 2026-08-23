@@ -56,14 +56,26 @@ export function buildState(deviceInfo: any, goformData: any, wifiFreq: number, m
     const d = deviceInfo || {};
     const g = goformData || {};
 
+    buildDevicePart(state, d, g);
+    buildBatteryPart(state, d, g);
+    buildSignalPart(state, d, g);
+    buildTrafficWifiPart(state, d, g, wifiFreq);
+    buildMemoryPart(state, memInfo);
+
+    state.update_time = makeUpdateTime();
+    return state;
+}
+
+function buildDevicePart(state: WidgetState, d: any, g: any): void {
     state.model_name = pick(g.model_name, d.model);
     state.ufi_ver = buildUfiVersion(d);
-
     let temp = normalizeTemp(d.cpu_temp);
     if (!isNum(temp)) temp = normalizeTemp(maxTemp(d.cpu_temp_list));
     state.cputemp = isNum(temp) ? roundText(temp, 1) : "--";
     state.cpuusage = isNum(toNum(d.cpu_usage)) ? roundText(toNum(d.cpu_usage), 0) : "--";
+}
 
+function buildBatteryPart(state: WidgetState, d: any, g: any): void {
     state.battery = pick(d.battery, g.battery_value, g.battery_vol_percent);
     const batVal = toNum(state.battery);
     const isCharging = String(g.battery_charging) === "1";
@@ -89,7 +101,9 @@ export function buildState(deviceInfo: any, goformData: any, wifiFreq: number, m
         state.battery_icon = "battery.100percent";
         state.battery_icon_color = "systemGreen";
     }
+}
 
+function buildSignalPart(state: WidgetState, d: any, g: any): void {
     const provider = pick(g.network_provider, "--");
     const netType = normNetType(g.network_type);
     state.net_summary = provider === "--" && netType === "--" ? "-- --" : provider + " " + netType;
@@ -110,7 +124,9 @@ export function buildState(deviceInfo: any, goformData: any, wifiFreq: number, m
     const unreadNum = parseInt(pickRaw(g.sms_unread_num), 10) || 0;
     state.sms_unread_text = unreadNum > 0 ? String(unreadNum) : "0";
     state.sms_icon_color = unreadNum > 0 ? "systemRed" : "systemBlue";
+}
 
+function buildTrafficWifiPart(state: WidgetState, d: any, g: any, wifiFreq: number): void {
     const dailyParts = splitByteText(formatBytes(d.daily_data));
     state.daily_data_value = dailyParts.value;
     state.daily_data_unit = dailyParts.unit;
@@ -129,12 +145,11 @@ export function buildState(deviceInfo: any, goformData: any, wifiFreq: number, m
 
     state.band_text = buildBandText(g.Nr_bands, g.Lte_bands);
     state.wifi_band_text = wifiFreq > 0 ? (wifiFreq >= 4000 ? "5G" : "2.4G") : "--";
+}
 
+function buildMemoryPart(state: WidgetState, memInfo: { total: number; available: number }): void {
     const memUsedKb = (memInfo.total > 0 && memInfo.available >= 0) ? memInfo.total - memInfo.available : 0;
     state.mem_text = memInfo.total > 0 ? Math.round(memUsedKb / memInfo.total * 100) + "%" : "--";
-
-    state.update_time = makeUpdateTime();
-    return state;
 }
 
 function buildBandText(nrBands: any, lteBands: any): string {
