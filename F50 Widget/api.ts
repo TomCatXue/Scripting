@@ -14,7 +14,7 @@ const ZREQ_BIN = "/data/data/com.minikano.f50_sms/files/zreq";
 /** UFI-TOOLS 客户端通用签名常量（非个人凭据，公开的算法常数） */
 const SECRET_KEY = "minikano_kOyXz0Ciz4V7wR0IeKmJFYFQ20jd";
 
-/** 读取脚本参数 / 小组件参数 / Storage 中的配置（兼容旧 UfiPeek. 前缀） */
+/** 读取脚本参数 / 小组件参数 / Storage 中的配置 */
 export function readSetting(key: string, fallback?: string): string {
     try {
         let params = Script.queryParameters || {};
@@ -29,7 +29,7 @@ export function readSetting(key: string, fallback?: string): string {
         if (v !== undefined && v !== null && String(v).trim() !== "") return String(v).trim();
     } catch (_) { }
     try {
-        const saved = Storage.get("F50Widget." + key) ?? Storage.get("UfiPeek." + key);
+        const saved = Storage.get("F50Widget." + key);
         if (saved !== undefined && saved !== null && String(saved).trim() !== "") return String(saved).trim();
     } catch (_) { }
     if (key === "password") {
