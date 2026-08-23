@@ -2,19 +2,30 @@
   "name": "UfiPeek",
   "entry": "index.tsx",
   "icon": "wifi.router.fill",
+  "iconImage": "https://avatars.githubusercontent.com/u/0",
   "color": "#0A84FF",
-  "version": "3.0.0",
-  "description": "UFI-TOOLS / ZTE F50 network status monitoring widget",
-  "author": "TomCatXue",
+  "version": "3.1.0",
+  "description": "UFI-TOOLS / ZTE F50 network status widget (traffic, signal, battery, CPU, memory, Wi-Fi) with tap-to-refresh and offline cache.",
+  "author": {
+    "name": "TomCatXue",
+    "homepage": "https://github.com/TomCatXue",
+    "email": null
+  },
+  "contributors": [],
   "localizedNames": {
-    "zh": "UfiPeek"
+    "zh": "UfiPeek",
+    "zh-Hans": "UfiPeek"
   },
   "localizedDescriptions": {
-    "zh": "ZTE F50 流量、信号、电池、CPU、内存与 Wi-Fi 状态监控小组件"
+    "zh-Hans": "ZTE F50 网络状态小组件：流量、信号、电池、CPU、内存、Wi-Fi，支持点击刷新与离线缓存",
+    "en": "ZTE F50 network status widget: traffic, signal, battery, CPU, memory, Wi-Fi"
   },
+  "permissions": null,
+  "intentInputTypes": [],
   "runInApp": false,
   "remoteResource": {
     "url": "https://github.com/TomCatXue/Scripting/tree/main/UfiPeek",
-    "autoUpdateInterval": 86400
+    "autoUpdateInterval": 86400,
+    "hash": ""
   }
 }

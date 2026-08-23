@@ -1,6 +1,8 @@
+// @ts-nocheck
+// UfiPeek 入口：App 内预览小组件（真实数据由 widget.tsx 拉取）
+// 配置参数：URL / password / zte_password（脚本参数或 Storage）
+// 例如: {"URL":"http://192.168.0.1:2333","password":"...","zte_password":"..."}
 import { Script, Widget } from "scripting";
 
-// Pass URL, password, zte_password via Script.queryParameters.
-// e.g. scripting-ts run index.tsx --queryparameters '{"URL":"http://192.168.0.1:2333"}'
 await Widget.preview({ family: "systemMedium" });
 Script.exit();

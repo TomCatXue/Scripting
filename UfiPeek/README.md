@@ -1,20 +1,25 @@
 # UfiPeek
 
-UFI-TOOLS / ZTE F50 网络状态监控**小组件**（Small / Medium / Large），支持透明背景。
+UFI-TOOLS / ZTE F50 网络状态**小组件**（Small / Medium / Large），展示今日/本月流量、信号、电池、CPU、内存、Wi-Fi，支持**点击刷新**与**离线缓存**。
 
-展示：今日/本月流量、信号强弱与 RSRP/RSRQ/SNR、电池电量、CPU 温度与占用、内存、Wi-Fi 频段（2.4G/5G）与设备数、运营商、未读短信、固件版本。
+## 订阅
+
+```
+https://github.com/TomCatXue/Scripting/tree/main/UfiPeek
+```
 
 ## 文件
 
 | 文件 | 说明 |
 |---|---|
-| `script.json` | Scripting 项目配置（含订阅用的 `remoteResource`） |
-| `index.tsx` | 入口，仅做 `Widget.preview` |
-| `widget.tsx` | 小组件核心：数据获取、登录/签名逻辑、UI 渲染 |
+| `script.json` | 项目配置（含订阅 `remoteResource`） |
+| `index.tsx` | 入口（App 内预览） |
+| `widget.tsx` | 小组件 UI（语义色、动态字号、点击刷新、缓存容错） |
+| `widget_data.ts` | 数据组装与缓存 |
+| `api.ts` | UFI-TOOLS / ZTE 网络层（签名、登录、shell） |
+| `app_intents.tsx` | 点击刷新 AppIntent |
 
-## 配置参数（重要）
-
-密码不硬编码，通过脚本参数或 Storage 配置：
+## 配置参数
 
 | 参数 | 说明 |
 |---|---|
@@ -28,13 +33,4 @@ UFI-TOOLS / ZTE F50 网络状态监控**小组件**（Small / Medium / Large）�
 {"URL":"http://192.168.0.1:2333","password":"your-password","zte_password":"your-zte-password"}
 ```
 
-## 工作原理
-
-1. `GET /api/baseDeviceInfo` → 设备信息（型号、固件、流量、CPU、电池）
-2. `POST /api/user_shell` → 通过 zreq 自动完成 ZTE 登录并批量获取 goform 字段
-3. `POST /api/root_shell` → root 权限取 Wi-Fi 频段（dumpsys wifi）与内存（/proc/meminfo）
-4. zreq 失败时回退：GET-only goform → 必要时 POST 登录
-
-签名：`minikano+method+path+timestamp` → HMAC-MD5 → 双 SHA256（secretKey 为 UFI-TOOLS 公共常量）。
-
-> 请在 Scripting 中通过参数配置你自己的密码，勿把真实密码提交到仓库。
+> 注：`api.ts` 中的 `SECRET_KEY` 是 UFI-TOOLS 客户端通用的签名常量，并非个人凭据。请通过参数配置自己的密码，勿提交真实密码。
