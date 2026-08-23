@@ -1,7 +1,7 @@
 // @ts-nocheck
 // F50 Widget 小组件 UI：Small / Medium / Large 三种尺寸，支持点击刷新与缓存容错
 // 配色统一使用系统语义色（自动适配深色模式）
-import { Widget, VStack, HStack, Text, Spacer, Image, Button, Script, Rectangle, modifiers } from "scripting";
+import { Widget, VStack, HStack, ZStack, Text, Spacer, Image, Button, Script, Rectangle, modifiers } from "scripting";
 import { RefreshF50WidgetIntent } from "./app_intents";
 import { WidgetState, ColorName, emptyState, textValue, readWidgetCache, saveWidgetCache, fetchWidgetSnapshot } from "./widget_data";
 import { readSetting } from "./api";
@@ -120,10 +120,13 @@ function Traffic({ title, value, unit, compact = false, titleColor = "systemBlue
   return (
     <VStack spacing={0} alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity" })}>
       <Text font={compact ? 10 : 12} modifiers={modifiers().foregroundStyle(titleColor).bold()}>{title}</Text>
-      <HStack spacing={compact ? 2 : 3} alignment="lastTextBaseline">
+      <ZStack alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity" })}>
         <Text font={compact ? 25 : 31} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit().lineLimit(1).minScaleFactor(0.68)}>{value}</Text>
-        <Text font={compact ? 12 : 13} modifiers={modifiers().foregroundStyle("label").fontDesign("serif").baselineOffset(1)}>{unit}</Text>
-      </HStack>
+        <HStack spacing={0} modifiers={modifiers().frame({ maxWidth: "infinity" })}>
+          <Spacer />
+          <Text font={compact ? 12 : 13} modifiers={modifiers().foregroundStyle("label").fontDesign("serif").baselineOffset(1).padding({ leading: 3 })}>{unit}</Text>
+        </HStack>
+      </ZStack>
     </VStack>
   );
 }
