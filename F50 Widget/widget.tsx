@@ -1,7 +1,7 @@
 // @ts-nocheck
 // F50 Widget 小组件 UI：Small / Medium / Large 三种尺寸，支持点击刷新与缓存容错
 // 配色统一使用系统语义色（自动适配深色模式）
-import { Widget, VStack, HStack, Text, Spacer, Image, Button, Script, modifiers } from "scripting";
+import { Widget, VStack, HStack, Text, Spacer, Image, Button, Script, Rectangle, modifiers } from "scripting";
 import { RefreshF50WidgetIntent } from "./app_intents";
 import { WidgetState, ColorName, emptyState, textValue, readWidgetCache, saveWidgetCache, fetchWidgetSnapshot } from "./widget_data";
 import { readSetting } from "./api";
@@ -105,7 +105,7 @@ function StatusPill({ icon, text, tint, font }: any) {
   return (
     <HStack
       spacing={3}
-      padding={{ top: 3, bottom: 3, leading: 6, trailing: 6 }}
+      padding={{ top: 3, bottom: 3, leading: 7, trailing: 7 }}
       background={pillBg()}
       alignment="center"
       modifiers={modifiers().clipShape({ type: "rect", cornerRadius: 11 }).frame({ height: 23, maxWidth: "infinity" })}
@@ -118,11 +118,11 @@ function StatusPill({ icon, text, tint, font }: any) {
 
 function Traffic({ title, value, unit, compact = false, titleColor = "systemBlue" }: any) {
   return (
-    <VStack spacing={1} alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity" })}>
-      <Text font={compact ? 10 : 11} modifiers={modifiers().foregroundStyle(titleColor).bold()}>{title}</Text>
-      <HStack spacing={2} alignment="lastTextBaseline">
-        <Text font={compact ? 25 : 31} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit()}>{value}</Text>
-        <Text font={compact ? 12 : 16} modifiers={modifiers().foregroundStyle("label")}>{unit}</Text>
+    <VStack spacing={0} alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity" })}>
+      <Text font={compact ? 10 : 12} modifiers={modifiers().foregroundStyle(titleColor).bold()}>{title}</Text>
+      <HStack spacing={compact ? 2 : 3} alignment="lastTextBaseline">
+        <Text font={compact ? 25 : 31} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit().lineLimit(1).minScaleFactor(0.68)}>{value}</Text>
+        <Text font={compact ? 12 : 13} modifiers={modifiers().foregroundStyle("label").fontDesign("serif").baselineOffset(1)}>{unit}</Text>
       </HStack>
     </VStack>
   );
@@ -136,6 +136,7 @@ function Card({ children, compact = false }: any) {
       alignment="center"
       frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
       widgetBackground={widgetBg()}
+      fontDesign="rounded"
     >
       {children}
     </VStack>
@@ -151,7 +152,7 @@ function Header({ data, compact = false }: any) {
       <Spacer />
       <Image systemName="cellularbars" variableValue={signalFill(textValue(data.signalbar))} frame={{ width: compact ? 13 : 15, height: compact ? 13 : 15 }} modifiers={modifiers().foregroundStyle(signalColor(textValue(data.signalbar)))} />
       <Text font={compact ? 9 : 10} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit()}>{textValue(data.signalbar)}</Text>
-      <Text font={12} modifiers={modifiers().foregroundStyle("separator")}>|</Text>
+      <Rectangle fill="separator" frame={{ width: 1, height: 13 }} />
       <Image systemName={textValue(data.battery_icon)} frame={{ width: compact ? 14 : 16, height: compact ? 14 : 16 }} modifiers={modifiers().foregroundStyle(data.battery_icon_color)} />
       <Text font={compact ? 9 : 10} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit()}>{textValue(data.battery)}%</Text>
     </HStack>
@@ -175,13 +176,13 @@ function MediumDashboard({ data }: any) {
         <Spacer minLength={2} />
         <Image systemName="cellularbars" variableValue={signalFill(textValue(data.signalbar))} font={14} frame={{ width: 16, height: 16 }} modifiers={modifiers().foregroundStyle(signalColor(textValue(data.signalbar)))} />
         <Text font={11} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit().lineLimit(1).minScaleFactor(0.7)}>{textValue(data.signalbar)}</Text>
-        <Text font={12} modifiers={modifiers().foregroundStyle("separator")}>|</Text>
+        <Rectangle fill="separator" frame={{ width: 1, height: 13 }} />
         <Image systemName={textValue(data.battery_icon)} font={16} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle(data.battery_icon_color)} />
         <Text font={11} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit().lineLimit(1).minScaleFactor(0.7)}>{textValue(data.battery)}%</Text>
       </HStack>
       <HStack alignment="center" modifiers={modifiers().frame({ height: 50 })}>
         <Traffic title="今日流量" value={textValue(data.daily_data_value)} unit={textValue(data.daily_data_unit)} />
-        <Text font={34} modifiers={modifiers().foregroundStyle("separator")}>│</Text>
+        <Rectangle fill="separator" frame={{ width: 2, height: 42 }} />
         <Traffic title="本月流量" value={textValue(data.monthly_data_value)} unit={textValue(data.monthly_data_unit)} />
       </HStack>
       <VStack spacing={4} alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity" })}>
@@ -202,12 +203,12 @@ function MediumDashboard({ data }: any) {
       <HStack spacing={4} alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity", height: 17 })}>
         <HStack spacing={4} alignment="leading" modifiers={modifiers().frame({ maxWidth: "infinity", alignment: "leading" }).padding({ leading: 2 })}>
           <Image systemName="antenna.radiowaves.left.and.right.circle" font={11} frame={{ width: 11, height: 11 }} modifiers={modifiers().foregroundStyle("systemBlue")} />
-          <Text font={8} modifiers={modifiers().foregroundStyle("secondaryLabel").monospacedDigit().lineLimit(1).minScaleFactor(0.55)}>RSRP {textValue(data.rsrp_text)} · RSRQ {textValue(data.rsrq_text)} · SNR {textValue(data.snr_text)}</Text>
+          <Text font={8.5} fontWeight="semibold" modifiers={modifiers().foregroundStyle("secondaryLabel").monospacedDigit().lineLimit(1).minScaleFactor(0.55)}>RSRP {textValue(data.rsrp_text)} · RSRQ {textValue(data.rsrq_text)} · SNR {textValue(data.snr_text)}</Text>
         </HStack>
         <Spacer minLength={1} />
         <HStack spacing={3} alignment="center">
           <Image systemName="clock.arrow.trianglehead.2.counterclockwise.rotate.90" font={10} frame={{ width: 10, height: 10 }} modifiers={modifiers().foregroundStyle("systemGreen")} />
-          <Text font={8} modifiers={modifiers().foregroundStyle("secondaryLabel").monospacedDigit().lineLimit(1).minScaleFactor(0.5)}>{textValue(data.update_time)}{data.error ? " ⚠" : ""}</Text>
+          <Text font={8.5} fontWeight="semibold" modifiers={modifiers().foregroundStyle("secondaryLabel").monospacedDigit().lineLimit(1).minScaleFactor(0.5)}>{textValue(data.update_time)}{data.error ? " ⚠" : ""}</Text>
         </HStack>
       </HStack>
     </Card>
@@ -240,7 +241,7 @@ function LargeDashboard({ data }: any) {
       <Header data={data} />
       <HStack alignment="center" modifiers={modifiers().frame({ height: 60 })}>
         <Traffic title="今日流量" value={textValue(data.daily_data_value)} unit={textValue(data.daily_data_unit)} />
-        <Text font={38} modifiers={modifiers().foregroundStyle("separator")}>│</Text>
+        <Rectangle fill="separator" frame={{ width: 2, height: 50 }} />
         <Traffic title="本月流量" value={textValue(data.monthly_data_value)} unit={textValue(data.monthly_data_unit)} />
       </HStack>
       <HStack spacing={5}>
