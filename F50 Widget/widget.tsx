@@ -146,6 +146,74 @@ function Card({ children, compact = false }: any) {
   );
 }
 
+/** 实时速率展示组件 */
+function SpeedDisplay({ title, value, color, compact = false }: any) {
+  const fontSize = compact ? 18 : 22;
+  const parts = String(value).match(/^([\d.]+)(.*)$/);
+  const num = parts ? parts[1] : value;
+  const unit = parts ? parts[2] : "";
+  return (
+    <VStack spacing={0} alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity" })}>
+      <Text font={compact ? 9 : 10} modifiers={modifiers().foregroundStyle("secondaryLabel")}>{title}</Text>
+      <ZStack alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity" })}>
+        <Text font={fontSize} modifiers={modifiers().foregroundStyle(color).bold().monospacedDigit().lineLimit(1).minScaleFactor(0.6)}>{num}</Text>
+        <Text font={compact ? 10 : 11} modifiers={modifiers().foregroundStyle(color).fontDesign("serif").baselineOffset(1).offset({ x: estTextWidth(String(num)) * fontSize / 16 + 10, y: 5 })}>{unit}</Text>
+      </ZStack>
+    </VStack>
+  );
+}
+
+/** 套餐流量进度条组件 */
+function TrafficProgress({ ratio, color, usedText, limitText, resetDays }: any) {
+  const barWidth = Math.max(0, Math.min(1, ratio || 0));
+  const pctText = ratio > 0 ? Math.round(ratio * 100) + "%" : "";
+  return (
+    <VStack spacing={2} alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity" })}>
+      <HStack spacing={4} alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity" })}>
+        <Image systemName="chart.bar.fill" font={11} frame={{ width: 11, height: 11 }} modifiers={modifiers().foregroundStyle(color)} />
+        <Text font={10} fontWeight="bold" modifiers={modifiers().foregroundStyle("label").lineLimit(1).minScaleFactor(0.7)}>已用 {usedText}</Text>
+        {limitText !== "--" ? <Text font={9} modifiers={modifiers().foregroundStyle("secondaryLabel").lineLimit(1)}>/ {limitText}</Text> : <></>}
+        <Spacer />
+        {pctText ? <Text font={9} fontWeight="bold" modifiers={modifiers().foregroundStyle(color)}>{pctText}</Text> : <></>}
+      </HStack>
+      <ZStack alignment="leading" modifiers={modifiers().frame({ maxWidth: "infinity", height: 6 })}>
+        <Rectangle fill="secondarySystemFill" cornerRadius={3} frame={{ maxWidth: "infinity", height: 6 }} />
+        <Rectangle fill={color} cornerRadius={3} frame={{ width: String(Math.max(0.03, barWidth) * 100) + "%", height: 6, maxWidth: "infinity" }} />
+      </ZStack>
+      {resetDays ? (
+        <HStack spacing={2} alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity" })}>
+          <Image systemName="arrow.clockwise" font={8} frame={{ width: 8, height: 8 }} modifiers={modifiers().foregroundStyle("systemGreen")} />
+          <Text font={8.5} fontWeight="medium" modifiers={modifiers().foregroundStyle("secondaryLabel")}>{resetDays}</Text>
+          <Spacer />
+        </HStack>
+      ) : <></>}
+    </VStack>
+  );
+}
+
+/** 信号质量徽章 */
+function QualityBadge({ text, color }: any) {
+  if (!text || text === "--") return <></>;
+  return (
+    <HStack spacing={2} padding={{ horizontal: 5, vertical: 2 }} background={pillBg()} alignment="center" modifiers={modifiers().clipShape({ type: "rect", cornerRadius: 8 })}>
+      <Image systemName="antenna.radiowaves.left.and.right" font={8} frame={{ width: 8, height: 8 }} modifiers={modifiers().foregroundStyle(color)} />
+      <Text font={8.5} fontWeight="bold" modifiers={modifiers().foregroundStyle(color)}>{text}</Text>
+    </HStack>
+  );
+}
+
+/** QoS 信息行（仅在 QCI 有值时显示） */
+function QoSRow({ qci, dl, ul }: any) {
+  if (!qci && !dl && !ul) return <></>;
+  return (
+    <HStack spacing={4} alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity", height: 18 })}>
+      {qci ? <Chip icon="gauge.with.dots.needle.bottom.50percent" text={"QCI " + qci} tint="systemIndigo" /> : <></>}
+      {dl ? <Chip icon="arrow.down" text={dl} tint="systemBlue" /> : <></>}
+      {ul ? <Chip icon="arrow.up" text={ul} tint="systemTeal" /> : <></>}
+    </HStack>
+  );
+}
+
 function Header({ data, compact = false }: any) {
   return (
     <HStack spacing={compact ? 3 : 5} alignment="center" modifiers={modifiers().frame({ height: compact ? 22 : 24 })}>
@@ -169,6 +237,9 @@ function MediumDashboard({ data }: any) {
   const row2 = [textValue(data.ssid_text), textValue(data.wifi_band_text), textValue(data.mem_text), textValue(data.wifi_device_count), textValue(data.sms_unread_text)];
   const font1 = statusFontSize(row1, 4);
   const font2 = statusFontSize(row2, 5);
+  const hasSpeed = data.dl_speed !== "--" || data.ul_speed !== "--";
+  const hasProgress = data.traffic_limit_value !== "--";
+  const hasQoS = !!(data.qci || data.qos_dl || data.qos_ul);
 
   return (
     <Card>
@@ -183,11 +254,21 @@ function MediumDashboard({ data }: any) {
         <Image systemName={textValue(data.battery_icon)} font={16} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle(data.battery_icon_color)} />
         <Text font={11} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit().lineLimit(1).minScaleFactor(0.7)}>{textValue(data.battery)}%</Text>
       </HStack>
-      <HStack alignment="center" modifiers={modifiers().frame({ height: 50 })}>
-        <Traffic title="今日流量" value={textValue(data.daily_data_value)} unit={textValue(data.daily_data_unit)} />
-        <Rectangle fill="separator" frame={{ width: 2, height: 42 }} />
-        <Traffic title="本月流量" value={textValue(data.monthly_data_value)} unit={textValue(data.monthly_data_unit)} />
+      {hasSpeed ? (
+        <HStack alignment="center" modifiers={modifiers().frame({ height: 36 })}>
+          <SpeedDisplay title="下行" value={textValue(data.dl_speed)} color={data.dl_speed_color} />
+          <Rectangle fill="separator" frame={{ width: 1, height: 28 }} />
+          <SpeedDisplay title="上行" value={textValue(data.ul_speed)} color={data.ul_speed_color} />
+        </HStack>
+      ) : <></>}
+      <HStack alignment="center" modifiers={modifiers().frame({ height: hasSpeed ? 42 : 50 })}>
+        <Traffic title="今日流量" value={textValue(data.daily_data_value)} unit={textValue(data.daily_data_unit)} compact={hasSpeed} />
+        <Rectangle fill="separator" frame={{ width: 2, height: 36 }} />
+        <Traffic title="本月流量" value={textValue(data.monthly_data_value)} unit={textValue(data.monthly_data_unit)} compact={hasSpeed} />
       </HStack>
+      {hasProgress ? (
+        <TrafficProgress ratio={data.traffic_ratio} color={data.traffic_color} usedText={textValue(data.traffic_used_value) + textValue(data.traffic_used_unit)} limitText={textValue(data.traffic_limit_value) + textValue(data.traffic_limit_unit)} resetDays={data.reset_days} />
+      ) : <></>}
       <VStack spacing={4} alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity" })}>
         <HStack spacing={4} padding={{ horizontal: 4 }} alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity", height: 23 })}>
           <StatusPill icon="network" text={row1[0]} tint="systemCyan" font={font1} />
@@ -203,10 +284,12 @@ function MediumDashboard({ data }: any) {
           <StatusPill icon="envelope.badge" text={row2[4]} tint={data.sms_icon_color} font={font2} />
         </HStack>
       </VStack>
+      {hasQoS ? <QoSRow qci={data.qci} dl={data.qos_dl} ul={data.qos_ul} /> : <></>}
       <HStack spacing={4} alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity", height: 17 })}>
-        <HStack spacing={4} alignment="leading" modifiers={modifiers().frame({ maxWidth: "infinity", alignment: "leading" }).padding({ leading: 2 })}>
+        <HStack spacing={3} alignment="leading" modifiers={modifiers().frame({ maxWidth: "infinity", alignment: "leading" }).padding({ leading: 2 })}>
           <Image systemName="antenna.radiowaves.left.and.right.circle" font={11} frame={{ width: 11, height: 11 }} modifiers={modifiers().foregroundStyle("systemBlue")} />
           <Text font={8.5} fontWeight="semibold" modifiers={modifiers().foregroundStyle("secondaryLabel").monospacedDigit().lineLimit(1).minScaleFactor(0.55)}>RSRP {textValue(data.rsrp_text)} · RSRQ {textValue(data.rsrq_text)} · SNR {textValue(data.snr_text)}</Text>
+          <QualityBadge text={data.signal_quality} color={data.signal_quality_color} />
         </HStack>
         <Spacer minLength={1} />
         <HStack spacing={3} alignment="center">
@@ -219,6 +302,8 @@ function MediumDashboard({ data }: any) {
 }
 
 function SmallDashboard({ data }: any) {
+  const hasSpeed = data.dl_speed !== "--" || data.ul_speed !== "--";
+  const hasProgress = data.traffic_limit_value !== "--";
   return (
     <Card compact>
       <HStack spacing={8} alignment="center" modifiers={modifiers().frame({ height: 22 })}>
@@ -228,30 +313,56 @@ function SmallDashboard({ data }: any) {
         <Image systemName={textValue(data.battery_icon)} frame={{ width: 16, height: 16 }} modifiers={modifiers().foregroundStyle(data.battery_icon_color)} />
         <Text font={10} modifiers={modifiers().foregroundStyle("label")}>{textValue(data.battery)}%</Text>
       </HStack>
-      <Traffic compact title="今日流量" value={textValue(data.daily_data_value)} unit={textValue(data.daily_data_unit)} />
-      <HStack spacing={5} alignment="center">
-        <Chip compact icon="antenna.radiowaves.left.and.right" text={textValue(data.rsrp_text)} tint="systemTeal" />
-        <Chip compact icon="wifi" text={textValue(data.ssid_text)} tint="systemTeal" />
-      </HStack>
+      {hasSpeed ? (
+        <HStack alignment="center" modifiers={modifiers().frame({ height: 30 })}>
+          <SpeedDisplay title="下行" value={textValue(data.dl_speed)} color={data.dl_speed_color} compact />
+          <Rectangle fill="separator" frame={{ width: 1, height: 22 }} />
+          <SpeedDisplay title="上行" value={textValue(data.ul_speed)} color={data.ul_speed_color} compact />
+        </HStack>
+      ) : (
+        <Traffic compact title="今日流量" value={textValue(data.daily_data_value)} unit={textValue(data.daily_data_unit)} />
+      )}
+      {hasProgress ? (
+        <TrafficProgress ratio={data.traffic_ratio} color={data.traffic_color} usedText={textValue(data.traffic_used_value) + textValue(data.traffic_used_unit)} limitText={textValue(data.traffic_limit_value) + textValue(data.traffic_limit_unit)} resetDays={data.reset_days} />
+      ) : (
+        <HStack spacing={5} alignment="center">
+          <Chip compact icon="antenna.radiowaves.left.and.right" text={textValue(data.rsrp_text)} tint="systemTeal" />
+          <Chip compact icon="wifi" text={textValue(data.ssid_text)} tint="systemTeal" />
+        </HStack>
+      )}
       <Text font={8} modifiers={modifiers().foregroundStyle("secondaryLabel").monospacedDigit()}>{textValue(data.update_time)}{data.error ? " ⚠" : ""}</Text>
     </Card>
   );
 }
 
 function LargeDashboard({ data }: any) {
+  const hasSpeed = data.dl_speed !== "--" || data.ul_speed !== "--";
+  const hasProgress = data.traffic_limit_value !== "--";
+  const hasQoS = !!(data.qci || data.qos_dl || data.qos_ul);
   return (
     <Card>
       <Header data={data} />
-      <HStack alignment="center" modifiers={modifiers().frame({ height: 60 })}>
-        <Traffic title="今日流量" value={textValue(data.daily_data_value)} unit={textValue(data.daily_data_unit)} />
-        <Rectangle fill="separator" frame={{ width: 2, height: 50 }} />
-        <Traffic title="本月流量" value={textValue(data.monthly_data_value)} unit={textValue(data.monthly_data_unit)} />
+      {hasSpeed ? (
+        <HStack alignment="center" modifiers={modifiers().frame({ height: 48 })}>
+          <SpeedDisplay title="实时下行" value={textValue(data.dl_speed)} color={data.dl_speed_color} />
+          <Rectangle fill="separator" frame={{ width: 2, height: 38 }} />
+          <SpeedDisplay title="实时上行" value={textValue(data.ul_speed)} color={data.ul_speed_color} />
+        </HStack>
+      ) : <></>}
+      <HStack alignment="center" modifiers={modifiers().frame({ height: hasSpeed ? 52 : 60 })}>
+        <Traffic title="今日流量" value={textValue(data.daily_data_value)} unit={textValue(data.daily_data_unit)} compact={hasSpeed} />
+        <Rectangle fill="separator" frame={{ width: 2, height: hasSpeed ? 42 : 50 }} />
+        <Traffic title="本月流量" value={textValue(data.monthly_data_value)} unit={textValue(data.monthly_data_unit)} compact={hasSpeed} />
       </HStack>
+      {hasProgress ? (
+        <TrafficProgress ratio={data.traffic_ratio} color={data.traffic_color} usedText={textValue(data.traffic_used_value) + textValue(data.traffic_used_unit)} limitText={textValue(data.traffic_limit_value) + textValue(data.traffic_limit_unit)} resetDays={data.reset_days} />
+      ) : <></>}
       <HStack spacing={5}>
         <Chip icon="thermometer.medium" text={textValue(data.cputemp) + "℃"} tint={tempColor(data.cputemp)} />
         <Chip icon="cpu.fill" text={textValue(data.cpuusage) + "%"} tint="systemIndigo" />
         <Chip icon="globe" text={textValue(data.net_summary)} tint="systemCyan" />
         <Chip icon="antenna.radiowaves.left.and.right" text={textValue(data.rsrp_text)} tint="systemTeal" />
+        <QualityBadge text={data.signal_quality} color={data.signal_quality_color} />
       </HStack>
       <HStack spacing={5}>
         <Chip icon="wifi" text={textValue(data.ssid_text)} tint="systemTeal" />
@@ -262,6 +373,9 @@ function LargeDashboard({ data }: any) {
       <HStack spacing={5}>
         <Chip icon="macbook.and.ipod" text={textValue(data.wifi_device_count) + "台"} tint="systemPink" />
         <Chip icon="envelope.badge" text={textValue(data.sms_unread_text) + "未读"} tint={data.sms_icon_color} />
+        {hasQoS ? <Chip icon="gauge.with.dots.needle.bottom.50percent" text={"QCI " + textValue(data.qci)} tint="systemIndigo" /> : <></>}
+        {data.qos_dl ? <Chip icon="arrow.down" text={textValue(data.qos_dl)} tint="systemBlue" /> : <></>}
+        {data.qos_ul ? <Chip icon="arrow.up" text={textValue(data.qos_ul)} tint="systemTeal" /> : <></>}
       </HStack>
       <Text font={10} modifiers={modifiers().foregroundStyle("secondaryLabel").monospacedDigit()}>{textValue(data.update_time)}{data.error ? " ⚠" : ""}</Text>
     </Card>

@@ -1,7 +1,7 @@
 // @ts-nocheck
 // F50 Widget 数据层：将 API 原始数据组装为小组件状态，并提供缓存读写与格式化工具
 // 注意：Storage 是全局 API，不能从 "scripting" 导入（导入会是 undefined）
-import { fetchDeviceInfo, fetchGoformAll, fetchSystemInfo } from "./api";
+import { fetchDeviceInfo, fetchGoformAll, fetchSystemInfo, fetchQoS } from "./api";
 
 export type ColorName = "systemBlue" | "systemRed" | "systemGreen" | "systemOrange" | "systemYellow" | "systemTeal" | "systemIndigo" | "systemPurple" | "systemPink" | "systemCyan" | "systemGray" | "label" | "secondaryLabel";
 
@@ -32,9 +32,27 @@ export interface WidgetState {
     update_time: string;
     zreq_used: boolean;
     error: string | null;
+    // ---- 新增字段（借鉴 f50-monitor） ----
+    dl_speed: string;           // 实时下行速率
+    ul_speed: string;           // 实时上行速率
+    dl_speed_color: ColorName;  // 速率颜色
+    ul_speed_color: ColorName;
+    traffic_limit_value: string;  // 套餐总量
+    traffic_limit_unit: string;
+    traffic_used_value: string;   // 已用
+    traffic_used_unit: string;
+    traffic_ratio: number;       // 使用比例 0~1
+    traffic_color: ColorName;     // 进度条颜色
+    reset_days: string;          // 重置倒计时
+    qci: string;                 // QCI
+    qos_dl: string;              // 下行 AMBR
+    qos_ul: string;              // 上行 AMBR
+    signal_quality: string;      // 信号质量评级
+    signal_quality_color: ColorName;
+    verify_code: string | null;   // 最新验证码
 }
 
-const CACHE_KEY = "F50Widget.widget.cache.v4";
+const CACHE_KEY = "F50Widget.widget.cache.v5";
 
 // ===================== 状态组装 =====================
 
@@ -47,6 +65,13 @@ export function emptyState(): WidgetState {
         daily_data_value: "--", daily_data_unit: "", monthly_data_value: "--", monthly_data_unit: "",
         wifi_device_count: "0", band_text: "—", wifi_band_text: "--", mem_text: "--",
         update_time: "--", zreq_used: false, error: null,
+        // 新增字段默认值
+        dl_speed: "--", ul_speed: "--", dl_speed_color: "systemBlue", ul_speed_color: "systemBlue",
+        traffic_limit_value: "--", traffic_limit_unit: "", traffic_used_value: "--", traffic_used_unit: "",
+        traffic_ratio: 0, traffic_color: "systemCyan", reset_days: "",
+        qci: "", qos_dl: "", qos_ul: "",
+        signal_quality: "--", signal_quality_color: "secondaryLabel",
+        verify_code: null,
     };
 }
 
@@ -61,6 +86,9 @@ export function buildState(deviceInfo: any, goformData: any, wifiFreq: number, m
     buildSignalPart(state, d, g);
     buildTrafficWifiPart(state, d, g, wifiFreq);
     buildMemoryPart(state, memInfo);
+    buildSpeedPart(state, d, g);
+    buildTrafficLimitPart(state, d, g);
+    buildSignalQualityPart(state, g);
 
     state.update_time = makeUpdateTime();
     return state;
@@ -152,6 +180,166 @@ function buildMemoryPart(state: WidgetState, memInfo: { total: number; available
     state.mem_text = memInfo.total > 0 ? Math.round(memUsedKb / memInfo.total * 100) + "%" : "--";
 }
 
+// ===================== 新增：实时速率 =====================
+
+function buildSpeedPart(state: WidgetState, d: any, g: any): void {
+    const dlBps = toNum(pickRaw(g.realtime_rx_thrpt, d.realtime_rx_thrpt));
+    const ulBps = toNum(pickRaw(g.realtime_tx_thrpt, d.realtime_tx_thrpt));
+    if (isNum(dlBps) && dlBps > 0) {
+        const parts = formatSpeedParts(dlBps);
+        state.dl_speed = parts.value;
+        state.dl_speed_color = speedColor(dlBps);
+    }
+    if (isNum(ulBps) && ulBps > 0) {
+        const parts = formatSpeedParts(ulBps);
+        state.ul_speed = parts.value;
+        state.ul_speed_color = speedColor(ulBps);
+    }
+}
+
+/** 速率格式化：B/s → KB/s / MB/s */
+function formatSpeedParts(bps: number): { value: string; unit: string } {
+    if (bps >= 1048576) {
+        const mb = bps / 1048576;
+        return { value: mb.toFixed(mb >= 10 ? 1 : 2).replace(/\.?0+$/, ""), unit: "MB/s" };
+    }
+    if (bps >= 1024) {
+        const kb = bps / 1024;
+        return { value: kb.toFixed(kb >= 10 ? 0 : 1).replace(/\.?0+$/, ""), unit: "KB/s" };
+    }
+    return { value: String(Math.round(bps)), unit: "B/s" };
+}
+
+/** 速率动态着色：>10MB/s 绿 / >1MB/s 蓝 / >100KB/s 青 / 其他灰 */
+function speedColor(bps: number): ColorName {
+    if (bps >= 10 * 1048576) return "systemGreen";
+    if (bps >= 1048576) return "systemBlue";
+    if (bps >= 100 * 1024) return "systemCyan";
+    return "secondaryLabel";
+}
+
+// ===================== 新增：套餐流量限额 + 重置日 =====================
+
+function buildTrafficLimitPart(state: WidgetState, d: any, g: any): void {
+    // 套餐总量：data_volume_limit_size + data_volume_limit_unit
+    const limitSize = toNum(pickRaw(g.data_volume_limit_size));
+    const limitUnit = pickRaw(g.data_volume_limit_unit, g.data_volume_limit_switch);
+    if (isNum(limitSize) && limitSize > 0) {
+        const limitBytes = parseTrafficLimit(limitSize, String(limitUnit || ""));
+        if (limitBytes > 0) {
+            const parts = splitByteText(formatBytes(limitBytes));
+            state.traffic_limit_value = parts.value;
+            state.traffic_limit_unit = parts.unit;
+        }
+    }
+
+    // 套餐已用：优先 monthly_rx_bytes + monthly_tx_bytes（80 端口匿名可读）
+    const monthlyRx = toNum(pickRaw(g.monthly_rx_bytes, d.monthly_data));
+    const monthlyTx = toNum(pickRaw(g.monthly_tx_bytes));
+    if (isNum(monthlyRx) && monthlyRx > 0) {
+        const used = monthlyRx + (isNum(monthlyTx) ? monthlyTx : 0);
+        const parts = splitByteText(formatBytes(used));
+        state.traffic_used_value = parts.value;
+        state.traffic_used_unit = parts.unit;
+        // 更新本月流量展示（更精确的字节数值）
+        state.monthly_data_value = parts.value;
+        state.monthly_data_unit = parts.unit;
+    }
+
+    // 今日流量：优先 day_rx_bytes + day_tx_bytes（80 端口匿名可读）
+    const dailyRx = toNum(pickRaw(g.day_rx_bytes));
+    const dailyTx = toNum(pickRaw(g.day_tx_bytes));
+    if (isNum(dailyRx) && dailyRx > 0) {
+        const dailyUsed = dailyRx + (isNum(dailyTx) ? dailyTx : 0);
+        const parts = splitByteText(formatBytes(dailyUsed));
+        state.daily_data_value = parts.value;
+        state.daily_data_unit = parts.unit;
+    }
+
+    // 使用比例 + 颜色
+    if (state.traffic_limit_value !== "--") {
+        const limitBytes = parseTrafficLimit(limitSize, String(limitUnit || ""));
+        const usedBytes = (isNum(monthlyRx) ? monthlyRx : 0) + (isNum(monthlyTx) ? monthlyTx : 0);
+        if (limitBytes > 0 && usedBytes > 0) {
+            state.traffic_ratio = Math.min(1, usedBytes / limitBytes);
+            state.traffic_color = trafficRatioColor(state.traffic_ratio);
+        }
+    }
+
+    // 重置日倒计时
+    const resetDay = parseResetDay(g);
+    if (resetDay > 0) {
+        const daysLeft = calcDaysUntilReset(resetDay);
+        state.reset_days = daysLeft === 0 ? "今天重置" : daysLeft + "天后重置";
+    }
+}
+
+/** 解析流量限额（支持不同单位） */
+function parseTrafficLimit(size: number, unit: string): number {
+    if (size <= 0) return 0;
+    const u = String(unit).toLowerCase();
+    if (u.indexOf("gb") >= 0 || u === "1") return size * 1073741824;
+    if (u.indexOf("mb") >= 0 || u === "0") return size * 1048576;
+    if (u.indexOf("tb") >= 0) return size * 1099511627776;
+    // 默认按 GB
+    return size * 1073741824;
+}
+
+/** 从多个字段中解析重置日 */
+function parseResetDay(g: any): number {
+    const fields = ["data_volume_clear_date", "monthly_clear_date", "traffic_clear_date", "data_volume_clear_day", "data_volume_reset_day", "reset_day", "clear_day", "billing_day"];
+    for (const f of fields) {
+        const v = pickRaw(g[f]);
+        if (v !== null) {
+            const n = parseInt(String(v), 10);
+            if (isFinite(n) && n > 0 && n <= 31) return n;
+        }
+    }
+    return 0;
+}
+
+/** 计算距离重置日的天数 */
+function calcDaysUntilReset(resetDay: number): number {
+    const now = new Date();
+    const today = now.getDate();
+    if (resetDay === today) return 0;
+    // 本月剩余天数
+    const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+    if (resetDay > today) return resetDay - today;
+    // 跨月：本月剩余 + 下月到重置日
+    const remainingThisMonth = daysInMonth - today;
+    return remainingThisMonth + resetDay;
+}
+
+/** 使用比例 → 颜色 */
+function trafficRatioColor(ratio: number): ColorName {
+    if (ratio >= 0.9) return "systemRed";
+    if (ratio >= 0.75) return "systemOrange";
+    return "systemCyan";
+}
+
+// ===================== 新增：信号质量评级 =====================
+
+function buildSignalQualityPart(state: WidgetState, g: any): void {
+    const rsrp = toNum(pickRaw(g.Z5g_rsrp, g.nr_rsrp, g["5g_rsrp"], g.lte_rsrp, g.nr_rssi));
+    const snr = toNum(pickRaw(g.Z5g_snr, g.nr_snr, g["5g_snr"], g.Nr_snr, g.lte_snr));
+    const rsrq = toNum(pickRaw(g.nr_rsrq, g.Nr_rsrq, g["5g_rsrq"], g.lte_rsrq));
+
+    // RSRP 评级：>=-85 极佳 / >=-95 良好 / >=-105 一般 / <-105 较差
+    if (isNum(rsrp)) {
+        if (rsrp >= -85) { state.signal_quality = "极佳"; state.signal_quality_color = "systemGreen"; }
+        else if (rsrp >= -95) { state.signal_quality = "良好"; state.signal_quality_color = "systemBlue"; }
+        else if (rsrp >= -105) { state.signal_quality = "一般"; state.signal_quality_color = "systemOrange"; }
+        else { state.signal_quality = "较差"; state.signal_quality_color = "systemRed"; }
+    } else if (isNum(snr)) {
+        // 无 RSRP 时用 SNR 兜底评级：>=20 极佳 / >=13 良好 / >=3 一般 / <3 较差
+        if (snr >= 20) { state.signal_quality = "极佳"; state.signal_quality_color = "systemGreen"; }
+        else if (snr >= 13) { state.signal_quality = "良好"; state.signal_quality_color = "systemBlue"; }
+        else if (snr >= 3) { state.signal_quality = "一般"; state.signal_quality_color = "systemOrange"; }
+        else { state.signal_quality = "较差"; state.signal_quality_color = "systemRed"; }
+    }
+}
+
 function buildBandText(nrBands: any, lteBands: any): string {
     const nr = pickRaw(nrBands);
     const lte = pickRaw(lteBands);
@@ -163,10 +351,11 @@ function buildBandText(nrBands: any, lteBands: any): string {
 /** 抓取完整小组件数据（带错误信息，供 UI 缓存容错展示） */
 export async function fetchWidgetSnapshot(): Promise<{ state: WidgetState; error: string | null; zreqUsed: boolean }> {
     const errors: string[] = [];
-    const [deviceResult, goformResult, systemResult] = await Promise.allSettled([
+    const [deviceResult, goformResult, systemResult, qosResult] = await Promise.allSettled([
         fetchDeviceInfo(),
         fetchGoformAll(),
         fetchSystemInfo(),
+        fetchQoS(),
     ]);
 
     let deviceInfo: any = {};
@@ -197,6 +386,14 @@ export async function fetchWidgetSnapshot(): Promise<{ state: WidgetState; error
     const state = buildState(deviceInfo, goformData, wifiFreq, memInfo);
     state.zreq_used = zreqUsed;
     state.error = errors.length > 0 ? errors.join("；") : null;
+
+    // QoS 指标
+    if (qosResult.status === "fulfilled" && qosResult.value) {
+        state.qci = qosResult.value.qci || "";
+        state.qos_dl = qosResult.value.qosDl || "";
+        state.qos_ul = qosResult.value.qosUl || "";
+    }
+
     return { state, error: state.error, zreqUsed };
 }
 

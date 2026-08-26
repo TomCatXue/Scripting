@@ -219,14 +219,80 @@ function getZtePassword(): string {
     return readSetting("zte_password", "");
 }
 
+// ===================== 双端口端点解析 =====================
+
+/**
+ * 从 UFI 地址（:2333）推导 ZTE 路由器后台地址（:80）。
+ * 借鉴 f50-monitor 的 resolveEndpoints：同一 host 去掉端口即为路由器地址。
+ */
+export function resolveEndpoints(ufiBaseURL: string): { routerBaseURL: string; ufiBaseURL: string } {
+    const base = trimSlash(ufiBaseURL);
+    try {
+        const url = new URL(base);
+        const host = url.hostname;
+        const scheme = url.protocol.replace(":", "");
+        return {
+            routerBaseURL: scheme + "://" + host,
+            ufiBaseURL: base,
+        };
+    } catch (_) {
+        // 无法解析时，假设默认地址
+        return {
+            routerBaseURL: "http://192.168.0.1",
+            ufiBaseURL: "http://192.168.0.1:2333",
+        };
+    }
+}
+
+/** 获取 ZTE 路由器后台地址（端口 80） */
+function getRouterBaseURL(): string {
+    return resolveEndpoints(getKanoUrl()).routerBaseURL;
+}
+
 // ===================== goform 字段组 =====================
 
+/** 基础状态字段（信号、电池、网络、硬件等） */
 function getBasicFields(): string[] {
     return [
+        // 设备与网络
         "model_name", "network_provider", "network_type", "network_signalbar",
-        "battery_value", "battery_vol_percent", "battery_charging", "ppp_status",
-        "network_information", "Lte_ca_status", "loginfo", "Z5g_rsrp", "nr_rsrp", "nr_rssi", "nr_rsrq", "Nr_rsrq", "nr_snr", "Nr_snr", "nr5g_rsrq", "nr5g_snr", "lte_rsrq", "lte_snr", "sms_unread_num", "SSID1", "RadioOff", "station_list",
-        "LD", "RD", "modem_main_state", "pin_status", "sim_pin_status"
+        "network_information", "Lte_ca_status", "ppp_status", "loginfo",
+        // 电池
+        "battery_value", "battery_vol_percent", "battery_charging",
+        // 5G 信号指标
+        "Z5g_rsrp", "Z5g_snr", "5g_rsrp", "5g_rsrq", "5g_snr",
+        // LTE 信号指标
+        "lte_rsrp", "lte_rsrq", "lte_snr",
+        // NR 信号指标（兼容字段名）
+        "nr_rsrp", "nr_rssi", "nr_rsrq", "Nr_rsrq", "nr_snr", "Nr_snr", "nr5g_rsrq", "nr5g_snr",
+        // 频段
+        "Nr_bands", "Lte_bands", "wan_active_band", "lte_band", "lte_ca_pcell_band",
+        "nr5g_action_band", "nr5g_action_nsa_band", "ZCELLINFO_band", "Z5g_CELLINFO_band", "nr_ca_pcell_band",
+        // 硬件指标
+        "temperature", "cpu_temp", "internal_temperature", "ic_temp", "cpu_utility", "mem_utility",
+        // SMS
+        "sms_unread_num", "sms_sim_unread_num", "sms_received_flag",
+        // Wi-Fi
+        "SSID1", "RadioOff", "station_list", "wifi_access_sta_num",
+        // 鉴权
+        "LD", "RD", "modem_main_state", "pin_status", "sim_pin_status",
+        // 实时速率
+        "realtime_rx_thrpt", "realtime_tx_thrpt",
+    ];
+}
+
+/** 流量统计字段（套餐用量、限额、重置日等） */
+function getTrafficFields(): string[] {
+    return [
+        "realtime_rx_bytes", "realtime_tx_bytes",
+        "monthly_rx_bytes", "monthly_tx_bytes",
+        "total_rx_bytes", "total_tx_bytes",
+        "day_rx_bytes", "day_tx_bytes",
+        "data_volume_limit_size", "data_volume_limit_unit",
+        "data_volume_clear_date", "monthly_clear_date", "traffic_clear_date",
+        "data_volume_clear_day", "data_volume_reset_day",
+        "billing_day", "reset_day", "clear_date", "clear_day",
+        "data_volume_limit_switch", "flux_data_volume_limit_size", "flux_data_volume_limit_switch", "flux_clear_date",
     ];
 }
 
@@ -263,22 +329,101 @@ async function requestJSON(method: string, path: string, body?: object | string)
 
 // ===================== 设备信息 =====================
 
-/** GET /api/baseDeviceInfo：型号、固件、流量、CPU、电池等 */
+/** GET /api/baseDeviceInfo：型号、固件、流量、CPU、电池等（多 token 轮询） */
 export async function fetchDeviceInfo(): Promise<any> {
-    return await requestJSON("GET", DEVICE_PATH);
+    const tokens = candidateTokens();
+    for (const token of tokens) {
+        try {
+            const req = new Request(getKanoUrl() + DEVICE_PATH);
+            req.allowInsecureRequest = true;
+            req.method = "GET";
+            applyHeaders(req, buildKanoHeadersWithToken("GET", DEVICE_PATH, token));
+            req.timeout = 15;
+            const resp = await fetch(req);
+            if (resp.status === 401 || resp.status === 403) continue;
+            return await readJSONResponse(resp, "baseDeviceInfo");
+        } catch (e) {
+            if (String(e).indexOf("401") >= 0) continue;
+            throw e;
+        }
+    }
+    throw new Error("baseDeviceInfo: 所有候选 token 均返回 401/403");
+}
+
+// ===================== 候选 Token 生成（借鉴 f50-monitor） =====================
+
+/**
+ * 生成 UFI 认证候选 token 列表。
+ * 口令的 SHA256（大/小写/原值）+ 密码的 SHA256（大/小写/原值）+ admin 的 SHA256 + admin 明文
+ * 遇到 401 时依次尝试，提高连接成功率。
+ */
+export function candidateTokens(): string[] {
+    const tokens: string[] = [];
+    const ufiToken = getPassword(); // UFI 密码作为 token 来源
+    const ztePwd = getZtePassword();
+
+    const addVariants = (raw: string) => {
+        const t = raw.trim();
+        if (!t) return;
+        tokens.push(sha256HexFromString(t).toLowerCase());
+        tokens.push(sha256HexFromString(t.toLowerCase()).toLowerCase());
+        tokens.push(sha256HexFromString(t.toUpperCase()).toLowerCase());
+        tokens.push(t);
+    };
+
+    addVariants(ufiToken);
+    addVariants(ztePwd);
+    // admin 兜底
+    tokens.push(sha256HexFromString("admin").toLowerCase());
+    tokens.push("admin");
+
+    // 去重
+    const unique: string[] = [];
+    for (const t of tokens) {
+        if (unique.indexOf(t) === -1) unique.push(t);
+    }
+    return unique;
 }
 
 // ===================== goform 批量获取 =====================
 
-/** GET goform 批量字段 */
+/** GET goform 批量字段（通过 UFI 2333 端口，带签名，多 token 轮询） */
 async function getGoform(cmdList: string[]): Promise<any> {
     const cmd = cmdList.join(",");
     const url = getKanoUrl() + GOFORM_GET_PATH + "?multi_data=1&isTest=false&cmd=" + cmd + "&_=" + Date.now();
+    const tokens = candidateTokens();
+
+    // 依次尝试候选 token
+    for (const token of tokens) {
+        try {
+            const req = new Request(url);
+            req.allowInsecureRequest = true;
+            req.method = "GET";
+            applyHeaders(req, buildKanoHeadersWithToken("GET", GOFORM_GET_PATH, token));
+            const resp = await fetch(req);
+            if (resp.status === 401 || resp.status === 403) continue;
+            return await readJSONResponse(resp, "goform");
+        } catch (e) {
+            // 网络错误不重试同一 token
+            if (String(e).indexOf("401") >= 0) continue;
+            throw e;
+        }
+    }
+    throw new Error("goform: 所有候选 token 均返回 401/403");
+}
+
+/** GET goform 批量字段（通过 ZTE 路由器 80 端口，匿名/带 Cookie，无需签名） */
+async function getRouterGoform(cmdList: string[], sessionCookie?: string): Promise<any> {
+    const routerBase = getRouterBaseURL();
+    const cmd = cmdList.join(",");
+    const url = routerBase + "/goform/goform_get_cmd_process?multi_data=1&isTest=false&cmd=" + cmd + "&_=" + Date.now();
     const req = new Request(url);
     req.allowInsecureRequest = true;
     req.method = "GET";
-    applyHeaders(req, buildKanoHeaders("GET", GOFORM_GET_PATH));
-    return await readJSONResponse(await fetch(req), "request");
+    req.headers.set("Referer", routerBase + "/index.html");
+    if (sessionCookie) req.headers.set("Cookie", sessionCookie);
+    req.timeout = 10;
+    return await readJSONResponse(await fetch(req), "router-goform");
 }
 
 // ===================== 设备登录锁定检测（防触发锁机） =====================
@@ -336,57 +481,100 @@ function shellQuote(s: string): string {
     return "'" + String(s).replace(/'/g, "'\\''") + "'";
 }
 
-/** 组装 goform 数据（优先 zreq，失败回退 GET-only + POST 登录），并单独补充 RSRQ/SNR */
+/**
+ * 组装 goform 数据（双端口轮询 + 多策略合并），并单独补充 RSRQ/SNR。
+ * 
+ * 数据源优先级：
+ * 1. UFI 2333 端口（zreq 登录或 GET-only + POST 登录）— 提供完整鉴权字段
+ * 2. ZTE 80 端口（匿名 Referer 读取）— 提供流量统计、硬件指标等匿名可读字段
+ * 3. 两者合并：80 端口的字段补充 2333 端口缺失的字段
+ */
 export async function fetchGoformAll(): Promise<{ data: any; zreqUsed: boolean }> {
     let zreqUsed = false;
-    let basic: any = null;
+    let ufiData: any = null;
+    let routerData: any = null;
 
-    // 未配置 ZTE 后台密码时跳过登录取数，避免空密码反复触发设备登录锁定
+    // ---- 1. 尝试从 ZTE 80 端口匿名读取（无需密码，Referer 即可） ----
+    try {
+        const allFields = getBasicFields().concat(getTrafficFields());
+        routerData = await getRouterGoform(allFields);
+        // 兼容：80 端口 loginfo=no 时尝试 POST 登录（仅当已配置密码）
+        if (routerData && String(routerData.loginfo) === "no" && getZtePassword() !== "") {
+            try {
+                const cookie = await performRouterLogin();
+                if (cookie) {
+                    routerData = await getRouterGoform(allFields, cookie);
+                }
+            } catch (le) {
+                console.log("router login fail:", String(le));
+            }
+        }
+    } catch (e) {
+        console.log("router 80 goform fail:", String(e));
+    }
+
+    // ---- 2. 尝试从 UFI 2333 端口读取（需要签名 + 登录） ----
     const zteConfigured = getZtePassword() !== "";
     if (zteConfigured) {
         try {
             const zr = await zreqGoform(getBasicFields());
             zreqUsed = zr.used;
-            basic = zr.data;
-        // 单独查询 network_information 补充 RSRQ/SNR（批量请求不返回质量字段）
-        if (zreqUsed) {
-            try {
-                const netInfo = await getGoform(["network_information"]);
-                if (netInfo && typeof netInfo === "object") {
-                    for (const k in netInfo) {
-                        const nv = netInfo[k];
-                        const cur = basic[k];
-                        if (nv !== undefined && nv !== null && nv !== "" && (cur === undefined || cur === null || cur === "")) basic[k] = nv;
+            ufiData = zr.data;
+            // 单独查询 network_information 补充 RSRQ/SNR（批量请求不返回质量字段）
+            if (zreqUsed) {
+                try {
+                    const netInfo = await getGoform(["network_information"]);
+                    if (netInfo && typeof netInfo === "object") {
+                        for (const k in netInfo) {
+                            const nv = netInfo[k];
+                            const cur = ufiData[k];
+                            if (nv !== undefined && nv !== null && nv !== "" && (cur === undefined || cur === null || cur === "")) ufiData[k] = nv;
+                        }
                     }
-                }
-            } catch (nie) { console.log("netinfo query fail:", String(nie)); }
+                } catch (nie) { console.log("netinfo query fail:", String(nie)); }
+            }
+        } catch (e) {
+            console.log("zreq fail:", String(e));
         }
-    } catch (e) {
-        console.log("zreq fail:", String(e));
-    }
     } else {
         console.log("未配置 ZTE 后台密码，跳过 zreq 登录");
     }
 
-    // 回退：直接 GET goform
+    // ---- 3. UFI 2333 回退：GET-only + POST 登录 ----
     if (!zreqUsed) {
         try {
-            basic = await getGoform(getBasicFields());
+            ufiData = await getGoform(getBasicFields());
         } catch (e2) {
-            console.log("GET goform fail:", String(e2));
+            console.log("UFI GET goform fail:", String(e2));
         }
         // 兼容：loginfo=no 且 GET-only 时尝试 POST 登录（仅当已配置密码）
-        if (basic && String(basic.loginfo) === "no" && getZtePassword() !== "") {
+        if (ufiData && String(ufiData.loginfo) === "no" && getZtePassword() !== "") {
             try {
                 await loginZTE();
-                basic = await getGoform(getBasicFields());
+                ufiData = await getGoform(getBasicFields());
             } catch (le) {
                 console.log("POST login fail:", String(le));
             }
         }
     }
 
-    return { data: basic || {}, zreqUsed };
+    // ---- 4. 合并：80 端口数据补充 2333 端口缺失的字段 ----
+    const merged: any = {};
+    if (routerData && typeof routerData === "object") {
+        for (const k in routerData) {
+            const v = routerData[k];
+            if (v !== undefined && v !== null && v !== "") merged[k] = v;
+        }
+    }
+    if (ufiData && typeof ufiData === "object") {
+        for (const k in ufiData) {
+            const v = ufiData[k];
+            // UFI 数据优先（鉴权字段更完整）
+            if (v !== undefined && v !== null && v !== "") merged[k] = v;
+        }
+    }
+
+    return { data: merged, zreqUsed };
 }
 
 // ===================== ZTE 登录（回退方案） =====================
@@ -432,6 +620,312 @@ async function loginZTE(): Promise<void> {
     throw new Error("login failed: loginfo=" + String(verifyResp && verifyResp.loginfo));
 }
 
+// ===================== ZTE 路由器登录（80 端口，返回 Session Cookie） =====================
+
+/** 通过 80 端口 POST 登录，返回 Set-Cookie 中的 JSESSIONID（用于后续带 Cookie 请求） */
+async function performRouterLogin(): Promise<string | null> {
+    const routerBase = getRouterBaseURL();
+    const ztePassword = getZtePassword();
+    if (ztePassword === "") return null;
+
+    // 1. 获取 LD 随机数
+    const ldUrl = routerBase + "/goform/goform_get_cmd_process?multi_data=1&isTest=false&cmd=LD&_=" + Date.now();
+    const ldReq = new Request(ldUrl);
+    ldReq.allowInsecureRequest = true;
+    ldReq.method = "GET";
+    ldReq.headers.set("Referer", routerBase + "/index.html");
+    ldReq.timeout = 10;
+    const ldResp = await (await fetch(ldReq)).json();
+    const ld = ldResp && ldResp.LD;
+    if (!ld) return null;
+
+    // 2. 计算 password hash: SHA256(SHA256(password) + LD).toUpperCase()
+    const pwdHash1 = sha256HexFromString(ztePassword).toLowerCase();
+    const loginHash = sha256HexFromString(pwdHash1 + ld).toUpperCase();
+
+    // 3. POST 登录
+    const loginUrl = routerBase + "/goform/goform_set_cmd_process";
+    const loginReq = new Request(loginUrl);
+    loginReq.allowInsecureRequest = true;
+    loginReq.method = "POST";
+    loginReq.headers.set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
+    loginReq.headers.set("Referer", routerBase + "/index.html");
+    loginReq.body = "goformId=LOGIN&isTest=false&user=admin&password=" + loginHash;
+    loginReq.timeout = 10;
+
+    const loginResp = await fetch(loginReq);
+    // 从响应头提取 Set-Cookie
+    const setCookie = loginResp.headers && loginResp.headers.get ? loginResp.headers.get("Set-Cookie") : null;
+    if (setCookie) {
+        const match = setCookie.match(/JSESSIONID=([^;]+)/);
+        if (match) return "JSESSIONID=" + match[1];
+        return setCookie;
+    }
+    // 登录成功但无 Cookie 时返回空字符串（部分固件用 session 而非 Cookie）
+    return "";
+}
+
+// ===================== SMS 短信功能 =====================
+
+export interface SMSMessage {
+    id: string;
+    number: string;
+    content: string;
+    dateText: string;
+    isUnread: boolean;
+    isOutgoing: boolean;
+}
+
+/** 读取短信列表（通过 UFI 2333 端口 goform 接口） */
+export async function fetchSMSMessages(): Promise<SMSMessage[]> {
+    const ts = Date.now();
+    const url = getKanoUrl() + GOFORM_GET_PATH
+        + "?multi_data=1&isTest=false&cmd=sms_data_total&page=0&data_per_page=100&mem_store=1&tags=100&order_by=order%20by%20id%20desc&_=" + ts;
+    const tokens = candidateTokens();
+
+    for (const token of tokens) {
+        try {
+            const req = new Request(url);
+            req.allowInsecureRequest = true;
+            req.method = "GET";
+            applyHeaders(req, buildKanoHeadersWithToken("GET", GOFORM_GET_PATH, token));
+            req.timeout = 15;
+            const resp = await fetch(req);
+            if (resp.status === 401 || resp.status === 403) continue;
+            const json = await readJSONResponse(resp, "sms");
+            return parseSMSMessages(json);
+        } catch (e) {
+            if (String(e).indexOf("401") >= 0) continue;
+            throw e;
+        }
+    }
+    return [];
+}
+
+/** 解析短信 JSON 响应为 SMSMessage 列表 */
+function parseSMSMessages(json: any): SMSMessage[] {
+    const messages: SMSMessage[] = [];
+    const msgs = json && json.messages;
+    if (!Array.isArray(msgs)) return messages;
+    for (const row of msgs) {
+        const id = String(row.id || "");
+        if (!id) continue;
+        messages.push({
+            id: id,
+            number: String(row.number || ""),
+            content: String(row.content || ""),
+            dateText: String(row.date || ""),
+            isUnread: String(row.tag || "") === "1",
+            isOutgoing: false,
+        });
+    }
+    return messages;
+}
+
+/** 发送短信（通过 root_shell Telephony service call） */
+export async function sendSMS(number: string, content: string): Promise<boolean> {
+    const cleanNum = String(number).replace(/[^0-9+]/g, "");
+    if (!cleanNum) throw new Error("手机号无效");
+    // UTF-16BE hex 编码（GSM 编码）
+    const b64Body = gsmEncode(content);
+    // 通过 root_shell 执行 service call isms 6 发送短信
+    const cmd = "service call isms 6 s16 " + cleanNum + " s16 \"\" s16 \"" + content + "\" s16 \"\" s16 \"\"";
+    try {
+        const result = await postShell(cmd, ROOT_SHELL_PATH);
+        const resultStr = String(result || "");
+        if (resultStr.indexOf("Result: Parcel") >= 0 && resultStr.indexOf("Exception") < 0) return true;
+    } catch (e) {
+        console.log("root_shell SMS send fail:", String(e));
+    }
+    // 回退策略：通过 goform_set 发送
+    return await sendSMSViaGoform(cleanNum, content);
+}
+
+/** 通过 goform_set_cmd_process 发送短信 */
+async function sendSMSViaGoform(number: string, content: string): Promise<boolean> {
+    const ts = Date.now();
+    // 1. 获取版本信息计算 AD 校验码
+    const verUrl = getKanoUrl() + GOFORM_GET_PATH + "?multi_data=1&isTest=false&cmd=Language,cr_version,wa_inner_version&_=" + ts;
+    const tokens = candidateTokens();
+    for (const token of tokens) {
+        try {
+            const verReq = new Request(verUrl);
+            verReq.allowInsecureRequest = true;
+            verReq.method = "GET";
+            applyHeaders(verReq, buildKanoHeadersWithToken("GET", GOFORM_GET_PATH, token));
+            const verResp = await readJSONResponse(await fetch(verReq), "sms-ver");
+            const wa = String(verResp.wa_inner_version || verResp.wa_version || "");
+            const cr = String(verResp.cr_version || "");
+            const ad = sha256HexFromString(sha256HexFromString(wa + cr)).toUpperCase();
+
+            // 2. 获取 RD
+            const rdUrl = getKanoUrl() + GOFORM_GET_PATH + "?cmd=RD&isTest=false&_=" + Date.now();
+            const rdReq = new Request(rdUrl);
+            rdReq.allowInsecureRequest = true;
+            rdReq.method = "GET";
+            applyHeaders(rdReq, buildKanoHeadersWithToken("GET", GOFORM_GET_PATH, token));
+            const rdResp = await readJSONResponse(await fetch(rdReq), "sms-rd");
+            const rd = String(rdResp.RD || "");
+
+            // 3. 发送短信
+            const b64Content = gsmEncode(content);
+            const sendBody = "goformId=SEND_MESSAGE&isTest=false&Number=" + number
+                + "&sms_content=" + b64Content
+                + "&sms_encode_type=GSM7_default"
+                + "&port=1&use_type=1&AD=" + ad + "&RD=" + rd;
+
+            const sendReq = new Request(getKanoUrl() + GOFORM_SET_PATH);
+            sendReq.allowInsecureRequest = true;
+            sendReq.method = "POST";
+            sendReq.headers.set("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8");
+            applyHeaders(sendReq, buildKanoHeadersWithToken("POST", GOFORM_SET_PATH, token));
+            sendReq.body = sendBody;
+            sendReq.timeout = 15;
+            const sendResp = await fetch(sendReq);
+            const sendText = await sendResp.text();
+            if (sendText.indexOf('"result":0') >= 0 || sendText.indexOf('"result":"0"') >= 0 || sendText.indexOf("success") >= 0) return true;
+        } catch (e) {
+            if (String(e).indexOf("401") >= 0) continue;
+            console.log("goform SMS send fail:", String(e));
+        }
+    }
+    return false;
+}
+
+/** GSM UTF-16BE hex 编码（用于短信内容编码） */
+function gsmEncode(text: string): string {
+    const s = String(text);
+    let hex = "";
+    for (let i = 0; i < s.length; i++) {
+        const code = s.charCodeAt(i);
+        hex += byteHex((code >> 8) & 0xff) + byteHex(code & 0xff);
+    }
+    return hex;
+}
+
+/**
+ * 从短信文本中提取验证码（借鉴 f50-monitor extractVerifyCode）。
+ * 匹配"验证码"/"校验码"/"动态码"/"code"附近的 4-8 位数字。
+ */
+export function extractVerifyCode(text: string): string | null {
+    if (!text) return null;
+    // 匹配"验证码"等关键词附近的 4-8 位数字
+    const codeRegex = /(?:验证码|校验码|动态码|code|Code|CODE)[^\d]{0,8}(\d{4,8})/;
+    const match = text.match(codeRegex);
+    if (match && match[1]) return match[1];
+    // 回退：独立的 4-6 位数字
+    const digitMatch = text.match(/(?:\b|[^0-9])(\d{4,6})(?:\b|[^0-9])/);
+    if (digitMatch && digitMatch[1]) return digitMatch[1];
+    return null;
+}
+
+// ===================== QoS 指标（AT 命令） =====================
+
+export interface QoSInfo {
+    qci: string;
+    qosDl: string;
+    qosUl: string;
+}
+
+/** 通过 /api/AT 获取 QCI 和 AMBR（QoS 指标） */
+export async function fetchQoS(): Promise<QoSInfo | null> {
+    const path = "/api/AT";
+    const url = getKanoUrl() + path + "?command=AT%2BCGEQOSRDP%3D1&slot=0";
+    const tokens = candidateTokens();
+
+    for (const token of tokens) {
+        try {
+            const req = new Request(url);
+            req.allowInsecureRequest = true;
+            req.method = "GET";
+            applyHeaders(req, buildKanoHeadersWithToken("GET", path, token));
+            req.timeout = 10;
+            const resp = await fetch(req);
+            if (resp.status === 401 || resp.status === 403) continue;
+            const json = await readJSONResponse(resp, "AT-QoS");
+            const resultStr = String(json && json.result || "");
+            if (resultStr) {
+                const parsed = parseQoSResponse(resultStr);
+                if (parsed) return parsed;
+            }
+        } catch (e) {
+            if (String(e).indexOf("401") >= 0) continue;
+            console.log("QoS fetch fail:", String(e));
+        }
+    }
+    return null;
+}
+
+/** 解析 AT+CGEQOSRDP 响应（提取 QCI 和 AMBR） */
+function parseQoSResponse(result: string): QoSInfo | null {
+    // 响应格式类似: +CGEQOSRDP: 1,9,"500000000","100000000"
+    const qciMatch = result.match(/QOSRDP:\s*\d+,(\d+)/);
+    const dlMatch = result.match(/"(\d+)"[^"]*$/);
+    const ulMatch = result.match(/"(\d+)"\s*,\s*"(\d+)"/);
+
+    const qci = qciMatch ? qciMatch[1] : "";
+    let qosDl = "";
+    let qosUl = "";
+
+    if (ulMatch) {
+        qosDl = formatAMBR(parseInt(ulMatch[1], 10));
+        qosUl = formatAMBR(parseInt(ulMatch[2], 10));
+    } else if (dlMatch) {
+        qosDl = formatAMBR(parseInt(dlMatch[1], 10));
+    }
+
+    if (qci || qosDl || qosUl) {
+        return { qci, qosDl, qosUl };
+    }
+    return null;
+}
+
+/** 格式化 AMBR 速率（bps → Mbps/Gbps） */
+function formatAMBR(bps: number): string {
+    if (bps <= 0) return "";
+    const mbps = bps / 1000000;
+    if (mbps >= 1000) return (mbps / 1000).toFixed(1).replace(/\.0$/, "") + "Gbps";
+    return Math.round(mbps) + "Mbps";
+}
+
+// ===================== 蜂窝流量精确查询 =====================
+
+/**
+ * 通过 /api/cellularUsage 按日期范围精确查询流量用量。
+ * 返回指定时间段内的总字节数。
+ */
+export async function fetchCellularUsage(startISO: string, endISO: string): Promise<number> {
+    const path = "/api/cellularUsage";
+    const url = getKanoUrl() + path + "?start=" + encodeURIComponent(startISO) + "&end=" + encodeURIComponent(endISO);
+    const tokens = candidateTokens();
+
+    for (const token of tokens) {
+        try {
+            const req = new Request(url);
+            req.allowInsecureRequest = true;
+            req.method = "GET";
+            applyHeaders(req, buildKanoHeadersWithToken("GET", path, token));
+            req.timeout = 10;
+            const resp = await fetch(req);
+            if (resp.status === 401 || resp.status === 403) continue;
+            const json = await readJSONResponse(resp, "cellularUsage");
+            // 格式: { "usage": [{ "usage": 123456789 }, ...] }
+            const rows = json && json.usage;
+            if (Array.isArray(rows)) {
+                let total = 0;
+                for (const row of rows) {
+                    total += parseInt(String(row.usage || "0"), 10) || 0;
+                }
+                return total;
+            }
+        } catch (e) {
+            if (String(e).indexOf("401") >= 0) continue;
+            console.log("cellularUsage fetch fail:", String(e));
+        }
+    }
+    return 0;
+}
+
 // ===================== Shell 执行 =====================
 
 /** POST /api/user_shell（或 root_shell）：在设备上执行命令 */
@@ -472,11 +966,16 @@ export async function fetchSystemInfo(): Promise<{ wifiFreq: number; memInfo: { 
 
 // ===================== UFI-TOOLS 签名（HMAC-MD5 + 双 SHA256） =====================
 
-function buildKanoHeaders(method: string, path: string): Record<string, string> {
+/** 构建 UFI-TOOLS 签名头（使用指定 token 作为 Authorization） */
+function buildKanoHeadersWithToken(method: string, path: string, token: string): Record<string, string> {
     const t = String(Date.now());
-    const auth = sha256HexFromString(getPassword()).toLowerCase();
     const sign = buildKanoSign(method, path, t);
-    return { "Authorization": auth, "kano-t": t, "kano-sign": sign };
+    return { "Authorization": token, "kano-t": t, "kano-sign": sign };
+}
+
+/** 构建 UFI-TOOLS 签名头（兼容旧调用，使用密码 SHA256 作为 token） */
+function buildKanoHeaders(method: string, path: string): Record<string, string> {
+    return buildKanoHeadersWithToken(method, path, sha256HexFromString(getPassword()).toLowerCase());
 }
 
 function buildKanoSign(method: string, path: string, timestamp: string): string {
