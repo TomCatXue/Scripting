@@ -13,14 +13,15 @@ import { Widget } from "scripting";
 
 const DEFAULT_URL = "http://192.168.0.1:2333";
 
+// 同步预览锁（useState 是异步的，无法防重入）
+let _previewLock = false;
+
 // ===================== 标签 1：状态页 =====================
 
 function StatusView() {
     const [state, setState] = useState<WidgetState | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
-    const [isPreviewing, setIsPreviewing] = useState(false);
-
     async function refresh() {
         setLoading(true);
         setError(null);
@@ -48,10 +49,10 @@ function StatusView() {
     }
 
     async function doPreview() {
-        if (isPreviewing) return;
-        setIsPreviewing(true);
+        if (_previewLock) return;
+        _previewLock = true;
         try { await Widget.preview({ family: "systemMedium" as any }); } catch (e) {}
-        finally { setIsPreviewing(false); }
+        finally { _previewLock = false; }
     }
 
     if (!state) {
@@ -597,15 +598,13 @@ function SettingsView() {
         }
     }
 
-    const [isPreviewing, setIsPreviewing] = useState(false);
-
     async function handlePreview(family: string) {
-        if (isPreviewing) return;
+        if (_previewLock) return;
         if (!doSave()) {
             setPreviewMsg("预览失败：配置未能保存，请先确认保存配置成功");
             return;
         }
-        setIsPreviewing(true);
+        _previewLock = true;
         try {
             setPreviewMsg("预览中…");
             await Widget.preview({ family: family as any });
@@ -613,7 +612,7 @@ function SettingsView() {
         } catch (e) {
             setPreviewMsg("预览失败: " + String((e as Error)?.message || e));
         } finally {
-            setIsPreviewing(false);
+            _previewLock = false;
         }
     }
 
@@ -680,7 +679,7 @@ function SettingsView() {
                     </HStack>
                 </Section>
 
-                <Section header={<Text>小组件预览</Text>} footer={<Text>{isPreviewing ? "预览加载中，请稍候…" : "选择尺寸预览小组件效果"}</Text>}>
+                <Section header={<Text>小组件预览</Text>} footer={<Text>选择尺寸预览小组件效果</Text>}>
                     <HStack spacing={8}>
                         <Button title="Small" action={() => handlePreview("systemSmall")} />
                         <Button title="Medium" action={() => handlePreview("systemMedium")} />
