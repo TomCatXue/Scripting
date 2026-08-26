@@ -25,7 +25,7 @@
 ```
 <脚本名>/
 ├── script.json        # 项目配置（必选）
-├── index.tsx          # App 内入口：设置页 / 预览（可选，但推荐）
+├── index.tsx          # App 内入口：TabView 多标签页（状态/短信/设置等）（可选，但推荐）
 ├── widget.tsx         # 小组件入口：UI + run()（必选）
 ├── widget_data.ts     # 数据层：抓取、缓存、状态组装（推荐）
 ├── api.ts             # 网络层：API 请求、签名、认证（推荐，按需）
@@ -39,6 +39,8 @@
 ```
 
 **核心原则：** 每个文件只负责一件事。`widget.tsx` 只做 UI 渲染 + 入口调度，数据逻辑拆到 `widget_data.ts`，网络请求拆到 `api.ts`。
+
+> **多标签架构推荐：** 当 App 内需要多个功能页时，使用 Scripting 的 `TabView` + `Tab` 组件实现底部标签栏。每个 `Tab` 对应一个独立视图（如状态页、短信页、设置页），通过 `useObservable` 绑定选中状态。参考 F50 Widget 的 `index.tsx` 实现。
 
 ---
 
