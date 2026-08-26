@@ -101,6 +101,12 @@ function StatusView() {
                         <Spacer />
                         <Text fontWeight="semibold">{state.net_summary}</Text>
                     </HStack>
+                    <HStack>
+                        <Image systemName="gauge.with.dots.needle.bottom.50percent" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemIndigo")} />
+                        <Text foregroundStyle="secondaryLabel">QCI 等级</Text>
+                        <Spacer />
+                        <Text fontWeight="bold" foregroundStyle="systemIndigo">{state.qci ? state.qci : "--"}</Text>
+                    </HStack>
                     {state.band_text !== "—" ? (
                         <HStack>
                             <Image systemName="antenna.radiowaves.left.and.right" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemPurple")} />
@@ -253,6 +259,12 @@ function StatusView() {
                         <Text foregroundStyle="secondaryLabel">UFI 版本</Text>
                         <Spacer />
                         <Text fontWeight="semibold">{state.ufi_ver}</Text>
+                    </HStack>
+                    <HStack>
+                        <Image systemName="envelope.badge" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle(state.sms_unread_text !== "0" ? "systemRed" : "systemBlue")} />
+                        <Text foregroundStyle="secondaryLabel">未读短信</Text>
+                        <Spacer />
+                        <Text fontWeight="bold" foregroundStyle={state.sms_unread_text !== "0" ? "systemRed" : "secondaryLabel"}>{state.sms_unread_text} 条</Text>
                     </HStack>
                 </Section>
 
