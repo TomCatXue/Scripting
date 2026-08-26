@@ -618,21 +618,25 @@ function SettingsView() {
         }
     }
 
-    async function handlePreview(family: string) {
+    const [previewing, setPreviewing] = useState(false);
+
+    async function handlePreview() {
         if (_previewLock) return;
         if (!doSave()) {
             setPreviewMsg("预览失败：配置未能保存，请先确认保存配置成功");
             return;
         }
         _previewLock = true;
+        setPreviewing(true);
         try {
             setPreviewMsg("预览中…");
-            await Widget.preview({ family: family as any });
+            await Widget.preview({ family: "systemMedium" as any });
             setPreviewMsg(null);
         } catch (e) {
             setPreviewMsg("预览失败: " + String((e as Error)?.message || e));
         } finally {
             _previewLock = false;
+            setPreviewing(false);
         }
     }
 
@@ -699,12 +703,13 @@ function SettingsView() {
                     </HStack>
                 </Section>
 
-                <Section header={<Text>小组件预览</Text>} footer={<Text>选择尺寸预览小组件效果</Text>}>
-                    <HStack spacing={8}>
-                        <Button title="Small" action={() => handlePreview("systemSmall")} />
-                        <Button title="Medium" action={() => handlePreview("systemMedium")} />
-                        <Button title="Large" action={() => handlePreview("systemLarge")} />
-                    </HStack>
+                <Section header={<Text>小组件</Text>}>
+                    <Button
+                        title={previewing ? "预览中…" : "预览小组件"}
+                        systemImage={previewing ? "arrow.2.circlepath" : "eye"}
+                        action={handlePreview}
+                        modifiers={modifiers().tint(previewing ? "systemGray" : "systemBlue")}
+                    />
                 </Section>
 
                 {savedMsg ? (
