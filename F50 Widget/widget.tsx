@@ -438,7 +438,9 @@ async function run() {
     error = "未设置密码，请在设置页配置";
   }
 
-  Widget.present(<WidgetView data={data} error={error} />, {
+  // 在 run() 顶层读取 Widget.family，确保预览模式下拿到正确的尺寸
+  const fam = Widget.family;
+  Widget.present(<WidgetView data={data} error={error} family={fam} />, {
     reloadPolicy: { policy: "after", date: new Date(Date.now() + RELOAD_MS) },
   });
   Script.exit();
