@@ -51,7 +51,7 @@ function StatusView() {
     async function doPreview() {
         if (_previewLock) return;
         _previewLock = true;
-        try { await Widget.preview({ family: "systemMedium" as any }); } catch (e) {}
+        try { await Widget.preview({ family: "systemMedium" as any }); } catch (e) { }
         finally { _previewLock = false; }
     }
 
@@ -75,7 +75,7 @@ function StatusView() {
     const pctText = hasProgress ? Math.round(state.traffic_ratio * 100) + "%" : "";
 
     return (
-        <NavigationStack navigationTitle="状态" navigationBarTitleDisplayMode="inline">
+        <NavigationStack navigationTitle={state.model_name !== "--" ? state.model_name : "状态"} navigationBarTitleDisplayMode="inline">
             <List listStyle="insetGrouped">
                 <Toolbar>
                     <ToolbarItem placement="topBarTrailing">
@@ -90,7 +90,7 @@ function StatusView() {
                 <Section header={<Text>设备与信号</Text>}>
                     <HStack>
                         <Image systemName="wifi.router.fill" font={16} frame={{ width: 22, height: 22 }} modifiers={modifiers().foregroundStyle("systemBlue")} />
-                        <Text fontWeight="semibold">{state.model_name === "--" ? "F50 设备" : state.model_name}</Text>
+                        <Text fontWeight="semibold">{state.model_name === "--" ? "未识别设备" : state.model_name}</Text>
                         <Spacer />
                         <Image systemName="cellularbars" variableValue={state.signalbar === "--" ? 0 : Math.min(1, parseInt(state.signalbar) / 4)} font={16} frame={{ width: 20, height: 20 }} modifiers={modifiers().foregroundStyle("systemBlue")} />
                         <Text fontWeight="semibold" monospacedDigit>{state.signalbar === "--" ? "" : state.signalbar}</Text>
@@ -118,19 +118,19 @@ function StatusView() {
                         </HStack>
                     ) : <></>}
                     <HStack>
-                        <Image systemName="gauge.with.dots.needle.0percent" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemTeal")} />
+                        <Image systemName="gauge.low" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemTeal")} />
                         <Text foregroundStyle="secondaryLabel">RSRP</Text>
                         <Spacer />
                         <Text fontWeight="semibold" monospacedDigit>{state.rsrp_text}</Text>
                     </HStack>
                     <HStack>
-                        <Image systemName="gauge.with.dots.needle.25percent" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemTeal")} />
+                        <Image systemName="gauge.medium" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemTeal")} />
                         <Text foregroundStyle="secondaryLabel">RSRQ</Text>
                         <Spacer />
                         <Text fontWeight="semibold" monospacedDigit>{state.rsrq_text}</Text>
                     </HStack>
                     <HStack>
-                        <Image systemName="gauge.with.dots.needle.50percent" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemTeal")} />
+                        <Image systemName="gauge.high" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemTeal")} />
                         <Text foregroundStyle="secondaryLabel">SNR</Text>
                         <Spacer />
                         <Text fontWeight="semibold" monospacedDigit>{state.snr_text}</Text>
