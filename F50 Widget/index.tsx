@@ -19,13 +19,15 @@ function StatusView() {
     const [state, setState] = useState<WidgetState | null>(null);
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
+    const [isPreviewing, setIsPreviewing] = useState(false);
 
     async function refresh() {
         setLoading(true);
         setError(null);
         try {
-            const { state: s } = await fetchWidgetSnapshot();
+            const { state: s, error: e } = await fetchWidgetSnapshot();
             setState(s);
+            if (e) setError(e);
         } catch (e) {
             setError(String((e as Error)?.message || e));
             const cached = readWidgetCache();
@@ -45,148 +47,256 @@ function StatusView() {
         })();
     }
 
+    async function doPreview() {
+        if (isPreviewing) return;
+        setIsPreviewing(true);
+        try { await Widget.preview({ family: "systemMedium" as any }); } catch (e) {}
+        finally { setIsPreviewing(false); }
+    }
+
     if (!state) {
         return (
-            <VStack alignment="center" spacing={8} frame={{ maxWidth: "infinity", maxHeight: "infinity" }}>
-                <Image systemName="arrow.2.circlepath" font={28} frame={{ width: 32, height: 32 }} modifiers={modifiers().foregroundStyle("systemBlue")} />
-                <Text font={14} foregroundStyle="secondaryLabel">正在读取设备状态…</Text>
-            </VStack>
+            <NavigationStack navigationTitle="状态" navigationBarTitleDisplayMode="inline">
+                <VStack alignment="center" spacing={8} frame={{ maxWidth: "infinity", maxHeight: "infinity" }}>
+                    <Image systemName="arrow.2.circlepath" font={28} frame={{ width: 32, height: 32 }} modifiers={modifiers().foregroundStyle("systemBlue")} />
+                    <Text font={14} foregroundStyle="secondaryLabel">正在读取设备状态…</Text>
+                </VStack>
+            </NavigationStack>
         );
     }
 
     const hasSpeed = state.dl_speed !== "--" || state.ul_speed !== "--";
     const hasProgress = state.traffic_limit_value !== "--";
+    const dailyText = state.daily_data_value + (state.daily_data_unit ? " " + state.daily_data_unit : "");
+    const monthlyText = state.monthly_data_value + (state.monthly_data_unit ? " " + state.monthly_data_unit : "");
+    const usedText = state.traffic_used_value + state.traffic_used_unit;
+    const limitText = state.traffic_limit_value + state.traffic_limit_unit;
+    const pctText = hasProgress ? Math.round(state.traffic_ratio * 100) + "%" : "";
 
     return (
-        <NavigationStack>
-            <ScrollView>
-                <VStack spacing={12} padding={16} frame={{ maxWidth: "infinity" }}>
-                    {/* 信号与网络卡片 */}
-                    <VStack spacing={8} padding={14} frame={{ maxWidth: "infinity" }}>
-                        <HStack spacing={8}>
-                            <Image systemName="wifi.router.fill" font={20} frame={{ width: 24, height: 24 }} modifiers={modifiers().foregroundStyle("systemBlue")} />
-                            <Text font={17} fontWeight="bold" fontDesign="rounded">{state.model_name === "--" ? "F50 设备" : state.model_name}</Text>
-                            <Spacer />
-                            <Image systemName="cellularbars" variableValue={state.signalbar === "--" ? 0 : Math.min(1, parseInt(state.signalbar) / 4)} font={18} frame={{ width: 20, height: 20 }} modifiers={modifiers().foregroundStyle("systemBlue")} />
-                        </HStack>
-                        <HStack spacing={6}>
-                            <Text font={12} fontWeight="bold" modifiers={modifiers().padding({ horizontal: 8, vertical: 3 }).background("systemBlue").clipShape({ type: "rect", cornerRadius: 8 }).foregroundStyle("white")}>{state.net_summary}</Text>
-                            {state.band_text !== "—" ? <Text font={11} fontWeight="bold" foregroundStyle="systemPurple">{state.band_text}</Text> : <></>}
-                            {state.signal_quality !== "--" ? <Text font={11} fontWeight="bold" foregroundStyle={state.signal_quality_color}>{state.signal_quality}</Text> : <></>}
-                            <Spacer />
-                        </HStack>
-                        <Text font={11} foregroundStyle="secondaryLabel">RSRP {state.rsrp_text} · RSRQ {state.rsrq_text} · SNR {state.snr_text}</Text>
-                    </VStack>
+        <NavigationStack navigationTitle="状态" navigationBarTitleDisplayMode="inline">
+            <List listStyle="insetGrouped">
+                <Toolbar>
+                    <ToolbarItem placement="topBarTrailing">
+                        <Button title="刷新" systemImage="arrow.clockwise" action={refresh} />
+                    </ToolbarItem>
+                    <ToolbarItem placement="topBarTrailing">
+                        <Button title="预览" systemImage="eye" action={doPreview} />
+                    </ToolbarItem>
+                </Toolbar>
 
-                    {/* 实时速率卡片 */}
-                    {hasSpeed ? (
-                        <HStack spacing={0} padding={14} frame={{ maxWidth: "infinity" }}>
-                            <VStack spacing={2} alignment="center" frame={{ maxWidth: "infinity" }}>
-                                <Text font={10} foregroundStyle="secondaryLabel">下行</Text>
-                                <Text font={24} fontWeight="bold" monospacedDigit foregroundStyle={state.dl_speed_color}>{state.dl_speed}</Text>
-                            </VStack>
-                            <Rectangle fill="separator" frame={{ width: 1, height: 36 }} />
-                            <VStack spacing={2} alignment="center" frame={{ maxWidth: "infinity" }}>
-                                <Text font={10} foregroundStyle="secondaryLabel">上行</Text>
-                                <Text font={24} fontWeight="bold" monospacedDigit foregroundStyle={state.ul_speed_color}>{state.ul_speed}</Text>
-                            </VStack>
-                        </HStack>
-                    ) : <></>}
-
-                    {/* 流量统计卡片 */}
-                    <VStack spacing={8} padding={14} frame={{ maxWidth: "infinity" }}>
-                        <HStack>
-                            <Image systemName="chart.bar.fill" font={14} modifiers={modifiers().foregroundStyle("systemCyan")} />
-                            <Text font={14} fontWeight="bold">流量统计</Text>
-                            <Spacer />
-                        </HStack>
-                        <HStack spacing={0}>
-                            <VStack spacing={2} alignment="center" frame={{ maxWidth: "infinity" }}>
-                                <Text font={10} foregroundStyle="secondaryLabel">今日</Text>
-                                <Text font={20} fontWeight="bold" monospacedDigit>{state.daily_data_value}<Text font={12} foregroundStyle="secondaryLabel"> {state.daily_data_unit}</Text></Text>
-                            </VStack>
-                            <Rectangle fill="separator" frame={{ width: 1, height: 36 }} />
-                            <VStack spacing={2} alignment="center" frame={{ maxWidth: "infinity" }}>
-                                <Text font={10} foregroundStyle="secondaryLabel">本月</Text>
-                                <Text font={20} fontWeight="bold" monospacedDigit>{state.monthly_data_value}<Text font={12} foregroundStyle="secondaryLabel"> {state.monthly_data_unit}</Text></Text>
-                            </VStack>
-                        </HStack>
-                        {hasProgress ? (
-                            <VStack spacing={4} frame={{ maxWidth: "infinity" }}>
-                                <HStack>
-                                    <Text font={11} fontWeight="bold">已用 {state.traffic_used_value}{state.traffic_used_unit} / {state.traffic_limit_value}{state.traffic_limit_unit}</Text>
-                                    <Spacer />
-                                    <Text font={11} fontWeight="bold" foregroundStyle={state.traffic_color}>{Math.round(state.traffic_ratio * 100)}%</Text>
-                                </HStack>
-                                <ZStack alignment="leading" frame={{ maxWidth: "infinity", height: 8 }}>
-                                    <Rectangle fill="secondarySystemFill" cornerRadius={4} frame={{ maxWidth: "infinity", height: 8 }} />
-                                    <Rectangle fill={state.traffic_color} cornerRadius={4} frame={{ width: String(Math.max(3, state.traffic_ratio * 100)) + "%", height: 8, maxWidth: "infinity" }} />
-                                </ZStack>
-                                {state.reset_days ? <Text font={10} foregroundStyle="secondaryLabel">⏳ {state.reset_days}</Text> : <></>}
-                            </VStack>
-                        ) : <></>}
-                    </VStack>
-
-                    {/* 硬件指标卡片 */}
-                    <HStack spacing={8} padding={14} frame={{ maxWidth: "infinity" }}>
-                        <VStack spacing={2} alignment="center" frame={{ maxWidth: "infinity" }}>
-                            <Image systemName="thermometer.medium" font={16} modifiers={modifiers().foregroundStyle("systemOrange")} />
-                            <Text font={11} foregroundStyle="secondaryLabel">温度</Text>
-                            <Text font={16} fontWeight="bold" monospacedDigit>{state.cputemp}℃</Text>
-                        </VStack>
-                        <VStack spacing={2} alignment="center" frame={{ maxWidth: "infinity" }}>
-                            <Image systemName="cpu.fill" font={16} modifiers={modifiers().foregroundStyle("systemIndigo")} />
-                            <Text font={11} foregroundStyle="secondaryLabel">CPU</Text>
-                            <Text font={16} fontWeight="bold" monospacedDigit>{state.cpuusage}%</Text>
-                        </VStack>
-                        <VStack spacing={2} alignment="center" frame={{ maxWidth: "infinity" }}>
-                            <Image systemName="memorychip" font={16} modifiers={modifiers().foregroundStyle("systemPurple")} />
-                            <Text font={11} foregroundStyle="secondaryLabel">内存</Text>
-                            <Text font={16} fontWeight="bold" monospacedDigit>{state.mem_text}</Text>
-                        </VStack>
-                        <VStack spacing={2} alignment="center" frame={{ maxWidth: "infinity" }}>
-                            <Image systemName="macbook.and.ipod" font={16} modifiers={modifiers().foregroundStyle("systemPink")} />
-                            <Text font={11} foregroundStyle="secondaryLabel">设备</Text>
-                            <Text font={16} fontWeight="bold" monospacedDigit>{state.wifi_device_count}台</Text>
-                        </VStack>
-                    </HStack>
-
-                    {/* 电池卡片 */}
-                    <HStack spacing={8} padding={14} frame={{ maxWidth: "infinity" }}>
-                        <Image systemName={state.battery_icon} font={20} frame={{ width: 24, height: 24 }} modifiers={modifiers().foregroundStyle(state.battery_icon_color)} />
-                        <Text font={16} fontWeight="bold">电池 {state.battery}%</Text>
+                {/* 设备与信号 */}
+                <Section header={<Text>设备与信号</Text>}>
+                    <HStack>
+                        <Image systemName="wifi.router.fill" font={16} frame={{ width: 22, height: 22 }} modifiers={modifiers().foregroundStyle("systemBlue")} />
+                        <Text fontWeight="semibold">{state.model_name === "--" ? "F50 设备" : state.model_name}</Text>
                         <Spacer />
-                        <Text font={11} foregroundStyle="secondaryLabel">{state.zreq_used ? "zreq 已登录" : "zreq 未登录"}</Text>
+                        <Image systemName="cellularbars" variableValue={state.signalbar === "--" ? 0 : Math.min(1, parseInt(state.signalbar) / 4)} font={16} frame={{ width: 20, height: 20 }} modifiers={modifiers().foregroundStyle("systemBlue")} />
+                        <Text fontWeight="semibold" monospacedDigit>{state.signalbar === "--" ? "" : state.signalbar}</Text>
                     </HStack>
-
-                    {/* QoS 指标 */}
-                    {state.qci ? (
-                        <HStack spacing={8} padding={14} frame={{ maxWidth: "infinity" }}>
-                            <Image systemName="gauge.with.dots.needle.bottom.50percent" font={16} modifiers={modifiers().foregroundStyle("systemIndigo")} />
-                            <Text font={13} fontWeight="bold">QCI {state.qci}</Text>
-                            {state.qos_dl ? <Text font={12} foregroundStyle="systemBlue">↓ {state.qos_dl}</Text> : <></>}
-                            {state.qos_ul ? <Text font={12} foregroundStyle="systemTeal">↑ {state.qos_ul}</Text> : <></>}
+                    <HStack>
+                        <Image systemName="network" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemCyan")} />
+                        <Text foregroundStyle="secondaryLabel">运营商</Text>
+                        <Spacer />
+                        <Text fontWeight="semibold">{state.net_summary}</Text>
+                    </HStack>
+                    {state.band_text !== "—" ? (
+                        <HStack>
+                            <Image systemName="antenna.radiowaves.left.and.right" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemPurple")} />
+                            <Text foregroundStyle="secondaryLabel">频段</Text>
                             <Spacer />
+                            <Text fontWeight="semibold" foregroundStyle="systemPurple">{state.band_text}</Text>
                         </HStack>
                     ) : <></>}
-
-                    {error ? (
-                        <VStack spacing={4} padding={12} frame={{ maxWidth: "infinity" }}>
-                            <Text font={12} foregroundStyle="systemRed">⚠ {error}</Text>
-                        </VStack>
+                    {state.signal_quality !== "--" ? (
+                        <HStack>
+                            <Image systemName="checkmark.seal.fill" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle(state.signal_quality_color)} />
+                            <Text foregroundStyle="secondaryLabel">信号质量</Text>
+                            <Spacer />
+                            <Text fontWeight="bold" foregroundStyle={state.signal_quality_color}>{state.signal_quality}</Text>
+                        </HStack>
                     ) : <></>}
+                    <HStack>
+                        <Image systemName="gauge.with.dots.needle.0percent" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemTeal")} />
+                        <Text foregroundStyle="secondaryLabel">RSRP</Text>
+                        <Spacer />
+                        <Text fontWeight="semibold" monospacedDigit>{state.rsrp_text}</Text>
+                    </HStack>
+                    <HStack>
+                        <Image systemName="gauge.with.dots.needle.25percent" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemTeal")} />
+                        <Text foregroundStyle="secondaryLabel">RSRQ</Text>
+                        <Spacer />
+                        <Text fontWeight="semibold" monospacedDigit>{state.rsrq_text}</Text>
+                    </HStack>
+                    <HStack>
+                        <Image systemName="gauge.with.dots.needle.50percent" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemTeal")} />
+                        <Text foregroundStyle="secondaryLabel">SNR</Text>
+                        <Spacer />
+                        <Text fontWeight="semibold" monospacedDigit>{state.snr_text}</Text>
+                    </HStack>
+                </Section>
 
-                    <Text font={10} foregroundStyle="secondaryLabel" monospacedDigit>更新于 {state.update_time}</Text>
-                </VStack>
-            </ScrollView>
-            <Toolbar>
-                <ToolbarItem placement="topBarTrailing">
-                    <Button title="刷新" systemImage="arrow.clockwise" action={refresh} />
-                </ToolbarItem>
-                <ToolbarItem placement="topBarTrailing">
-                    <Button title="预览" systemImage="eye" action={async () => { try { await Widget.preview({ family: "systemMedium" }); } catch (e) { } }} />
-                </ToolbarItem>
-            </Toolbar>
+                {/* 实时速率 */}
+                {hasSpeed ? (
+                    <Section header={<Text>实时速率</Text>}>
+                        <HStack>
+                            <Image systemName="arrow.down.circle.fill" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle(state.dl_speed_color)} />
+                            <Text foregroundStyle="secondaryLabel">下行</Text>
+                            <Spacer />
+                            <Text font={20} fontWeight="bold" monospacedDigit foregroundStyle={state.dl_speed_color}>{state.dl_speed}</Text>
+                        </HStack>
+                        <HStack>
+                            <Image systemName="arrow.up.circle.fill" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle(state.ul_speed_color)} />
+                            <Text foregroundStyle="secondaryLabel">上行</Text>
+                            <Spacer />
+                            <Text font={20} fontWeight="bold" monospacedDigit foregroundStyle={state.ul_speed_color}>{state.ul_speed}</Text>
+                        </HStack>
+                    </Section>
+                ) : <></>}
+
+                {/* 流量统计 */}
+                <Section header={<Text>流量统计</Text>}>
+                    <HStack>
+                        <Image systemName="sun.max.fill" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemOrange")} />
+                        <Text foregroundStyle="secondaryLabel">今日流量</Text>
+                        <Spacer />
+                        <Text fontWeight="bold" monospacedDigit>{dailyText}</Text>
+                    </HStack>
+                    <HStack>
+                        <Image systemName="calendar" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemBlue")} />
+                        <Text foregroundStyle="secondaryLabel">本月流量</Text>
+                        <Spacer />
+                        <Text fontWeight="bold" monospacedDigit>{monthlyText}</Text>
+                    </HStack>
+                    {hasProgress ? (
+                        <>
+                            <HStack>
+                                <Image systemName="chart.bar.fill" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle(state.traffic_color)} />
+                                <Text foregroundStyle="secondaryLabel">套餐用量</Text>
+                                <Spacer />
+                                <Text fontWeight="bold" foregroundStyle={state.traffic_color}>{usedText} / {limitText}</Text>
+                            </HStack>
+                            <HStack>
+                                <Text foregroundStyle="secondaryLabel">使用比例</Text>
+                                <Spacer />
+                                <Text fontWeight="bold" foregroundStyle={state.traffic_color}>{pctText}</Text>
+                            </HStack>
+                            {state.reset_days ? (
+                                <HStack>
+                                    <Image systemName="arrow.clockwise" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemGreen")} />
+                                    <Text foregroundStyle="secondaryLabel">重置倒计时</Text>
+                                    <Spacer />
+                                    <Text fontWeight="semibold">{state.reset_days}</Text>
+                                </HStack>
+                            ) : <></>}
+                        </>
+                    ) : <></>}
+                </Section>
+
+                {/* 硬件指标 */}
+                <Section header={<Text>硬件指标</Text>}>
+                    <HStack>
+                        <Image systemName="thermometer.medium" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemOrange")} />
+                        <Text foregroundStyle="secondaryLabel">芯片温度</Text>
+                        <Spacer />
+                        <Text fontWeight="bold" monospacedDigit>{state.cputemp}℃</Text>
+                    </HStack>
+                    <HStack>
+                        <Image systemName="cpu.fill" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemIndigo")} />
+                        <Text foregroundStyle="secondaryLabel">CPU 使用率</Text>
+                        <Spacer />
+                        <Text fontWeight="bold" monospacedDigit>{state.cpuusage}%</Text>
+                    </HStack>
+                    <HStack>
+                        <Image systemName="memorychip" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemPurple")} />
+                        <Text foregroundStyle="secondaryLabel">内存使用率</Text>
+                        <Spacer />
+                        <Text fontWeight="bold" monospacedDigit>{state.mem_text}</Text>
+                    </HStack>
+                    <HStack>
+                        <Image systemName="macbook.and.ipod" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemPink")} />
+                        <Text foregroundStyle="secondaryLabel">Wi-Fi 设备数</Text>
+                        <Spacer />
+                        <Text fontWeight="bold" monospacedDigit>{state.wifi_device_count}台</Text>
+                    </HStack>
+                    <HStack>
+                        <Image systemName="wifi" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemTeal")} />
+                        <Text foregroundStyle="secondaryLabel">Wi-Fi 频段</Text>
+                        <Spacer />
+                        <Text fontWeight="semibold">{state.wifi_band_text}</Text>
+                    </HStack>
+                    <HStack>
+                        <Image systemName="wifi.exclamationmark" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemTeal")} />
+                        <Text foregroundStyle="secondaryLabel">SSID</Text>
+                        <Spacer />
+                        <Text fontWeight="semibold">{state.ssid_text}</Text>
+                    </HStack>
+                </Section>
+
+                {/* 电池与状态 */}
+                <Section header={<Text>电池与状态</Text>}>
+                    <HStack>
+                        <Image systemName={state.battery_icon} font={16} frame={{ width: 22, height: 22 }} modifiers={modifiers().foregroundStyle(state.battery_icon_color)} />
+                        <Text foregroundStyle="secondaryLabel">电池电量</Text>
+                        <Spacer />
+                        <Text fontWeight="bold" monospacedDigit>{state.battery}%</Text>
+                    </HStack>
+                    <HStack>
+                        <Image systemName="key.fill" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle(state.zreq_used ? "systemGreen" : "systemGray")} />
+                        <Text foregroundStyle="secondaryLabel">zreq 登录</Text>
+                        <Spacer />
+                        <Text fontWeight="semibold" foregroundStyle={state.zreq_used ? "systemGreen" : "secondaryLabel"}>{state.zreq_used ? "已登录" : "未登录"}</Text>
+                    </HStack>
+                    <HStack>
+                        <Image systemName="tag" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemBlue")} />
+                        <Text foregroundStyle="secondaryLabel">UFI 版本</Text>
+                        <Spacer />
+                        <Text fontWeight="semibold">{state.ufi_ver}</Text>
+                    </HStack>
+                </Section>
+
+                {/* QoS 指标 */}
+                {state.qci ? (
+                    <Section header={<Text>QoS 指标</Text>}>
+                        <HStack>
+                            <Image systemName="gauge.with.dots.needle.bottom.50percent" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemIndigo")} />
+                            <Text foregroundStyle="secondaryLabel">QCI</Text>
+                            <Spacer />
+                            <Text fontWeight="bold">{state.qci}</Text>
+                        </HStack>
+                        {state.qos_dl ? (
+                            <HStack>
+                                <Image systemName="arrow.down" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemBlue")} />
+                                <Text foregroundStyle="secondaryLabel">下行 AMBR</Text>
+                                <Spacer />
+                                <Text fontWeight="semibold" foregroundStyle="systemBlue">{state.qos_dl}</Text>
+                            </HStack>
+                        ) : <></>}
+                        {state.qos_ul ? (
+                            <HStack>
+                                <Image systemName="arrow.up" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemTeal")} />
+                                <Text foregroundStyle="secondaryLabel">上行 AMBR</Text>
+                                <Spacer />
+                                <Text fontWeight="semibold" foregroundStyle="systemTeal">{state.qos_ul}</Text>
+                            </HStack>
+                        ) : <></>}
+                    </Section>
+                ) : <></>}
+
+                {/* 错误信息 */}
+                {error ? (
+                    <Section>
+                        <HStack spacing={4}>
+                            <Image systemName="exclamationmark.triangle.fill" font={12} frame={{ width: 14, height: 14 }} modifiers={modifiers().foregroundStyle("systemOrange")} />
+                            <Text font={12} foregroundStyle="systemOrange">{error}</Text>
+                        </HStack>
+                    </Section>
+                ) : null}
+
+                <Section>
+                    <Text font={11} foregroundStyle="secondaryLabel" monospacedDigit>更新于 {state.update_time}</Text>
+                </Section>
+            </List>
         </NavigationStack>
     );
 }
@@ -436,7 +546,7 @@ function SettingsView() {
     const [savedMsg, setSavedMsg] = useState<string | null>(null);
     const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [previewMsg, setPreviewMsg] = useState<string | null>(null);
-    const [showPassword, setShowPassword] = useState(true);
+    const [showPassword, setShowPassword] = useState(false);
 
     function doSave(): boolean {
         const urlV = url.trim();
@@ -487,17 +597,23 @@ function SettingsView() {
         }
     }
 
+    const [isPreviewing, setIsPreviewing] = useState(false);
+
     async function handlePreview(family: string) {
+        if (isPreviewing) return;
         if (!doSave()) {
             setPreviewMsg("预览失败：配置未能保存，请先确认保存配置成功");
             return;
         }
+        setIsPreviewing(true);
         try {
             setPreviewMsg("预览中…");
             await Widget.preview({ family: family as any });
             setPreviewMsg(null);
         } catch (e) {
             setPreviewMsg("预览失败: " + String((e as Error)?.message || e));
+        } finally {
+            setIsPreviewing(false);
         }
     }
 
@@ -564,7 +680,7 @@ function SettingsView() {
                     </HStack>
                 </Section>
 
-                <Section header={<Text>小组件预览</Text>}>
+                <Section header={<Text>小组件预览</Text>} footer={<Text>{isPreviewing ? "预览加载中，请稍候…" : "选择尺寸预览小组件效果"}</Text>}>
                     <HStack spacing={8}>
                         <Button title="Small" action={() => handlePreview("systemSmall")} />
                         <Button title="Medium" action={() => handlePreview("systemMedium")} />
