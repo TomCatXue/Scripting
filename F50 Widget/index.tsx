@@ -3,18 +3,20 @@
 // UI 设计参考 koldllc/f50-monitor 仓库的 iOS 三标签布局
 import {
     Script, Navigation, NavigationStack, List, Section, Text, Button,
-    TextField, SecureField, HStack, VStack, ZStack, Spacer, Image, Toolbar,
-    ToolbarItem, Rectangle, ScrollView, Label, useObservable, TabView, Tab,
+    TextField, SecureField, HStack, VStack, Spacer, Image, Toolbar,
+    ToolbarItem, useObservable, TabView, Tab,
     useState, ForEach, modifiers, Pasteboard,
 } from "scripting";
 import { readSetting, saveSetting, setSessionSettings, fetchSMSMessages, sendSMS, extractVerifyCode, SMSMessage } from "./api";
-import { fetchWidgetSnapshot, WidgetState, emptyState, readWidgetCache } from "./widget_data";
+import { fetchWidgetSnapshot, WidgetState, readWidgetCache } from "./widget_data";
 import { Widget } from "scripting";
 
 const DEFAULT_URL = "http://192.168.0.1:2333";
 
-// 同步预览锁（useState 是异步的，无法防重入）
+// 同步锁（useState 是异步的，无法防重入）
 let _previewLock = false;
+let _statusLoaded = false;
+let _smsLoaded = false;
 
 // ===================== 标签 1：状态页 =====================
 
@@ -38,9 +40,9 @@ function StatusView() {
         }
     }
 
-    // 首次加载
-    if (!state && !loading) {
-        setLoading(true);
+    // 首次加载（同步锁防止重复触发）
+    if (!state && !_statusLoaded) {
+        _statusLoaded = true;
         (async () => {
             const cached = readWidgetCache();
             if (cached) setState(cached);
@@ -268,15 +270,9 @@ function StatusView() {
                     </HStack>
                 </Section>
 
-                {/* QoS 指标 */}
-                {state.qci ? (
-                    <Section header={<Text>QoS 指标</Text>}>
-                        <HStack>
-                            <Image systemName="gauge.with.dots.needle.bottom.50percent" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemIndigo")} />
-                            <Text foregroundStyle="secondaryLabel">QCI</Text>
-                            <Spacer />
-                            <Text fontWeight="bold">{state.qci}</Text>
-                        </HStack>
+                {/* QoS 指标（AMBR，QCI 已在上方显示） */}
+                {(state.qos_dl || state.qos_ul) ? (
+                    <Section header={<Text>QoS 速率</Text>}>
                         {state.qos_dl ? (
                             <HStack>
                                 <Image systemName="arrow.down" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle("systemBlue")} />
@@ -337,8 +333,9 @@ function SMSView() {
         }
     }
 
-    // 首次加载
-    if (!loading && messages.length === 0 && !error) {
+    // 首次加载（同步锁防止重复触发）
+    if (!_smsLoaded) {
+        _smsLoaded = true;
         loadSMS();
     }
 
@@ -363,7 +360,18 @@ function SMSView() {
     // 会话详情视图
     if (selectedNumber) {
         const conv = conversations.find(c => c.number === selectedNumber);
-        if (!conv) { setSelectedNumber(null); return <></>; }
+        if (!conv) {
+            // 会话不存在时返回列表视图，不在此处 setState
+            return (
+                <NavigationStack navigationTitle="短信" navigationBarTitleDisplayMode="inline">
+                    <VStack alignment="center" spacing={12} frame={{ maxWidth: "infinity", maxHeight: "infinity" }}>
+                        <Image systemName="exclamationmark.triangle.fill" font={28} frame={{ width: 32, height: 32 }} modifiers={modifiers().foregroundStyle("systemOrange")} />
+                        <Text font={14} foregroundStyle="secondaryLabel">会话不存在</Text>
+                        <Button title="返回列表" action={() => setSelectedNumber(null)} />
+                    </VStack>
+                </NavigationStack>
+            );
+        }
 
         return (
             <NavigationStack>
