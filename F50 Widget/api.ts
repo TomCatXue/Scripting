@@ -67,6 +67,7 @@ function writeConfigFile(patch: Record<string, string>): boolean {
 
 // 会话级临时配置覆盖（仅供「测试连接」使用当前表单值，不落盘）
 let overrideSettings: { url?: string; password?: string; ztePassword?: string } | null = null;
+let routerSessionCookie: string | null = null;
 
 /** 设置 / 清除会话级配置覆盖（测试连接用） */
 export function setSessionSettings(cfg: { url?: string; password?: string; ztePassword?: string } | null): void {
@@ -656,10 +657,15 @@ async function performRouterLogin(): Promise<string | null> {
     const loginResp = await fetch(loginReq);
     // 从响应头提取 Set-Cookie
     const setCookie = loginResp.headers && loginResp.headers.get ? loginResp.headers.get("Set-Cookie") : null;
+    routerSessionCookie = null;
     if (setCookie) {
         const match = setCookie.match(/JSESSIONID=([^;]+)/);
-        if (match) return "JSESSIONID=" + match[1];
-        return setCookie;
+        if (match) {
+            routerSessionCookie = "JSESSIONID=" + match[1];
+            return routerSessionCookie;
+        }
+        routerSessionCookie = setCookie;
+        return routerSessionCookie;
     }
     // 登录成功但无 Cookie 时返回空字符串（部分固件用 session 而非 Cookie）
     return "";
@@ -679,13 +685,37 @@ export interface SMSMessage {
 /** 读取短信列表（通过 UFI 2333 端口 goform 接口） */
 export async function fetchSMSMessages(): Promise<SMSMessage[]> {
     const ts = Date.now();
-    const url = getKanoUrl() + GOFORM_GET_PATH
+    const routerUrl = getRouterBaseURL() + "/goform/goform_get_cmd_process"
+        + "?multi_data=1&isTest=false&cmd=sms_data_total&page=0&data_per_page=100&mem_store=1&tags=100&order_by=order%20by%20id%20desc&_=" + ts;
+    const ufiUrl = getKanoUrl() + GOFORM_GET_PATH
         + "?multi_data=1&isTest=false&cmd=sms_data_total&page=0&data_per_page=100&mem_store=1&tags=100&order_by=order%20by%20id%20desc&_=" + ts;
     const tokens = candidateTokens();
+    const errors: string[] = [];
+
+    // f50-monitor 显示 80 端口是最稳定的短信入口；这里保持它优先，避免 UFI 登录失败时误显示空列表。
+    try {
+        const req = new Request(routerUrl);
+        req.allowInsecureRequest = true;
+        req.method = "GET";
+        req.headers.set("Referer", getRouterBaseURL() + "/index.html");
+        if (routerSessionCookie) req.headers.set("Cookie", routerSessionCookie);
+        req.timeout = 10;
+        const resp = await fetch(req);
+        if (resp.status === 200) {
+            const json = await readJSONResponse(resp, "router-sms");
+            const messages = parseSMSMessages(json);
+            if (messages !== null) return messages;
+            errors.push("ZTE 80 端口返回无效短信数据");
+        } else {
+            errors.push("ZTE 80 端口 HTTP " + resp.status);
+        }
+    } catch (e) {
+        errors.push("ZTE 80 端口: " + String((e as Error)?.message || e));
+    }
 
     for (const token of tokens) {
         try {
-            const req = new Request(url);
+            const req = new Request(ufiUrl);
             req.allowInsecureRequest = true;
             req.method = "GET";
             applyHeaders(req, buildKanoHeadersWithToken("GET", GOFORM_GET_PATH, token));
@@ -693,33 +723,56 @@ export async function fetchSMSMessages(): Promise<SMSMessage[]> {
             const resp = await fetch(req);
             if (resp.status === 401 || resp.status === 403) continue;
             const json = await readJSONResponse(resp, "sms");
-            return parseSMSMessages(json);
+            const messages = parseSMSMessages(json);
+            if (messages !== null) return messages;
+            errors.push("UFI 短信接口返回无效数据");
         } catch (e) {
-            if (String(e).indexOf("401") >= 0) continue;
-            throw e;
+            if (String(e).indexOf("401") < 0) console.log("UFI SMS fetch fail:", String(e));
         }
     }
-    return [];
+    throw new Error("无法读取短信（所有通道失败）: " + errors.join("；"));
 }
 
-/** 解析短信 JSON 响应为 SMSMessage 列表 */
-function parseSMSMessages(json: any): SMSMessage[] {
+/** 解析短信 JSON 响应为 SMSMessage 列表；messages 字段缺失时返回 null 表示响应无效 */
+export function parseSMSMessages(json: any): SMSMessage[] | null {
     const messages: SMSMessage[] = [];
     const msgs = json && json.messages;
-    if (!Array.isArray(msgs)) return messages;
+    if (!Array.isArray(msgs)) return null;
     for (const row of msgs) {
         const id = String(row.id || "");
         if (!id) continue;
+        const encodedContent = String(row.content === undefined || row.content === null ? "" : row.content);
+        const decodedContent = decodeBase64Utf8(encodedContent);
         messages.push({
             id: id,
             number: String(row.number || ""),
-            content: String(row.content || ""),
-            dateText: String(row.date || ""),
+            content: decodedContent || encodedContent,
+            dateText: formatSMSDate(String(row.date || "")),
             isUnread: String(row.tag || "") === "1",
             isOutgoing: false,
         });
     }
     return messages;
+}
+
+/** atob 返回的是 Latin-1 字符串；短信内容是 UTF-8 字节，需要逐字节还原 */
+function decodeBase64Utf8(encoded: string): string {
+    const clean = String(encoded).replace(/[^A-Za-z0-9+/=]/g, "");
+    try {
+        const binary = atob(clean);
+        const bytes = new Uint8Array(binary.length);
+        for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+        return new TextDecoder("utf-8").decode(bytes);
+    } catch (_) {
+        return "";
+    }
+}
+
+/** 格式化固件短信时间：2026,08,13,14,25,09,+08 → 2026-08-13 14:25:09 */
+function formatSMSDate(raw: string): string {
+    const values = raw.split(",");
+    if (values.length < 6) return raw;
+    return values[0] + "-" + values[1] + "-" + values[2] + " " + values[3] + ":" + values[4] + ":" + values[5];
 }
 
 /** 发送短信（通过 root_shell Telephony service call） */

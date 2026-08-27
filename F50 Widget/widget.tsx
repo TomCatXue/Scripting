@@ -393,23 +393,10 @@ export function WidgetView({ data, error, family }: { data: WidgetState; error: 
       ? <LargeDashboard data={data} />
       : <MediumDashboard data={data} />;
 
-  // 无真实数据（无缓存且获取失败）时显示占位
-  const isEmpty = !data || !data.update_time || data.update_time === "--";
-
   return (
     <Button intent={RefreshF50WidgetIntent(undefined as any)} buttonStyle="plain">
       <VStack widgetBackground={widgetBg()} frame={{ maxWidth: "infinity", maxHeight: "infinity" }}>
-        {isEmpty
-          ? (
-            <VStack spacing={6} alignment="center" frame={{ maxWidth: "infinity", maxHeight: "infinity" }}>
-              <Image systemName="exclamationmark.icloud" frame={{ width: 28, height: 28 }} modifiers={modifiers().foregroundStyle("systemRed")} />
-              <Text font={11} fontWeight="semibold" modifiers={modifiers().foregroundStyle("label")}>
-                {error?.includes("未设置") ? "未配置密码" : (error ? "获取失败" : "F50 Widget")}
-              </Text>
-              <Text font={10} modifiers={modifiers().foregroundStyle("secondaryLabel")}>{error?.includes("未设置") ? "打开脚本配置" : "点击重试"}</Text>
-            </VStack>
-          )
-          : inner}
+        {inner}
       </VStack>
     </Button>
   );

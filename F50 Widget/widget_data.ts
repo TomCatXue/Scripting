@@ -222,10 +222,10 @@ function speedColor(bps: number): ColorName {
 
 function buildTrafficLimitPart(state: WidgetState, d: any, g: any): void {
     // 套餐总量：data_volume_limit_size + data_volume_limit_unit
-    const limitSize = toNum(pickRaw(g.data_volume_limit_size));
+    const limitSizeRaw = pickRaw(g.data_volume_limit_size);
     const limitUnit = pickRaw(g.data_volume_limit_unit, g.data_volume_limit_switch);
-    if (isNum(limitSize) && limitSize > 0) {
-        const limitBytes = parseTrafficLimit(limitSize, String(limitUnit || ""));
+    if (limitSizeRaw !== null) {
+        const limitBytes = parseTrafficLimit(String(limitSizeRaw), String(limitUnit || ""));
         if (limitBytes > 0) {
             const parts = splitByteText(formatBytes(limitBytes));
             state.traffic_limit_value = parts.value;
@@ -258,7 +258,7 @@ function buildTrafficLimitPart(state: WidgetState, d: any, g: any): void {
 
     // 使用比例 + 颜色
     if (state.traffic_limit_value !== "--") {
-        const limitBytes = parseTrafficLimit(limitSize, String(limitUnit || ""));
+        const limitBytes = parseTrafficLimit(String(limitSizeRaw), String(limitUnit || ""));
         const usedBytes = (isNum(monthlyRx) ? monthlyRx : 0) + (isNum(monthlyTx) ? monthlyTx : 0);
         if (limitBytes > 0 && usedBytes > 0) {
             state.traffic_ratio = Math.min(1, usedBytes / limitBytes);
@@ -274,15 +274,26 @@ function buildTrafficLimitPart(state: WidgetState, d: any, g: any): void {
     }
 }
 
-/** 解析流量限额（支持不同单位） */
-function parseTrafficLimit(size: number, unit: string): number {
-    if (size <= 0) return 0;
-    const u = String(unit).toLowerCase();
-    if (u.indexOf("gb") >= 0 || u === "1") return size * 1073741824;
-    if (u.indexOf("mb") >= 0 || u === "0") return size * 1048576;
-    if (u.indexOf("tb") >= 0) return size * 1099511627776;
-    // 默认按 GB
-    return size * 1073741824;
+/** 解析流量限额，兼容固件复合值（如 1000_1024）和已换算成字节的超大数值 */
+function parseTrafficLimit(sizeInput: string, unitInput: string): number {
+    const sizeStr = String(sizeInput === undefined || sizeInput === null ? "" : sizeInput).trim();
+    const unit = String(unitInput === undefined || unitInput === null ? "" : unitInput).trim().toLowerCase();
+    if (!sizeStr || sizeStr === "0" || sizeStr.toLowerCase() === "null" || sizeStr.toLowerCase() === "undefined") return 0;
+
+    const parts = sizeStr.split("_").map((part) => Number(part.trim())).filter((part) => isFinite(part));
+    if (parts.length >= 2 && parts[0] > 0 && parts[1] > 0) return parts[0] * parts[1] * 1048576;
+
+    const numValue = Number(sizeStr.replace(/[^0-9.\-]/g, ""));
+    if (!isFinite(numValue) || numValue <= 0) return 0;
+    let multiplier = 1000000000;
+    if (unit === "gb" || unit === "1" || unit === "g") multiplier = 1000000000;
+    else if (unit === "mb" || unit === "0" || unit === "m") multiplier = 1000000;
+    else if (unit === "tb" || unit === "2" || unit === "t") multiplier = 1000000000000;
+    else if (unit === "kb" || unit === "k") multiplier = 1000;
+    else if (unit === "data" || unit === "data_volume" || unit === "size") multiplier = numValue < 1000 ? 1000000000 : 1000000;
+    else if (numValue > 1000000000) multiplier = 1;
+    else if (numValue > 100000) multiplier = 1000;
+    return numValue * multiplier;
 }
 
 /** 从多个字段中解析重置日 */
@@ -509,9 +520,11 @@ function normNetType(v: any): string {
 function formatBytes(b: any): string {
     const n = toNum(b);
     if (!isNum(n) || n <= 0) return "--";
-    const gb = n / 1073741824;
+    const tb = n / 1000000000000;
+    if (tb >= 1) return tb.toFixed(tb >= 10 ? 1 : 2).replace(/\.0$/, "") + "TB";
+    const gb = n / 1000000000;
     if (gb >= 1) return gb.toFixed(gb >= 10 ? 1 : 2).replace(/\.0$/, "") + "GB";
-    const mb = n / 1048576;
+    const mb = n / 1000000;
     return mb.toFixed(mb >= 10 ? 0 : 1).replace(/\.0$/, "") + "MB";
 }
 
