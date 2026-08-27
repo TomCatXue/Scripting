@@ -13,6 +13,17 @@ import { Widget } from "scripting";
 
 const DEFAULT_URL = "http://192.168.0.1:2333";
 
+/** 信号质量评级 → cellularbars 阶梯填充（与小组件一致） */
+function signalQualityFill(quality: string): number {
+    switch (String(quality)) {
+        case "极佳": return 1;
+        case "良好": return 0.75;
+        case "一般": return 0.5;
+        case "较差": return 0.25;
+        default: return 0.05;
+    }
+}
+
 // 同步锁（useState 是异步的，无法防重入）
 let _previewLock = false;
 let _statusLoaded = false;
@@ -119,7 +130,7 @@ function StatusView() {
                     ) : <></>}
                     {state.signal_quality !== "--" ? (
                         <HStack>
-                            <Image systemName="checkmark.seal.fill" font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle(state.signal_quality_color)} />
+                            <Image systemName="cellularbars" variableValue={signalQualityFill(state.signal_quality)} font={14} frame={{ width: 18, height: 18 }} modifiers={modifiers().foregroundStyle(state.signal_quality_color)} />
                             <Text foregroundStyle="secondaryLabel">信号质量</Text>
                             <Spacer />
                             <Text fontWeight="bold" foregroundStyle={state.signal_quality_color}>{state.signal_quality}</Text>

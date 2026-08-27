@@ -45,6 +45,75 @@ async function testRouterSMSComesFirstAndDecodes(): Promise<void> {
     }]);
 }
 
+async function testRouterSMSRetriesAfterLogin(): Promise<void> {
+    setSessionSettings({ url: "http://192.168.0.1:2333", ztePassword: "smspwd" });
+    const requests: Array<{ url: string; method: string; cookie: string | null; body: string | null }> = [];
+    let smsAttempts = 0;
+    setMockFetch(async (req) => {
+        requests.push({
+            url: req.url,
+            method: req.method || "GET",
+            cookie: req.headers.get("Cookie") ?? null,
+            body: req.body ?? null,
+        });
+        if (String(req.url).includes("cmd=sms_data_total")) {
+            smsAttempts += 1;
+            if (smsAttempts === 1) {
+                // 未登录时固件只返回不含 messages 的响应
+                return { status: 200, text: async () => JSON.stringify({ result: "0" }) };
+            }
+            return {
+                status: 200,
+                text: async () => JSON.stringify({
+                    messages: [{
+                        id: "17",
+                        number: "10086",
+                        content: "6L+Z5piv5rex5bqm77yB",
+                        date: "2026,08,13,14,25,09,+08",
+                        tag: "1",
+                    }],
+                }),
+            };
+        }
+        if ((req.method || "GET") === "GET" && String(req.url).includes("cmd=LD")) {
+            return { status: 200, text: async () => JSON.stringify({ LD: "deadbeef01" }) };
+        }
+        if ((req.method || "GET") === "POST" && String(req.url).includes("goform_set_cmd_process")) {
+            return {
+                status: 200,
+                text: async () => "",
+                headers: { get: (name: string) => (name === "Set-Cookie" ? "JSESSIONID=smstest" : null) },
+            };
+        }
+        return { status: 599, text: async () => "" };
+    });
+
+    try {
+        const messages = await fetchSMSMessages();
+        assert.equal(smsAttempts, 2);
+        assert.equal(requests.length >= 4, true);
+        assert.equal(requests[0]?.cookie ?? null, null);
+        const login = requests.find((r) => (r.method === "POST") && r.url.includes("goform_set_cmd_process"));
+        assert.ok(login, "匿名 80 端口失败后应先登录再重试");
+        assert.equal(login.url.startsWith("http://192.168.0.1/goform/goform_set_cmd_process"), true);
+        assert.equal((login.body || "").includes("goformId=LOGIN"), true);
+        const retry = requests.filter((r) => r.url.includes("cmd=sms_data_total"))[1];
+        assert.equal(retry?.cookie ?? null, "JSESSIONID=smstest");
+        assert.deepEqual(messages, [{
+            id: "17",
+            number: "10086",
+            content: "这是深度！",
+            dateText: "2026-08-13 14:25:09",
+            isUnread: true,
+            isOutgoing: false,
+        }]);
+        const ufiCalled = requests.some((r) => r.url.startsWith("http://192.168.0.1:2333"));
+        assert.equal(ufiCalled, false);
+    } finally {
+        setSessionSettings(null);
+    }
+}
+
 function trafficState(size: any, unit?: string) {
     return buildState({}, {
         data_volume_limit_size: size,
@@ -85,7 +154,17 @@ function testTrafficUsesCarrierUnits(): void {
 
 function testEmptyAndLoadedWidgetsShareLayout(): void {
     const source = readFileSync(new URL("../widget.tsx", import.meta.url), "utf8");
-    assert.equal(/isEmpty\s*\?/.test(source), false);
+    // 还原 9a5dc77（8 月 23 日）的旧版小组件样式
+    assert.equal(/isEmpty\s*\?/.test(source), true);
+    assert.equal(source.includes("SpeedDisplay"), false);
+    assert.equal(source.includes("TrafficProgress"), false);
+}
+
+function testStatusSignalQualityUsesBarsIcon(): void {
+    const source = readFileSync(new URL("../index.tsx", import.meta.url), "utf8");
+    assert.equal(source.includes("checkmark.seal.fill"), false);
+    const barsCount = (source.match(/systemName="cellularbars"/g) || []).length;
+    assert.equal(barsCount >= 2, true);
 }
 
 function testEmptyStateIsStable(): void {
@@ -99,8 +178,10 @@ try {
     testCompoundValueDisplaysWithCarrierUnits();
     testTrafficUsesCarrierUnits();
     testEmptyAndLoadedWidgetsShareLayout();
+    testStatusSignalQualityUsesBarsIcon();
     await testRouterSMSComesFirstAndDecodes();
-    console.log("PASS 7 regression checks");
+    await testRouterSMSRetriesAfterLogin();
+    console.log("PASS 9 regression checks");
 } catch (error) {
     console.error((error as Error)?.stack || error);
     process.exitCode = 1;

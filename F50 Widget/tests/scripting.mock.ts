@@ -7,7 +7,11 @@ export function setMockFetch(impl: FetchMock): void {
 }
 
 export async function fetch(req: any): Promise<any> {
-    return await fetchImpl(req);
+    const resp = await fetchImpl(req);
+    if (resp && typeof resp.json !== "function") {
+        resp.json = async () => JSON.parse(await resp.text());
+    }
+    return resp;
 }
 
 export class Request {

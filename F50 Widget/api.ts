@@ -215,7 +215,7 @@ function getPassword(): string {
 
 /** 获取 ZTE 后台密码：会话覆盖 > 持久化配置 */
 function getZtePassword(): string {
-    const s = sessionValue("ztePassword");
+    const s = sessionValue("zte_password");
     if (s !== undefined) return s;
     return readSetting("zte_password", "");
 }
@@ -682,6 +682,19 @@ export interface SMSMessage {
     isOutgoing: boolean;
 }
 
+/** 请求一次 80 端口短信接口；固件未返回 messages 时返回 null（表示响应对短信无效） */
+async function requestRouterSMS(url: string, refererBase: string, cookie: string | null): Promise<SMSMessage[] | null> {
+    const req = new Request(url);
+    req.allowInsecureRequest = true;
+    req.method = "GET";
+    req.headers.set("Referer", refererBase + "/index.html");
+    if (cookie) req.headers.set("Cookie", cookie);
+    req.timeout = 10;
+    const resp = await fetch(req);
+    if (resp.status !== 200) throw new Error("HTTP " + resp.status);
+    return parseSMSMessages(await readJSONResponse(resp, "router-sms"));
+}
+
 /** 读取短信列表（通过 UFI 2333 端口 goform 接口） */
 export async function fetchSMSMessages(): Promise<SMSMessage[]> {
     const ts = Date.now();
@@ -689,28 +702,31 @@ export async function fetchSMSMessages(): Promise<SMSMessage[]> {
         + "?multi_data=1&isTest=false&cmd=sms_data_total&page=0&data_per_page=100&mem_store=1&tags=100&order_by=order%20by%20id%20desc&_=" + ts;
     const ufiUrl = getKanoUrl() + GOFORM_GET_PATH
         + "?multi_data=1&isTest=false&cmd=sms_data_total&page=0&data_per_page=100&mem_store=1&tags=100&order_by=order%20by%20id%20desc&_=" + ts;
+    const routerBase = getRouterBaseURL();
     const tokens = candidateTokens();
     const errors: string[] = [];
 
     // f50-monitor 显示 80 端口是最稳定的短信入口；这里保持它优先，避免 UFI 登录失败时误显示空列表。
     try {
-        const req = new Request(routerUrl);
-        req.allowInsecureRequest = true;
-        req.method = "GET";
-        req.headers.set("Referer", getRouterBaseURL() + "/index.html");
-        if (routerSessionCookie) req.headers.set("Cookie", routerSessionCookie);
-        req.timeout = 10;
-        const resp = await fetch(req);
-        if (resp.status === 200) {
-            const json = await readJSONResponse(resp, "router-sms");
-            const messages = parseSMSMessages(json);
-            if (messages !== null) return messages;
-            errors.push("ZTE 80 端口返回无效短信数据");
-        } else {
-            errors.push("ZTE 80 端口 HTTP " + resp.status);
-        }
+        const messages = await requestRouterSMS(routerUrl, routerBase, routerSessionCookie);
+        if (messages !== null) return messages;
+        errors.push("ZTE 80 端口返回无效短信数据");
     } catch (e) {
         errors.push("ZTE 80 端口: " + String((e as Error)?.message || e));
+    }
+
+    // 匿名读取被拒且已配置 ZTE 密码时：按参考仓库流程先登录，再带 Cookie 重试一次。
+    if (getZtePassword() !== "") {
+        try {
+            const cookie = await performRouterLogin();
+            if (cookie !== null) {
+                const messages = await requestRouterSMS(routerUrl, routerBase, cookie || null);
+                if (messages !== null) return messages;
+                errors.push("ZTE 80 登录后仍返回无效短信数据");
+            }
+        } catch (le) {
+            console.log("router sms login-retry fail:", String(le));
+        }
     }
 
     for (const token of tokens) {
