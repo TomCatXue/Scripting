@@ -256,16 +256,16 @@ function getRouterBaseURL(): string {
 function getBasicFields(): string[] {
     return [
         // 设备与网络
-        "model_name", "network_provider", "network_type", "network_signalbar",
+        "model_name", "network_provider", "network_type", "network_signalbar", "network_rssi",
         "network_information", "Lte_ca_status", "ppp_status", "loginfo",
         // 电池
         "battery_value", "battery_vol_percent", "battery_charging",
         // 5G 信号指标
-        "Z5g_rsrp", "Z5g_snr", "5g_rsrp", "5g_rsrq", "5g_snr",
+        "Z5g_rsrp", "Z5g_rsrq", "Z5g_snr", "5g_rsrp", "5g_rsrq", "5g_snr",
         // LTE 信号指标
         "lte_rsrp", "lte_rsrq", "lte_snr",
         // NR 信号指标（兼容字段名）
-        "nr_rsrp", "nr_rssi", "nr_rsrq", "Nr_rsrq", "nr_snr", "Nr_snr", "nr5g_rsrq", "nr5g_snr",
+        "nr_rsrp", "nr_rssi", "nr_rsrq", "Nr_rsrq", "nr_snr", "Nr_snr", "nr5g_rsrq", "nr5g_snr", "Nr_signal_strength", "sinr",
         // 频段
         "Nr_bands", "Lte_bands", "wan_active_band", "lte_band", "lte_ca_pcell_band",
         "nr5g_action_band", "nr5g_action_nsa_band", "ZCELLINFO_band", "Z5g_CELLINFO_band", "nr_ca_pcell_band",

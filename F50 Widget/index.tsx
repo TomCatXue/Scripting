@@ -24,6 +24,27 @@ function signalQualityFill(quality: string): number {
     }
 }
 
+/** 信号格 → cellularbars 填充比例（与小组件一致） */
+function signalBarFill(sig: string): number {
+    const n = parseInt(String(sig), 10);
+    if (!isFinite(n)) return 0;
+    if (n >= 4) return 1;
+    if (n === 3) return 0.75;
+    if (n === 2) return 0.5;
+    if (n === 1) return 0.25;
+    return 0.05;
+}
+
+/** 信号格动态着色（与小组件一致）：4 格绿 / 3 格青 / 2 格橙 / 1 格以下红 */
+function signalBarColor(sig: string): string {
+    const n = parseInt(String(sig), 10);
+    if (!isFinite(n)) return "secondaryLabel";
+    if (n >= 4) return "systemGreen";
+    if (n === 3) return "systemTeal";
+    if (n === 2) return "systemOrange";
+    return "systemRed";
+}
+
 // 同步锁（useState 是异步的，无法防重入）
 let _previewLock = false;
 let _statusLoaded = false;
@@ -105,7 +126,7 @@ function StatusView() {
                         <Image systemName="wifi.router.fill" font={16} frame={{ width: 22, height: 22 }} modifiers={modifiers().foregroundStyle("systemBlue")} />
                         <Text fontWeight="semibold">{state.model_name === "--" ? "未识别设备" : state.model_name}</Text>
                         <Spacer />
-                        <Image systemName="cellularbars" variableValue={state.signalbar === "--" ? 0 : Math.min(1, parseInt(state.signalbar) / 4)} font={16} frame={{ width: 20, height: 20 }} modifiers={modifiers().foregroundStyle("systemBlue")} />
+                        <Image systemName="cellularbars" variableValue={signalBarFill(state.signalbar)} font={16} frame={{ width: 20, height: 20 }} modifiers={modifiers().foregroundStyle(signalBarColor(state.signalbar))} />
                         <Text fontWeight="semibold" monospacedDigit>{state.signalbar === "--" ? "" : state.signalbar}</Text>
                     </HStack>
                     <HStack>

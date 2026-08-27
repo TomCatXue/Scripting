@@ -131,22 +131,62 @@ function buildBatteryPart(state: WidgetState, d: any, g: any): void {
     }
 }
 
+// 信号指标候选键（大小写不敏感，参考 f50-monitor 的 firstValidSignalValue）
+const RSRP_KEYS = ["nr_rsrp", "Z5g_rsrp", "5g_rsrp", "lte_rsrp", "Nr_signal_strength"];
+const RSRQ_KEYS = ["nr_rsrq", "Z5g_rsrq", "5g_rsrq", "lte_rsrq", "Nr_rsrq", "nr5g_rsrq"];
+const SNR_KEYS = ["nr_sinr", "5g_sinr", "lte_sinr", "sinr", "Nr_snr", "nr_snr", "Z5g_snr", "5g_snr", "lte_snr", "nr5g_snr"];
+const SIGNALBAR_KEYS = ["network_signalbar", "signalbar", "rssi", "network_rssi", "signal_bar", "signal_level", "signal_strength", "signal"];
+
+/** 从候选键中取第一个可解析的非零数值；跳过 null/空串/"0"（设备会把不适用的字段置 0/null） */
+function firstSignalValue(dict: any, keys: string[]): number | null {
+    const lower: Record<string, any> = {};
+    if (dict && typeof dict === "object") {
+        for (const k in dict) {
+            if (Object.prototype.hasOwnProperty.call(dict, k)) lower[k.toLowerCase()] = dict[k];
+        }
+    }
+    for (const key of keys) {
+        const raw = lower[key.toLowerCase()];
+        if (raw === undefined || raw === null || raw === "" || raw === "--") continue;
+        const n = toNum(raw);
+        if (!isFinite(n) || n === 0) continue;
+        return n;
+    }
+    return null;
+}
+
+/** 从候选键中取原始值（用于信号格，可能是 0~5 也可能是负数 dBm） */
+function pickSignalRaw(dict: any, keys: string[], ...fallbacks: any[]): any {
+    const lower: Record<string, any> = {};
+    if (dict && typeof dict === "object") {
+        for (const k in dict) {
+            if (Object.prototype.hasOwnProperty.call(dict, k)) lower[k.toLowerCase()] = dict[k];
+        }
+    }
+    for (const key of keys) {
+        const raw = lower[key.toLowerCase()];
+        if (raw !== undefined && raw !== null && raw !== "" && raw !== "--") return raw;
+    }
+    return pickRaw.apply(null, fallbacks);
+}
+
 function buildSignalPart(state: WidgetState, d: any, g: any): void {
     const provider = pick(g.network_provider, "--");
     const netType = normNetType(g.network_type);
     state.net_summary = provider === "--" && netType === "--" ? "-- --" : provider + " " + netType;
 
-    state.signalbar = pick(g.network_signalbar, g.signalbar, g.network_signal_bar, d.signalbar, d.signal_bars, "--");
+    const barRaw = pickSignalRaw(g, SIGNALBAR_KEYS, d.signalbar, d.signal_bars);
+    state.signalbar = barRaw === null || barRaw === undefined ? "--" : String(barRaw);
     const signalNumeric = toNum(state.signalbar);
     if (state.signalbar !== "--" && isNum(signalNumeric) && signalNumeric < 0) state.signalbar = signalBarsFromDbm(signalNumeric);
     if (state.signalbar === "--") {
-        const signalDbm = toNum(pickRaw(g.nr_rsrp, g.Z5g_rsrp, g.nr_rssi));
-        if (isNum(signalDbm)) state.signalbar = signalBarsFromDbm(signalDbm);
+        const signalDbm = firstSignalValue(g, RSRP_KEYS);
+        if (signalDbm !== null) state.signalbar = signalBarsFromDbm(signalDbm);
     }
 
-    state.rsrp_text = formatRsrp(pickRaw(g.Z5g_rsrp, g.nr_rsrp, g.nr_rssi));
-    state.rsrq_text = formatMetric(pickRaw(g.nr_rsrq, g.Nr_rsrq, g.nr5g_rsrq, g.lte_rsrq));
-    state.snr_text = formatMetric(pickRaw(g.Nr_snr, g.nr_snr, g.nr5g_snr, g.lte_snr));
+    state.rsrp_text = formatRsrp(firstSignalValue(g, RSRP_KEYS));
+    state.rsrq_text = formatMetric(firstSignalValue(g, RSRQ_KEYS));
+    state.snr_text = formatMetric(firstSignalValue(g, SNR_KEYS));
 
     state.ssid_text = pick(g.SSID1, "--");
     const unreadNum = parseInt(pickRaw(g.sms_unread_num), 10) || 0;
@@ -172,7 +212,20 @@ function buildTrafficWifiPart(state: WidgetState, d: any, g: any, wifiFreq: numb
     state.wifi_device_count = wifiCount > 0 ? String(wifiCount) : "0";
 
     state.band_text = buildBandText(g.Nr_bands, g.Lte_bands);
-    state.wifi_band_text = wifiFreq > 0 ? (wifiFreq >= 4000 ? "5G" : "2.4G") : "--";
+    const wifiBandRaw = pickRaw(g.wifi_band, g.wifi_band_text, d.wifi_band, d.wifi_band_text, g.wifi_bandwidth, d.wifi_freq, d.wifiFreq);
+    if (wifiBandRaw !== null && wifiBandRaw !== "") {
+        const freqNum = toNum(wifiBandRaw);
+        if (isNum(freqNum) && freqNum >= 2000) {
+            state.wifi_band_text = freqNum >= 4000 ? "5G" : "2.4G";
+        } else {
+            const bs = String(wifiBandRaw).toLowerCase();
+            if (bs.indexOf("5g") >= 0 || bs.indexOf("5ghz") >= 0 || bs === "5") state.wifi_band_text = "5G";
+            else if (bs.indexOf("2.4") >= 0 || bs.indexOf("2g") >= 0 || bs === "2") state.wifi_band_text = "2.4G";
+            else state.wifi_band_text = String(wifiBandRaw);
+        }
+    } else {
+        state.wifi_band_text = wifiFreq > 0 ? (wifiFreq >= 4000 ? "5G" : "2.4G") : "--";
+    }
 }
 
 function buildMemoryPart(state: WidgetState, memInfo: { total: number; available: number }): void {
@@ -332,9 +385,9 @@ function trafficRatioColor(ratio: number): ColorName {
 // ===================== 新增：信号质量评级 =====================
 
 function buildSignalQualityPart(state: WidgetState, g: any): void {
-    const rsrp = toNum(pickRaw(g.Z5g_rsrp, g.nr_rsrp, g["5g_rsrp"], g.lte_rsrp, g.nr_rssi));
-    const snr = toNum(pickRaw(g.Z5g_snr, g.nr_snr, g["5g_snr"], g.Nr_snr, g.lte_snr));
-    const rsrq = toNum(pickRaw(g.nr_rsrq, g.Nr_rsrq, g["5g_rsrq"], g.lte_rsrq));
+    const rsrp = firstSignalValue(g, RSRP_KEYS);
+    const snr = firstSignalValue(g, SNR_KEYS);
+    const rsrq = firstSignalValue(g, RSRQ_KEYS);
 
     // RSRP 评级：>=-85 极佳 / >=-95 良好 / >=-105 一般 / <-105 较差
     if (isNum(rsrp)) {

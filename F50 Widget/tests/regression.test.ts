@@ -165,6 +165,49 @@ function testStatusSignalQualityUsesBarsIcon(): void {
     assert.equal(source.includes("checkmark.seal.fill"), false);
     const barsCount = (source.match(/systemName="cellularbars"/g) || []).length;
     assert.equal(barsCount >= 2, true);
+    assert.equal(source.includes("signalBarColor(state.signalbar)"), true);
+}
+
+function signalState(g: any) {
+    return buildState({}, g, 0, { total: 0, available: 0 });
+}
+
+function testSignalFieldsUseReferenceAliases(): void {
+    const state = signalState({
+        "5G_rsrp": "-82",
+        "Z5g_rsrq": "-8",
+        "Nr_snr": "24",
+        rssi: "-82",
+        SSID1: "F50",
+    });
+    assert.equal(state.signalbar, "4");
+    assert.equal(state.rsrp_text, "-82dBm");
+    assert.equal(state.rsrq_text, "-8");
+    assert.equal(state.snr_text, "24");
+    assert.equal(state.signal_quality, "极佳");
+    assert.equal(state.signal_quality_color, "systemGreen");
+}
+
+function testSignalFieldsSkipZeroAndNull(): void {
+    const state = signalState({
+        nr_rsrp: null,
+        Z5g_rsrp: "0",
+        "5g_rsrp": "-95",
+        nr_snr: "0",
+        Nr_snr: "14",
+        SSID1: "F50",
+    });
+    assert.equal(state.rsrp_text, "-95dBm");
+    assert.equal(state.snr_text, "14");
+    assert.equal(state.signal_quality, "良好");
+    assert.equal(state.signal_quality_color, "systemBlue");
+}
+
+function testWifiBandTextFallsBackToDeviceInfo(): void {
+    const state = buildState({ wifi_band: "5G" }, {}, 0, { total: 0, available: 0 });
+    assert.equal(state.wifi_band_text, "5G");
+    const freqState = buildState({ wifi_freq: 5180 }, {}, 0, { total: 0, available: 0 });
+    assert.equal(freqState.wifi_band_text, "5G");
 }
 
 function testEmptyStateIsStable(): void {
@@ -179,9 +222,12 @@ try {
     testTrafficUsesCarrierUnits();
     testEmptyAndLoadedWidgetsShareLayout();
     testStatusSignalQualityUsesBarsIcon();
+    testSignalFieldsUseReferenceAliases();
+    testSignalFieldsSkipZeroAndNull();
+    testWifiBandTextFallsBackToDeviceInfo();
     await testRouterSMSComesFirstAndDecodes();
     await testRouterSMSRetriesAfterLogin();
-    console.log("PASS 9 regression checks");
+    console.log("PASS 12 regression checks");
 } catch (error) {
     console.error((error as Error)?.stack || error);
     process.exitCode = 1;
