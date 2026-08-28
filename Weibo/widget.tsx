@@ -13,8 +13,8 @@ import {
 } from 'scripting'
 import { useSettings } from './store/settings'
 
-// 版本标记：桌面上能看到 "v10" 说明加载的是最新代码
-const WIDGET_VERSION = 'v10'
+// 版本标记：桌面上能看到 "v11" 说明加载的是最新代码
+const WIDGET_VERSION = 'v11'
 
 function WidgetView({ list }: { list: any[] }) {
   const [settings] = useSettings()
@@ -38,8 +38,10 @@ function WidgetView({ list }: { list: any[] }) {
   const now = new Date()
 
   // 深链方案：点击 → 打开 Scripting 运行本脚本 → index.tsx 主 App 环境 Safari.openURL 跳微博
-  // 搜索词用 item.word（API 已智能区分：话题类带 #，普通词不带 #），
-  // 这样“有话题走话题、没话题不带 #”，搜索词自动与其话题属性一致。
+  // 自动识别话题：优先取 API 的 item.word。微博 API 已按条目区分——
+  // 话题类 word 带 #（如 #xxx#），普通词不带 #。
+  // 这样“有话题走话题（带#）、没话题不带 #”，搜索词与话题属性一致。
+  // 注意：桌面小组件是快照，改动后必须刷新 Widget 才会用新链接。
   const getItemLink = useCallback((item: any) => {
     const word = item.word || item.title || ''
     const url = `https://m.weibo.cn/search?containerid=${encodeURIComponent('100103type=1&t=10&q=' + word)}`
@@ -88,7 +90,7 @@ function WidgetView({ list }: { list: any[] }) {
             </HStack>
           </Link>
           {i === 0 ? (
-            // 时钟仅作展示 + 版本标记（v10 = 最新代码）
+            // 时钟仅作展示 + 版本标记（v11 = 最新代码）
             <HStack spacing={2}>
               <Image
                 systemName='clock.arrow.circlepath'
