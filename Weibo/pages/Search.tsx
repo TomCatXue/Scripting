@@ -12,9 +12,9 @@ export default function Search({ url }: { url: string }) {
       controller.evaluateJavaScript(`
         const style = document.createElement('style');
         style.innerHTML = \`
-          /** 隐藏相关搜索
+          /* 隐藏相关搜索 */
           .card.card11 { display: none !important; }
-          /** 隐藏底部评论输入 */
+          /* 隐藏底部评论输入 */
           .m-tab-bar.m-bar-panel.m-container-max { display: none !important; }
           ${css}
         \`;
