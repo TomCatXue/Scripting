@@ -22,10 +22,10 @@ function View() {
     setLoading(false)
   }, [])
 
-  // 构建搜索页 URL：用 title（不带 #），与小组件跳转保持一致——
-  // 带 # 话题符的词在微博搜索里会被当作话题处理，结果经常对不上。
+  // 构建搜索页 URL：用 item.word（API 已智能区分话题带 # / 普通词不带 #），
+  // 与小组件跳转保持一致——有话题走话题、没话题不带 #。
   const getItemURL = (item: Weibo.HotSearchItem) => {
-    const word = item.title || item.word || ''
+    const word = item.word || item.title || ''
     return `https://m.weibo.cn/search?containerid=${encodeURIComponent('100103type=1&t=10&q=' + word)}`
   }
 

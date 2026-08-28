@@ -11,6 +11,7 @@ export default function HotSearch({ data }: { data: Weibo.HotSearchItem }) {
       <Text
         fontWeight='bold'
         foregroundStyle={isTop ? '#fe4f67' : '#f5c94c'}
+        frame={{ width: 26 }}
       >{rank}</Text>
       <Text>{data.title}</Text>
       {iconUrl ? (

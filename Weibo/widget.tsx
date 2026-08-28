@@ -13,8 +13,8 @@ import {
 } from 'scripting'
 import { useSettings } from './store/settings'
 
-// 版本标记：桌面上能看到 "v9" 说明加载的是最新代码
-const WIDGET_VERSION = 'v9'
+// 版本标记：桌面上能看到 "v10" 说明加载的是最新代码
+const WIDGET_VERSION = 'v10'
 
 function WidgetView({ list }: { list: any[] }) {
   const [settings] = useSettings()
@@ -33,13 +33,15 @@ function WidgetView({ list }: { list: any[] }) {
     const size = (settings.fontSize * 12) / 14
     return { width: size, height: size }
   }, [settings.fontSize])
+  // 序号列固定宽度：个位数/两位数宽度不同会导致标题起始位置参差
+  const rankWidth = settings.fontSize * 1.8
   const now = new Date()
 
   // 深链方案：点击 → 打开 Scripting 运行本脚本 → index.tsx 主 App 环境 Safari.openURL 跳微博
-  // 搜索词用 title（不带 #）：带 # 的话题词在微博 App 里会被当作“话题”处理，
-  // 搜索结果经常对不上（点 A 搜出来不像 A）；点哪条就搜哪条的标题最稳定。
+  // 搜索词用 item.word（API 已智能区分：话题类带 #，普通词不带 #），
+  // 这样“有话题走话题、没话题不带 #”，搜索词自动与其话题属性一致。
   const getItemLink = useCallback((item: any) => {
-    const word = item.title || item.word || ''
+    const word = item.word || item.title || ''
     const url = `https://m.weibo.cn/search?containerid=${encodeURIComponent('100103type=1&t=10&q=' + word)}`
     return Script.createRunURLScheme(Script.name, { action: 'open', url, word })
   }, [])
@@ -64,6 +66,7 @@ function WidgetView({ list }: { list: any[] }) {
                 font={settings.fontSize}
                 fontWeight='bold'
                 foregroundStyle={item.itemid <= 3 ? '#fe4f67' : '#f5c94c'}
+                frame={{ width: rankWidth }}
               >
                 {item.itemid}
               </Text>
@@ -85,7 +88,7 @@ function WidgetView({ list }: { list: any[] }) {
             </HStack>
           </Link>
           {i === 0 ? (
-            // 时钟仅作展示 + 版本标记（v9 = 最新代码）
+            // 时钟仅作展示 + 版本标记（v10 = 最新代码）
             <HStack spacing={2}>
               <Image
                 systemName='clock.arrow.circlepath'
@@ -122,6 +125,7 @@ function WidgetView({ list }: { list: any[] }) {
                   font={settings.fontSize}
                   fontWeight='bold'
                   foregroundStyle={item.itemid <= 3 ? '#fe4f67' : '#f5c94c'}
+                  frame={{ width: rankWidth }}
                 >
                   {item.itemid}
                 </Text>
