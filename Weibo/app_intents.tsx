@@ -25,17 +25,25 @@ export const IntentOpenSearch = AppIntentManager.register({
       const keyword = word || ''
       const h5Url = `https://m.weibo.cn/search?containerid=${encodeURIComponent('100103type=1&t=10&q=' + keyword)}`
 
-      const isH5 = getClient() === 'h5'
-      const url = isH5
-        ? h5Url
-        : `weibointernational://searchall?q=${encodeURIComponent(keyword)}`
-
-      const opened = await Safari.openURL(url)
-      if (!opened) {
-        // 国际版 App 未安装等场景：scheme 无法处理，回退 Safari 打开网页版
-        console.log('scheme not handled, fallback to h5:', url)
+      if (getClient() === 'h5') {
         await Safari.openURL(h5Url)
+        return
       }
+
+      // 依次尝试国际版/国内版/极速版深链，命中即返回；
+      // 全部失败再回退 Safari 打开网页版。
+      const q = encodeURIComponent(keyword)
+      for (const link of [
+        `weibointernational://searchall?q=${q}`,
+        `sinaweibo://searchall?q=${q}`,
+        `weibolite://searchall?q=${q}`,
+      ]) {
+        const opened = await Safari.openURL(link)
+        if (opened) return
+      }
+
+      console.log('all schemes not handled, fallback to h5')
+      await Safari.openURL(h5Url)
     } catch (e) {
       console.log('IntentOpenSearch error', e)
       const keyword = word || ''
@@ -55,12 +63,15 @@ export const IntentOpenHotSearch = AppIntentManager.register({
       // 注意：filter_type=realtimehot 参数会导致 404，已去掉
       const h5Url = `https://m.weibo.cn/p/index?containerid=106003`
 
-      const isH5 = getClient() === 'h5'
-      const url = isH5 ? h5Url : 'weibointernational://hotsearch'
+      if (getClient() === 'h5') {
+        await Safari.openURL(h5Url)
+        return
+      }
 
-      const opened = await Safari.openURL(url)
+      // 热搜总榜仅国际版有验证过的深链，失败回退网页版
+      const opened = await Safari.openURL('weibointernational://hotsearch')
       if (!opened) {
-        console.log('scheme not handled, fallback to h5:', url)
+        console.log('scheme not handled, fallback to h5')
         await Safari.openURL(h5Url)
       }
     } catch (e) {

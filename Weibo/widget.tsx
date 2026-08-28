@@ -13,8 +13,8 @@ import {
 } from 'scripting'
 import { useSettings } from './store/settings'
 
-// 版本标记：桌面上能看到 "v7" 说明加载的是最新代码
-const WIDGET_VERSION = 'v7'
+// 版本标记：桌面上能看到 "v8" 说明加载的是最新代码
+const WIDGET_VERSION = 'v8'
 
 function WidgetView({ list }: { list: any[] }) {
   const [settings] = useSettings()
@@ -36,8 +36,10 @@ function WidgetView({ list }: { list: any[] }) {
   const now = new Date()
 
   // 深链方案：点击 → 打开 Scripting 运行本脚本 → index.tsx 主 App 环境 Safari.openURL 跳微博
+  // 搜索词用 title（不带 #）：带 # 的话题词在微博 App 里会被当作“话题”处理，
+  // 搜索结果经常对不上（点 A 搜出来不像 A）；点哪条就搜哪条的标题最稳定。
   const getItemLink = useCallback((item: any) => {
-    const word = item.word || item.title || ''
+    const word = item.title || item.word || ''
     const url = `https://m.weibo.cn/search?containerid=${encodeURIComponent('100103type=1&t=10&q=' + word)}`
     return Script.createRunURLScheme(Script.name, { action: 'open', url, word })
   }, [])
@@ -78,7 +80,7 @@ function WidgetView({ list }: { list: any[] }) {
             </HStack>
           </Link>
           {i === 0 ? (
-            // 时钟仅作展示 + 版本标记（v7 = 最新代码）
+            // 时钟仅作展示 + 版本标记（v8 = 最新代码）
             <HStack spacing={2}>
               <Image
                 systemName='clock.arrow.circlepath'

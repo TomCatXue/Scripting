@@ -22,9 +22,10 @@ function View() {
     setLoading(false)
   }, [])
 
-  // 构建搜索页 URL：直接使用 word，避免对 scheme 做脆弱的字符串切分
+  // 构建搜索页 URL：用 title（不带 #），与小组件跳转保持一致——
+  // 带 # 话题符的词在微博搜索里会被当作话题处理，结果经常对不上。
   const getItemURL = (item: Weibo.HotSearchItem) => {
-    const word = item.word || item.title || ''
+    const word = item.title || item.word || ''
     return `https://m.weibo.cn/search?containerid=${encodeURIComponent('100103type=1&t=10&q=' + word)}`
   }
 
@@ -78,14 +79,33 @@ const run = async () => {
     const url = params.url || ''
     const word = params.word || ''
     try {
-      // 主 App 环境 Storage 可靠；国际版优先用深链直接唤起微博国际版
-      const settings = Storage.get<any>('settings')
-      if (settings?.client === 'international') {
-        // 有 word → 打开搜索；无 word（Logo）→ 打开热搜总榜
-        const deepLink = word
-          ? 'weibointernational://searchall?q=' + encodeURIComponent(word)
-          : 'weibointernational://hotsearch'
-        const opened = await Safari.openURL(deepLink)
+      // 读取设置；未保存过时默认国际版（与 widget 展示的默认值一致）。
+      // 注意：不能依赖 settings 存在，否则为 null 时会跳过深链、误走 h5 网页兜底。
+      let client = 'international'
+      try {
+        const settings = Storage.get<any>('settings')
+        if (settings?.client) client = settings.client
+      } catch (e) {}
+
+      // 深链候选：先按设置（h5 则不尝试），再补其它微博版本作为备选。
+      // 例如设备装的是国内版（sinaweibo://）时，国际版深链会失败，
+      // 备选能保证“点到哪条就搜哪条”。
+      const q = encodeURIComponent(word)
+      const candidates: string[] = []
+      if (word) {
+        if (client !== 'h5') {
+          candidates.push(`weibointernational://searchall?q=${q}`)
+          candidates.push(`sinaweibo://searchall?q=${q}`)
+          candidates.push(`weibolite://searchall?q=${q}`)
+        }
+      } else {
+        // Logo：热搜总榜（仅国际版有验证过的深链，失败走 https 兜底）
+        if (client !== 'h5') {
+          candidates.push('weibointernational://hotsearch')
+        }
+      }
+      for (const link of [...new Set(candidates)]) {
+        const opened = await Safari.openURL(link)
         if (opened) {
           Script.exit()
           return

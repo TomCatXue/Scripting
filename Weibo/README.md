@@ -8,7 +8,7 @@
 
 - 实时微博热搜榜：前 3 名红色高亮，其余金色角标
 - 条目自动带热度角标图（热 / 新 / 沸 等）
-- 右上角显示时钟 + 版本标记（桌面上能看到 `v7` 说明加载的是最新代码）
+- 右上角显示时钟 + 版本标记（桌面上能看到 `v8` 说明加载的是最新代码）
 - 点击条目 → 按设置跳转（微博国际版深链 / H5 网页兜底）
 - 点击右下角 Logo → 打开热搜总榜
 - 可自定义字号、行距、配色、背景、图标染色模式
@@ -47,10 +47,11 @@ https://github.com/TomCatXue/Scripting/tree/main/Weibo
 
 点击小组件条目 → 通过 `Script.createRunURLScheme` 唤起本脚本（带 `action=open` 参数）→ 主 App 环境根据 `client` 设置选择跳转方式：
 
-- `international`：`weibointernational://searchall?q=…` 深链唤起微博国际版
-- `h5` / 深链失败：`Safari.openURL` 打开 `m.weibo.cn` 网页版兜底
+- 未设置 / `international`：依次尝试 `weibointernational://searchall?q=…` → `sinaweibo://searchall?q=…` → `weibolite://searchall?q=…`，任一成功即打开对应搜索
+- `h5`：直接 `Safari.openURL` 打开 `m.weibo.cn` 网页版
+- 深链全部失败：`Safari.openURL` 打开 `m.weibo.cn` 网页版兜底（注意 m.weibo.cn 会先经过微博访客认证页）
 
-AppIntent（`app_intents.tsx`）提供相同的跳转逻辑，并带失败回退与 `Widget.reloadAll()`。
+AppIntent（`app_intents.tsx`）提供相同的跳转逻辑（默认国际版 + 多版本备选 + 失败回退），并带 `Widget.reloadAll()`。
 
 ## 作者
 
