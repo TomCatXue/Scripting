@@ -1,0 +1,42 @@
+{
+  "entry" : "index.tsx",
+  "contributors" : [
+
+  ],
+  "name" : "Weibo",
+  "permissions" : null,
+  "color" : "rgba(238, 92, 98,1)",
+  "author" : {
+    "name" : "Jackie",
+    "email" : "Honye@github.com",
+    "homepage" : "https:\/\/t.me\/iiMarkr"
+  },
+  "intentInputTypes" : [
+
+  ],
+  "description" : null,
+  "icon" : "doc.text.magnifyingglass",
+  "localizedNames" : {
+    "zh" : "微博热搜",
+    "en" : "Weibo"
+  },
+  "remoteResource" : {
+    "autoUpdateInterval" : null,
+    "hash" : "",
+    "url" : "https:\/\/github.com\/TomCatXue\/Scripting\/tree\/main\/Weibo"
+  },
+  "version" : "1.1.0",
+  "runInApp" : false,
+  "localizedDescriptions" : {
+    "ja" : "",
+    "de" : "",
+    "fr" : "",
+    "en" : "",
+    "zh" : "",
+    "es" : "",
+    "ru" : "",
+    "it" : "",
+    "pt" : ""
+  },
+  "iconImage" : null
+}

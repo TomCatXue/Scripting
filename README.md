@@ -7,6 +7,7 @@
 | 脚本 | 说明 | 尺寸 | 订阅链接 |
 |---|---|---|---|
 | [F50 Widget](./F50%20Widget) | ZTE F50（UFI-TOOLS）网络状态小组件 + 三标签应用（状态 / 短信 / 设置）：双端口轮询（80 匿名 + 2333 签名）+ 候选 Token 轮询；实时上下行速率、套餐流量进度条与重置倒计时、信号质量评级、QoS 指标；短信会话列表、验证码提取与一键复制、写短信；小组件支持 Small / Medium / Large 三种尺寸、点击刷新与离线缓存 | Small / Medium / Large | `https://github.com/TomCatXue/Scripting/tree/main/F50%20Widget` |
+| [Weibo](./Weibo) | 微博热搜小组件 + 热搜应用：实时热搜榜（热度角标、前 3 高亮）、右上角时钟与版本标记、点击条目按设置跳转（微博国际版深链 / H5 兜底）、点击 Logo 打开热搜总榜；App 内热搜列表（下拉刷新）、WebView 搜索页（深色样式适配）、设置页（字号 / 配色 / 背景 / 图标染色自定义） | Small / Medium / Large | `https://github.com/TomCatXue/Scripting/tree/main/Weibo` |
 
 ## 目录结构
 
@@ -14,14 +15,26 @@
 Scripting/
 ├── README.md          # 本文件
 ├── WIDGET_GUIDE.md    # 小组件开发指南（创建/调试/审查）
-└── F50 Widget/        # 脚本 1：F50 Widget
+├── F50 Widget/        # 脚本 1：F50 Widget
+│   ├── script.json    # 项目配置（含订阅 remoteResource）
+│   ├── index.tsx      # 入口（TabView 三标签：状态页/短信页/设置页）
+│   ├── widget.tsx     # 小组件 UI（Small / Medium / Large，含速率/进度条/信号评级/QoS）
+│   ├── widget_data.ts # 数据组装与缓存（双端口合并、速率/流量限额/信号评级/QoS）
+│   ├── api.ts         # UFI-TOOLS / ZTE 网络层（双端口轮询、签名、登录、SMS 收发、QoS、验证码提取）
+│   ├── app_intents.tsx# 点击刷新 AppIntent
+│   ├── icons/         # 脚本图标（透明 PNG，多尺寸）
+│   └── README.md      # 脚本配置说明
+└── Weibo/             # 脚本 2：微博热搜
     ├── script.json    # 项目配置（含订阅 remoteResource）
-    ├── index.tsx      # 入口（TabView 三标签：状态页/短信页/设置页）
-    ├── widget.tsx     # 小组件 UI（Small / Medium / Large，含速率/进度条/信号评级/QoS）
-    ├── widget_data.ts # 数据组装与缓存（双端口合并、速率/流量限额/信号评级/QoS）
-    ├── api.ts         # UFI-TOOLS / ZTE 网络层（双端口轮询、签名、登录、SMS 收发、QoS、验证码提取）
-    ├── app_intents.tsx# 点击刷新 AppIntent
-    ├── icons/         # 脚本图标（透明 PNG，多尺寸）
+    ├── index.tsx      # 入口（热搜列表 + 深链跳转）
+    ├── widget.tsx     # 小组件 UI（热搜榜 + 时钟/版本 + Logo）
+    ├── app_intents.tsx# 点击跳转 AppIntent（国际版深链 / H5 兜底）
+    ├── intent.tsx     # 快捷指令 Intent 调试页
+    ├── apis/          # 网络层（weibo.ts 热搜接口）
+    ├── components/    # 列表行组件（HotSearch.tsx）
+    ├── pages/         # 页面（Search WebView / Settings）
+    ├── store/         # 设置状态管理（settings.ts）
+    ├── styles/        # 搜索页深色样式（dark.css）
     └── README.md      # 脚本配置说明
 ```
 

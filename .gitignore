@@ -13,3 +13,6 @@ dist/
 *.tmp
 .idea/
 .vscode/
+
+# 本地参考项目（含独立 .git，不推送）
+.comparison/
