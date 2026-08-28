@@ -13,8 +13,8 @@ import {
 } from 'scripting'
 import { useSettings } from './store/settings'
 
-// 版本标记：桌面上能看到 "v8" 说明加载的是最新代码
-const WIDGET_VERSION = 'v8'
+// 版本标记：桌面上能看到 "v9" 说明加载的是最新代码
+const WIDGET_VERSION = 'v9'
 
 function WidgetView({ list }: { list: any[] }) {
   const [settings] = useSettings()
@@ -53,7 +53,7 @@ function WidgetView({ list }: { list: any[] }) {
   return (
     <VStack padding={{ horizontal: 14, vertical: paddingY }} frame={Widget.displaySize} spacing={0} widgetBackground={settings.background}>
       {list.slice(0, count - logoLines).map((item, i) => (
-        <HStack alignment='top'>
+        <HStack alignment='top' frame={{ height: itemHeight }}>
           <Link key={item.itemid} buttonStyle='plain' url={getItemLink(item)}>
             <HStack
               key={item.itemid}
@@ -67,7 +67,12 @@ function WidgetView({ list }: { list: any[] }) {
               >
                 {item.itemid}
               </Text>
-              <Text font={settings.fontSize} foregroundStyle={settings.color}>
+              <Text
+                font={settings.fontSize}
+                foregroundStyle={settings.color}
+                lineLimit={1}
+                truncationMode='tail'
+              >
                 {item.title}
               </Text>
               <Image
@@ -80,7 +85,7 @@ function WidgetView({ list }: { list: any[] }) {
             </HStack>
           </Link>
           {i === 0 ? (
-            // 时钟仅作展示 + 版本标记（v8 = 最新代码）
+            // 时钟仅作展示 + 版本标记（v9 = 最新代码）
             <HStack spacing={2}>
               <Image
                 systemName='clock.arrow.circlepath'
@@ -105,7 +110,7 @@ function WidgetView({ list }: { list: any[] }) {
         </HStack>
       ))}
       <HStack alignment='bottom'>
-        <VStack spacing={0}>
+        <VStack spacing={0} frame={{ height: itemHeight * logoLines }}>
           {list.slice(count - logoLines, count).map((item, i) => (
             <Link key={item.itemid} buttonStyle='plain' url={getItemLink(item)}>
               <HStack
@@ -120,7 +125,12 @@ function WidgetView({ list }: { list: any[] }) {
                 >
                   {item.itemid}
                 </Text>
-                <Text font={settings.fontSize} foregroundStyle={settings.color}>
+                <Text
+                  font={settings.fontSize}
+                  foregroundStyle={settings.color}
+                  lineLimit={1}
+                  truncationMode='tail'
+                >
                   {item.title}
                 </Text>
                 <Image
