@@ -13,8 +13,8 @@ import {
 } from 'scripting'
 import { useSettings } from './store/settings'
 
-// 版本标记：桌面上能看到 "v12" 说明加载的是最新代码
-const WIDGET_VERSION = 'v12'
+// 版本标记：桌面上能看到 "v13" 说明加载的是最新代码
+const WIDGET_VERSION = 'v13'
 
 function WidgetView({ list }: { list: any[] }) {
   const [settings] = useSettings()
@@ -48,10 +48,13 @@ function WidgetView({ list }: { list: any[] }) {
   }, [])
 
   // Logo 链接：打开热搜总榜（filter_type=realtimehot 参数会 404，已去掉）
+  // 方案 A：Link 直指微博 URL，由系统直接处理，不再绕道 Scripting App
   const hotSearchLink = useMemo(() => {
-    const url = `https://m.weibo.cn/p/index?containerid=106003`
-    return Script.createRunURLScheme(Script.name, { action: 'open', url })
-  }, [])
+    const h5Url = `https://m.weibo.cn/p/index?containerid=106003`
+    return settings.client === 'international'
+      ? 'weibointernational://hotsearch'
+      : h5Url
+  }, [settings.client])
 
   return (
     <VStack padding={{ horizontal: 14, vertical: paddingY }} frame={Widget.displaySize} spacing={0} widgetBackground={settings.background}>
