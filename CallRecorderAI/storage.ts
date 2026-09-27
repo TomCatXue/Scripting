@@ -5,21 +5,29 @@ const STORAGE_KEY_RECORDS = "call_recorder_ai_records_v1";
 const STORAGE_KEY_SETTINGS = "call_recorder_ai_settings_v1";
 
 // 内存后备，确保在 Node.js 单测环境中亦可顺畅运行
-const memoryFallback: Record<string, string> = {};
+const memoryFallback: Record<string, any> = {};
 
-function getStorageItem(key: string): string | null {
-  if (typeof Storage !== "undefined" && typeof Storage.getItem === "function") {
-    return Storage.getItem(key);
+function getStorageItem<T>(key: string): T | null {
+  if (typeof Storage !== "undefined" && typeof Storage.get === "function") {
+    try {
+      return Storage.get<T>(key);
+    } catch {
+      return null;
+    }
   }
   return memoryFallback[key] ?? null;
 }
 
-function setStorageItem(key: string, value: string): void {
-  if (typeof Storage !== "undefined" && typeof Storage.setItem === "function") {
-    Storage.setItem(key, value);
-  } else {
-    memoryFallback[key] = value;
+function setStorageItem<T>(key: string, value: T): void {
+  if (typeof Storage !== "undefined" && typeof Storage.set === "function") {
+    try {
+      Storage.set(key, value);
+      return;
+    } catch {
+      // 降级写入内存
+    }
   }
+  memoryFallback[key] = value;
 }
 
 /**
@@ -27,9 +35,8 @@ function setStorageItem(key: string, value: string): void {
  */
 export function getAllRecords(): CallRecord[] {
   try {
-    const raw = getStorageItem(STORAGE_KEY_RECORDS);
-    if (!raw) return [];
-    const list: CallRecord[] = JSON.parse(raw);
+    const list = getStorageItem<CallRecord[]>(STORAGE_KEY_RECORDS);
+    if (!list) return [];
     return Array.isArray(list) ? list.sort((a, b) => b.createdAt - a.createdAt) : [];
   } catch (err) {
     console.error("读取通话记录列表失败:", err);
@@ -51,7 +58,7 @@ export function getRecordById(id: string): CallRecord | null {
 export function saveRecord(record: CallRecord): void {
   const records = getAllRecords().filter((r) => r.id !== record.id);
   records.unshift(record);
-  setStorageItem(STORAGE_KEY_RECORDS, JSON.stringify(records));
+  setStorageItem(STORAGE_KEY_RECORDS, records);
 }
 
 /**
@@ -72,22 +79,17 @@ export function deleteRecord(id: string): void {
   }
 
   const filtered = getAllRecords().filter((r) => r.id !== id);
-  setStorageItem(STORAGE_KEY_RECORDS, JSON.stringify(filtered));
+  setStorageItem(STORAGE_KEY_RECORDS, filtered);
 }
 
 /**
  * 获取全局 AI 配置
  */
 export function getAISettings(): AISettings {
-  try {
-    const raw = getStorageItem(STORAGE_KEY_SETTINGS);
-    if (raw) {
-      return JSON.parse(raw);
-    }
-  } catch {
-    // 降级使用默认设置
+  const settings = getStorageItem<AISettings>(STORAGE_KEY_SETTINGS);
+  if (settings && typeof settings === "object") {
+    return settings;
   }
-
   return { ...DEFAULT_AI_SETTINGS };
 }
 
@@ -95,5 +97,5 @@ export function getAISettings(): AISettings {
  * 保存全局 AI 配置
  */
 export function saveAISettings(settings: AISettings): void {
-  setStorageItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+  setStorageItem(STORAGE_KEY_SETTINGS, settings);
 }

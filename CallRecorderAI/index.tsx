@@ -5,13 +5,15 @@ import {
 import {
   Navigation,
   NavigationStack,
+  List,
+  Section,
   VStack,
   HStack,
   Text,
   Button,
-  ScrollView,
   Spacer,
-  Script
+  Script,
+  DocumentPicker
 } from "scripting";
 import type { CallRecord } from "./types";
 import { getAllRecords, saveRecord, deleteRecord } from "./storage";
@@ -31,9 +33,14 @@ function formatDate(ts: number): string {
 
 export function MainListView() {
   const [records, setRecords] = useState<CallRecord[]>([]);
+  const [isProcessing, setIsProcessing] = useState<boolean>(false);
 
   const loadData = () => {
-    setRecords(getAllRecords());
+    try {
+      setRecords(getAllRecords());
+    } catch (e) {
+      console.error("加载列表失败:", e);
+    }
   };
 
   useEffect(() => {
@@ -42,18 +49,70 @@ export function MainListView() {
 
   // 进入详情页
   const handleOpenDetail = async (record: CallRecord) => {
-    await Navigation.present({
-      element: <CallDetailView record={record} />
-    });
-    loadData();
+    try {
+      await Navigation.present({
+        element: <CallDetailView record={record} />
+      });
+      loadData();
+    } catch (e) {
+      console.error("打开详情页失败:", e);
+    }
   };
 
   // 生成示例数据方便无录音时快速体验
   const handleCreateMock = async () => {
-    const mock = await analyzeCallAudio("mock_call_audio.m4a", 62);
-    saveRecord(mock);
-    loadData();
-    await handleOpenDetail(mock);
+    setIsProcessing(true);
+    try {
+      const mock = await analyzeCallAudio("mock_call_audio.m4a", 62);
+      saveRecord(mock);
+      loadData();
+      await handleOpenDetail(mock);
+    } finally {
+      setIsProcessing(false);
+    }
+  };
+
+  // 从文件 App 中选取录音文件进行分析（双通道备选）
+  const handlePickAudioFile = async () => {
+    if (typeof DocumentPicker === "undefined") {
+      return;
+    }
+
+    try {
+      setIsProcessing(true);
+      const picked = await DocumentPicker.pickFiles({
+        types: ["public.audio", "com.apple.m4a-audio"]
+      });
+
+      if (picked && picked.length > 0) {
+        const sourcePath = picked[0];
+        let finalPath = sourcePath;
+
+        // 转存至沙盒 Documents
+        if (typeof FileManager !== "undefined") {
+          try {
+            const rootDir = FileManager.documentsDirectory;
+            const targetDir = `${rootDir}/CallRecordings`;
+            if (!FileManager.existsSync(targetDir)) {
+              FileManager.createDirectorySync(targetDir, true);
+            }
+            finalPath = `${targetDir}/call_${Date.now()}.m4a`;
+            FileManager.copyFileSync(sourcePath, finalPath);
+          } catch {
+            finalPath = sourcePath;
+          }
+        }
+
+        const record = await analyzeCallAudio(finalPath, 0);
+        saveRecord(record);
+        loadData();
+        await handleOpenDetail(record);
+      }
+    } catch (err) {
+      console.error("选取文件分析失败:", err);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // 删除记录
@@ -64,105 +123,100 @@ export function MainListView() {
 
   return (
     <NavigationStack>
-      <VStack
+      <List
         navigationTitle="通话录音 AI 分析器"
         navigationBarTitleDisplayMode="large"
-        spacing={0}
       >
-        <ScrollView>
-          <VStack spacing={16} padding={16}>
-            {/* 顶栏操作说明卡片 */}
-            <VStack
-              padding={16}
-              spacing={10}
-              background="secondarySystemBackground"
-              cornerRadius={14}
-            >
-              <Text font="headline" foregroundStyle="systemIndigo">
-                🎙️ 使用说明
-              </Text>
-              <Text font="subheadline" foregroundStyle="secondaryLabel">
-                1. 备忘录中打开任意通话录音；
-              </Text>
-              <Text font="subheadline" foregroundStyle="secondaryLabel">
-                2. 点击录音卡片右上角“...”选择“共享音频”；
-              </Text>
-              <Text font="subheadline" foregroundStyle="secondaryLabel">
-                3. 在系统分享面板中选取“Scripting”即可自动唤起分析。
-              </Text>
+        {/* 操作入口卡片 */}
+        <Section header={<Text>导入与分析入口</Text>}>
+          <VStack spacing={12} padding={4}>
+            <Text font="subheadline" foregroundStyle="secondaryLabel">
+              支持以下两种方式载入通话录音：
+            </Text>
+            <Text font="caption1" foregroundStyle="secondaryLabel">
+              ① 在备忘录通话录音中点「...」选择「共享音频」到 Scripting；
+            </Text>
+            <Text font="caption1" foregroundStyle="secondaryLabel">
+              ② 或在备忘录点「保存音频文件」后，点击下方直接选取。
+            </Text>
 
-              <HStack alignment="center">
-                <Spacer />
-                <Button
-                  title="✨ 一键加载商务通话演示"
-                  action={handleCreateMock}
-                />
-                <Spacer />
-              </HStack>
-            </VStack>
-
-            {/* 通话历史列表 */}
-            <Text font="title3">已分析通话 ({records.length})</Text>
-
-            {records.length === 0 ? (
-              <VStack padding={40} alignment="center" spacing={10}>
-                <Text font="body" foregroundStyle="secondaryLabel">
-                  暂无通话记录
-                </Text>
-                <Text font="caption1" foregroundStyle="tertiaryLabel">
-                  请从备忘录分享音频，或点击上方按钮加载演示
-                </Text>
-              </VStack>
-            ) : (
-              records.map((item) => (
-                <VStack
-                  key={item.id}
-                  padding={14}
-                  spacing={8}
-                  background="secondarySystemBackground"
-                  cornerRadius={12}
-                >
-                  <HStack alignment="center">
-                    <Text font="headline">{item.title}</Text>
-                    <Spacer />
-                    <Button
-                      title="🗑️"
-                      action={() => handleDelete(item.id)}
-                    />
-                  </HStack>
-
-                  <Text
-                    font="subheadline"
-                    foregroundStyle="secondaryLabel"
-                  >
-                    {item.summary.overview}
-                  </Text>
-
-                  <HStack alignment="center">
-                    <Text font="caption1" foregroundStyle="tertiaryLabel">
-                      📅 {formatDate(item.createdAt)} · ⏱️ {formatSeconds(item.duration)}
-                    </Text>
-                    <Spacer />
-                    <Button
-                      title="打开回听 & 查阅"
-                      action={() => handleOpenDetail(item)}
-                    />
-                  </HStack>
-                </VStack>
-              ))
-            )}
+            <HStack spacing={10}>
+              <Button
+                title={isProcessing ? "处理中…" : "📂 选取本地录音分析"}
+                action={handlePickAudioFile}
+              />
+              <Spacer />
+              <Button
+                title="✨ 体验示例演示"
+                action={handleCreateMock}
+              />
+            </HStack>
           </VStack>
-        </ScrollView>
-      </VStack>
+        </Section>
+
+        {/* 通话历史列表 */}
+        <Section header={<Text>已分析通话 ({records.length})</Text>}>
+          {records.length === 0 ? (
+            <VStack padding={20} alignment="center" spacing={6}>
+              <Text font="body" foregroundStyle="secondaryLabel">
+                暂无通话记录
+              </Text>
+              <Text font="caption1" foregroundStyle="tertiaryLabel">
+                点击上方按钮选取录音文件或加载演示
+              </Text>
+            </VStack>
+          ) : (
+            records.map((item) => (
+              <VStack
+                key={item.id}
+                spacing={8}
+                padding={4}
+              >
+                <HStack alignment="center">
+                  <Text font="headline">{item.title}</Text>
+                  <Spacer />
+                  <Button
+                    title="🗑️"
+                    action={() => handleDelete(item.id)}
+                  />
+                </HStack>
+
+                <Text
+                  font="subheadline"
+                  foregroundStyle="secondaryLabel"
+                >
+                  {item.summary.overview}
+                </Text>
+
+                <HStack alignment="center">
+                  <Text font="caption1" foregroundStyle="tertiaryLabel">
+                    📅 {formatDate(item.createdAt)} · ⏱️ {formatSeconds(item.duration)}
+                  </Text>
+                  <Spacer />
+                  <Button
+                    title="打开回听 & 查阅"
+                    action={() => handleOpenDetail(item)}
+                  />
+                </HStack>
+              </VStack>
+            ))
+          )}
+        </Section>
+      </List>
     </NavigationStack>
   );
 }
 
 async function run() {
-  await Navigation.present({
-    element: <MainListView />
-  });
-  Script.exit();
+  try {
+    await Navigation.present({
+      element: <MainListView />
+    });
+  } catch (err) {
+    console.error("启动失败:", err);
+  } finally {
+    Script.exit();
+  }
 }
 
 run();
