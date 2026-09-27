@@ -8,6 +8,7 @@ import {
 } from "scripting";
 import { saveRecord } from "./storage";
 import { analyzeCallAudio } from "./ai_service";
+import { persistIncomingAudio } from "./audio_manager";
 import { CallDetailView } from "./components/CallDetailView";
 
 function EmptyPromptView() {
@@ -43,27 +44,10 @@ async function run() {
 
   let finalAudioPath = "";
 
-  // 2. 如果接收到了音频文件，持久化至沙盒 Documents 目录
+  // 2. 如果接收到了音频文件，统一规整存入专属目录 Documents/CallRecordings/
   if (filePaths && filePaths.length > 0) {
     const sourcePath = filePaths[0];
-
-    if (typeof FileManager !== "undefined") {
-      try {
-        const rootDir = FileManager.documentsDirectory;
-        const targetDir = `${rootDir}/CallRecordings`;
-        if (!FileManager.existsSync(targetDir)) {
-          FileManager.createDirectorySync(targetDir, true);
-        }
-        const ext = sourcePath.endsWith(".m4a") ? "m4a" : "audio";
-        finalAudioPath = `${targetDir}/call_${Date.now()}.${ext}`;
-        FileManager.copyFileSync(sourcePath, finalAudioPath);
-      } catch (err) {
-        console.warn("文件沙盒转存失败，回退使用原始路径:", err);
-        finalAudioPath = sourcePath;
-      }
-    } else {
-      finalAudioPath = sourcePath;
-    }
+    finalAudioPath = persistIncomingAudio(sourcePath);
   }
 
   // 3. 执行 AI 通话分析与角色提取

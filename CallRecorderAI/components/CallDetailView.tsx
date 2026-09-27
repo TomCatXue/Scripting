@@ -1,7 +1,5 @@
 import {
-  useState
-} from "react";
-import {
+  useState,
   Navigation,
   NavigationStack,
   VStack,

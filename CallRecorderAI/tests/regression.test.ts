@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { saveRecord, getAllRecords, getRecordById, deleteRecord, getAISettings, saveAISettings } from "../storage.ts";
 import { analyzeCallAudio } from "../ai_service.ts";
+import { AUDIO_FOLDER_NAME, getOrCreateRecordingsDir } from "../audio_manager.ts";
 import type { CallRecord } from "../types.ts";
 
 function formatSeconds(sec: number): string {
@@ -40,6 +41,10 @@ test("Storage: 能够正确保存、查询、列表与删除通话记录", () =>
 
   deleteRecord("test_call_001");
   assert.equal(getRecordById("test_call_001"), null, "删除后应查询不到");
+});
+
+test("AudioManager: 录音统一存储目录名称规范", () => {
+  assert.equal(AUDIO_FOLDER_NAME, "CallRecordings");
 });
 
 test("Storage: AI 配置持久化与读取", () => {

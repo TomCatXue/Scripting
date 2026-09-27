@@ -1,5 +1,6 @@
 import type { CallRecord, AISettings } from "./types";
 import { DEFAULT_AI_SETTINGS } from "./types";
+import { safelyDeleteAudio } from "./audio_manager";
 
 const STORAGE_KEY_RECORDS = "call_recorder_ai_records_v1";
 const STORAGE_KEY_SETTINGS = "call_recorder_ai_settings_v1";
@@ -62,20 +63,12 @@ export function saveRecord(record: CallRecord): void {
 }
 
 /**
- * 删除一条通话记录，并尝试清理对应的音频文件
+ * 删除一条通话记录，并彻底清理专属目录中对应的音频文件
  */
 export function deleteRecord(id: string): void {
   const target = getRecordById(id);
   if (target && target.audioPath) {
-    if (typeof FileManager !== "undefined") {
-      try {
-        if (FileManager.existsSync(target.audioPath)) {
-          FileManager.removeSync(target.audioPath);
-        }
-      } catch (e) {
-        console.warn("清理本地音频文件失败:", e);
-      }
-    }
+    safelyDeleteAudio(target.audioPath);
   }
 
   const filtered = getAllRecords().filter((r) => r.id !== id);

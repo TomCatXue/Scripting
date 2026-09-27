@@ -1,8 +1,6 @@
 import {
   useState,
-  useEffect
-} from "react";
-import {
+  useEffect,
   Navigation,
   NavigationStack,
   List,
@@ -18,6 +16,7 @@ import {
 import type { CallRecord } from "./types";
 import { getAllRecords, saveRecord, deleteRecord } from "./storage";
 import { analyzeCallAudio } from "./ai_service";
+import { persistIncomingAudio } from "./audio_manager";
 import { CallDetailView } from "./components/CallDetailView";
 
 function formatSeconds(sec: number): string {
@@ -72,7 +71,7 @@ export function MainListView() {
     }
   };
 
-  // 从文件 App 中选取录音文件进行分析（双通道备选）
+  // 从文件 App 中选取录音文件进行分析（统一转存入专属 CallRecordings 目录）
   const handlePickAudioFile = async () => {
     if (typeof DocumentPicker === "undefined") {
       return;
@@ -86,24 +85,10 @@ export function MainListView() {
 
       if (picked && picked.length > 0) {
         const sourcePath = picked[0];
-        let finalPath = sourcePath;
+        // 统一规整保存至 Documents/CallRecordings 专属目录
+        const managedAudioPath = persistIncomingAudio(sourcePath);
 
-        // 转存至沙盒 Documents
-        if (typeof FileManager !== "undefined") {
-          try {
-            const rootDir = FileManager.documentsDirectory;
-            const targetDir = `${rootDir}/CallRecordings`;
-            if (!FileManager.existsSync(targetDir)) {
-              FileManager.createDirectorySync(targetDir, true);
-            }
-            finalPath = `${targetDir}/call_${Date.now()}.m4a`;
-            FileManager.copyFileSync(sourcePath, finalPath);
-          } catch {
-            finalPath = sourcePath;
-          }
-        }
-
-        const record = await analyzeCallAudio(finalPath, 0);
+        const record = await analyzeCallAudio(managedAudioPath, 0);
         saveRecord(record);
         loadData();
         await handleOpenDetail(record);

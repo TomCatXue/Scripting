@@ -43,8 +43,23 @@ export const Path = {
   join: (...parts: string[]) => parts.join("/")
 };
 
+export const DocumentPicker = {
+  pickFiles: async () => ["/mock/picked.m4a"]
+};
+
+// React Hooks Mock 从 scripting 导出
+export function useState<T>(init: T): [T, (val: T) => void] {
+  return [init, () => {}];
+}
+export function useEffect(fn: any, deps?: any[]): void {}
+export function useMemo<T>(fn: () => T, deps?: any[]): T {
+  return fn();
+}
+
 // 基础 UI 占位
 export const NavigationStack = (props: any) => props;
+export const List = (props: any) => props;
+export const Section = (props: any) => props;
 export const VStack = (props: any) => props;
 export const HStack = (props: any) => props;
 export const Text = (props: any) => props;
