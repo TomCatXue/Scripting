@@ -7,6 +7,7 @@ import {
   Text,
   Button,
   Spacer,
+  Image,
   SharedAudioSession,
   AVPlayer
 } from "scripting";
@@ -124,9 +125,7 @@ export function AppleNotesAudioCard({
     player.rate = next;
   };
 
-  // 计算波形进度比例 (0 ~ 1)
   const progressRatio = duration > 0 ? Math.min(1, Math.max(0, currentTime / duration)) : 0;
-  // 模拟备忘录波形竖柱（固定20条模拟高低声波）
   const waveHeights = [6, 12, 18, 10, 16, 22, 14, 8, 20, 24, 16, 12, 22, 18, 14, 8, 16, 20, 12, 6];
 
   return (
@@ -136,10 +135,11 @@ export function AppleNotesAudioCard({
       background="secondarySystemBackground"
       cornerRadius={16}
     >
-      {/* 顶部标题与标签 */}
-      <HStack alignment="center" spacing={8}>
-        <Text font="caption1" foregroundStyle="systemIndigo">
-          🎙️ 通话全程录音
+      {/* 顶部标题与标签 (SF Symbol) */}
+      <HStack alignment="center" spacing={6}>
+        <Image systemName="waveform.badge.mic" font={12} foregroundStyle="systemIndigo" />
+        <Text font="caption1" fontWeight="bold" foregroundStyle="systemIndigo">
+          全程录音
         </Text>
         <Text font="caption2" foregroundStyle="tertiaryLabel">
           · {fileName || "recording.m4a"}
@@ -151,11 +151,12 @@ export function AppleNotesAudioCard({
         />
       </HStack>
 
-      {/* 核心控制行：大播放键 + 备忘录波形拟态 + 时间 */}
+      {/* 核心控制行：大播放键 (SF Symbol) + 备忘录波形拟态 + 时间 */}
       <HStack alignment="center" spacing={12}>
-        {/* 备忘录经典圆形播放按钮 */}
+        {/* 备忘录圆形原生播放按键 */}
         <Button
-          title={isPlaying ? " ⏸ 暂停 " : " ▶️ 播放 "}
+          title=" "
+          systemImage={isPlaying ? "pause.fill" : "play.fill"}
           action={togglePlay}
         />
 
@@ -178,7 +179,7 @@ export function AppleNotesAudioCard({
         <Spacer />
 
         {/* 时间显示 */}
-        <Text font="caption1" foregroundStyle="secondaryLabel">
+        <Text font="caption1" foregroundStyle="secondaryLabel" monospacedDigit>
           {formatSeconds(currentTime)} / {formatSeconds(duration || initialDuration)}
         </Text>
       </HStack>

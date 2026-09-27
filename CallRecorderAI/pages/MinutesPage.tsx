@@ -7,7 +7,8 @@ import {
   Text,
   Button,
   ScrollView,
-  Spacer
+  Spacer,
+  Image
 } from "scripting";
 import type { CallRecord, ActionItem } from "../types";
 
@@ -30,16 +31,16 @@ export function MinutesPage({
     const md = `# ${record.minutes.title}
 时间：${record.minutes.dateStr} (${record.minutes.durationStr})
 
-## 📝 会议摘要
+## 会议摘要
 ${record.minutes.overview}
 
-## 💡 核心要点
+## 核心重点
 ${record.minutes.keyPoints.map((p, i) => `${i + 1}. ${p}`).join("\n")}
 
-## 🎯 关键决策
+## 关键决议
 ${record.minutes.decisions.map((d, i) => `• ${d}`).join("\n")}
 
-## 📋 待办事项 (Action Items)
+## 待办事项 (Action Items)
 ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.assignee}, 截止: ${a.dueDate})`).join("\n")}
 `;
 
@@ -64,7 +65,7 @@ ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.as
       >
         <ScrollView>
           <VStack spacing={14} padding={16} alignment="leading">
-            {/* 卡片 1: 会议信息头卡 (设计图第3屏顶部) */}
+            {/* 卡片 1: 会议信息头卡 (设计图第3屏顶部 + SF Symbols) */}
             <VStack
               padding={16}
               spacing={10}
@@ -76,22 +77,24 @@ ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.as
                   padding={8}
                   background="systemBlue"
                   cornerRadius={10}
-                  frame={{ width: 36, height: 36 }}
+                  frame={{ width: 38, height: 38 }}
                   alignment="center"
                 >
-                  <Text font="caption1" foregroundStyle="white">📋</Text>
+                  <Image systemName="doc.text.fill" font={18} foregroundStyle="white" />
                 </VStack>
 
                 <VStack spacing={3} alignment="leading">
                   <Text font="headline">{record.minutes.title}</Text>
-                  <Text font="caption2" foregroundStyle="secondaryLabel">
-                    {record.minutes.dateStr}
-                  </Text>
+                  <HStack spacing={4} alignment="center">
+                    <Image systemName="calendar" font={10} foregroundStyle="secondaryLabel" />
+                    <Text font="caption2" foregroundStyle="secondaryLabel">
+                      {record.minutes.dateStr}
+                    </Text>
+                  </HStack>
                 </VStack>
 
                 <Spacer />
 
-                {/* 时长徽标 */}
                 <HStack padding={4} background="tertiarySystemFill" cornerRadius={6}>
                   <Text font="caption2" foregroundStyle="secondaryLabel">
                     {record.minutes.durationStr}
@@ -100,7 +103,7 @@ ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.as
               </HStack>
             </VStack>
 
-            {/* 卡片 2: 会议摘要 (设计图绿色图标卡片) */}
+            {/* 卡片 2: 会议摘要 (设计图绿色图标卡片 + SF Symbols) */}
             <VStack
               padding={16}
               spacing={8}
@@ -109,8 +112,9 @@ ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.as
               alignment="leading"
             >
               <HStack alignment="center" spacing={8}>
+                <Image systemName="text.quote" font={16} foregroundStyle="systemGreen" />
                 <Text font="headline" foregroundStyle="systemGreen">
-                  📝 会议摘要
+                  会议摘要
                 </Text>
               </HStack>
               <Text font="body">
@@ -127,8 +131,9 @@ ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.as
               alignment="leading"
             >
               <HStack alignment="center" spacing={8}>
+                <Image systemName="list.bullet.rectangle.fill" font={16} foregroundStyle="systemBlue" />
                 <Text font="headline" foregroundStyle="systemBlue">
-                  💡 核心要点
+                  核心要点
                 </Text>
               </HStack>
 
@@ -153,7 +158,7 @@ ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.as
               ))}
             </VStack>
 
-            {/* 卡片 4: 待办事项 (设计图绿色勾选框 + 负责人 + 截止日期) */}
+            {/* 卡片 4: 待办事项 (设计图绿色勾选框 + 负责人 + 截止日期 + SF Symbols) */}
             <VStack
               padding={16}
               spacing={12}
@@ -162,41 +167,50 @@ ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.as
               alignment="leading"
             >
               <HStack alignment="center" spacing={8}>
+                <Image systemName="checkmark.circle.fill" font={16} foregroundStyle="systemGreen" />
                 <Text font="headline" foregroundStyle="systemGreen">
-                  ✅ 待办事项
+                  待办事项
                 </Text>
               </HStack>
 
-              {actionItems.map((act) => (
-                <HStack key={act.id} alignment="center" spacing={10}>
-                  <Button
-                    title={act.done ? "☑️" : "⬜️"}
-                    action={() => toggleActionItem(act.id)}
-                  />
-                  <VStack spacing={2} alignment="leading">
-                    <Text
-                      font="body"
-                      foregroundStyle={act.done ? "secondaryLabel" : "label"}
-                    >
-                      {act.task}
-                    </Text>
+              {actionItems.length === 0 ? (
+                <Text font="caption1" foregroundStyle="secondaryLabel">
+                  暂无待办事项记录
+                </Text>
+              ) : (
+                actionItems.map((act) => (
+                  <HStack key={act.id} alignment="center" spacing={10}>
+                    <Button
+                      title=" "
+                      systemImage={act.done ? "checkmark.square.fill" : "square"}
+                      action={() => toggleActionItem(act.id)}
+                    />
+                    <VStack spacing={2} alignment="leading">
+                      <Text
+                        font="body"
+                        foregroundStyle={act.done ? "secondaryLabel" : "label"}
+                      >
+                        {act.task}
+                      </Text>
+                      <Text font="caption2" foregroundStyle="tertiaryLabel">
+                        负责人: {act.assignee} · 截止: {act.dueDate}
+                      </Text>
+                    </VStack>
+                    <Spacer />
                     <Text font="caption2" foregroundStyle="tertiaryLabel">
-                      负责人: {act.assignee} · 截止: {act.dueDate}
+                      {act.dueDate}
                     </Text>
-                  </VStack>
-                  <Spacer />
-                  <Text font="caption2" foregroundStyle="tertiaryLabel">
-                    {act.dueDate}
-                  </Text>
-                </HStack>
-              ))}
+                  </HStack>
+                ))
+              )}
             </VStack>
 
-            {/* 底部醒目大胶囊按钮 (设计图第3屏底部绿色/青色按钮) */}
+            {/* 底部醒目大胶囊按钮 (设计图第3屏底部样式 + SF Symbols) */}
             <HStack alignment="center" padding={6}>
               <Spacer />
               <Button
-                title={copied ? "✅ 已拷贝完整会议纪要 Markdown" : " 📤 导出会议纪要 (复制 Markdown) "}
+                title={copied ? "已复制完整纪要 Markdown" : "导出会议纪要"}
+                systemImage="square.and.arrow.up"
                 action={handleExport}
               />
               <Spacer />

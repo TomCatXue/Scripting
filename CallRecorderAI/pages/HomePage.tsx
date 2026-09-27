@@ -10,6 +10,7 @@ import {
   Text,
   Button,
   Spacer,
+  Image,
   DocumentPicker
 } from "scripting";
 import type { CallRecord } from "../types";
@@ -59,7 +60,7 @@ export function HomePage() {
     loadData();
   }, []);
 
-  // 进入二级详情页 (聚合转写、纪要、摘要与时间轴)
+  // 进入二级详情页
   const handleOpenDetail = async (record: CallRecord) => {
     try {
       await Navigation.present({
@@ -128,34 +129,38 @@ export function HomePage() {
         navigationTitle="AI 会议与录音归档"
         navigationBarTitleDisplayMode="large"
       >
-        {/* 1. 核心操作功能区 (启动录音中页面 & 从文件导入) */}
+        {/* 1. 核心操作功能区 (SF Symbols) */}
         <Section header={<Text>录音与导入</Text>}>
           <VStack spacing={12} padding={4}>
             {/* 大按钮: 开启现场会议录音 (页面 1) */}
             <Button
-              title="🔴 开始会议录音 (实时转写)"
+              title="开始会议录音"
+              systemImage="record.circle.fill"
               action={handleStartLiveRecording}
             />
 
             <HStack spacing={10}>
               <Button
-                title={isProcessing ? "导入中…" : "📂 导入本地录音文件"}
+                title={isProcessing ? "导入中…" : "导入录音文件"}
+                systemImage="square.and.arrow.down"
                 action={handlePickAudio}
               />
               <Spacer />
               <Button
-                title="🔄 刷新列表"
+                title="刷新列表"
+                systemImage="arrow.clockwise"
                 action={loadData}
               />
             </HStack>
           </VStack>
         </Section>
 
-        {/* 2. 存储空间概览卡片 */}
+        {/* 2. 存储空间概览卡片 (SF Symbols) */}
         <Section header={<Text>录音存储目录概览</Text>}>
           <VStack spacing={8} padding={4}>
-            <HStack alignment="center">
-              <Text font="headline">📁 存储位置</Text>
+            <HStack alignment="center" spacing={6}>
+              <Image systemName="folder.fill" font={14} foregroundStyle="systemIndigo" />
+              <Text font="headline">存储目录</Text>
               <Spacer />
               <Text font="subheadline" foregroundStyle="systemIndigo">
                 {getFriendlyStoragePath()}
@@ -178,6 +183,7 @@ export function HomePage() {
         <Section header={<Text>所有录音文件 ({records.length})</Text>}>
           {records.length === 0 ? (
             <VStack padding={36} alignment="center" spacing={10}>
+              <Image systemName="waveform.badge.mic" font={32} foregroundStyle="secondaryLabel" />
               <Text font="headline" foregroundStyle="secondaryLabel">
                 暂无通话录音
               </Text>
@@ -192,11 +198,13 @@ export function HomePage() {
                 spacing={10}
                 padding={6}
               >
-                <HStack alignment="center">
-                  <Text font="headline">🎙️ {item.title}</Text>
+                <HStack alignment="center" spacing={8}>
+                  <Image systemName="waveform" font={14} foregroundStyle="systemBlue" />
+                  <Text font="headline">{item.title}</Text>
                   <Spacer />
                   <Button
-                    title="🗑️"
+                    title=" "
+                    systemImage="trash"
                     action={() => handleDelete(item.id)}
                   />
                 </HStack>
@@ -214,7 +222,8 @@ export function HomePage() {
                   </Text>
                   <Spacer />
                   <Button
-                    title="查看详情与转写 >"
+                    title="查看详情"
+                    systemImage="chevron.right"
                     action={() => handleOpenDetail(item)}
                   />
                 </HStack>

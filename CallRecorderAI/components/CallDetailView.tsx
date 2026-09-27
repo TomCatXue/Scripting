@@ -82,25 +82,29 @@ export function CallDetailView({ record }: CallDetailViewProps) {
           />
         </VStack>
 
-        {/* 6 大核心页面快速直达金刚区 */}
+        {/* 6 大核心页面快速直达金刚区 (SF Symbols) */}
         <HStack padding={8} spacing={8} background="secondarySystemBackground" cornerRadius={12}>
           <Button
-            title="💬 转写详情"
+            title="转写详情"
+            systemImage="bubble.left.and.bubble.right.fill"
             action={handleOpenTranscript}
           />
           <Spacer />
           <Button
-            title="📋 会议纪要"
+            title="会议纪要"
+            systemImage="doc.text.fill"
             action={handleOpenMinutes}
           />
           <Spacer />
           <Button
-            title="💡 AI 摘要"
+            title="AI 摘要"
+            systemImage="sparkles"
             action={handleOpenSummary}
           />
           <Spacer />
           <Button
-            title="⏱️ 时间轴"
+            title="时间轴"
+            systemImage="clock.arrow.circlepath"
             action={handleOpenAudioDetail}
           />
         </HStack>

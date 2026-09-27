@@ -1,9 +1,9 @@
-import type { CallRecord, DialogueItem, CallSummary } from "./types";
+import type { CallRecord, DialogueItem, ChapterItem, MeetingMinutes } from "./types";
 import { getAISettings } from "./storage";
 import { formatBytes } from "./audio_manager";
 
 /**
- * 将整段文本根据停顿、换行或角色标号切分为仿微信对白数据
+ * 将真实文本按照停顿、换行或角色标号切分为分角色对白数据
  */
 function parseTranscriptToDialogues(rawTranscript: string, totalDuration = 0): DialogueItem[] {
   const lines = rawTranscript
@@ -12,15 +12,7 @@ function parseTranscriptToDialogues(rawTranscript: string, totalDuration = 0): D
     .filter(Boolean);
 
   if (lines.length === 0) {
-    return [
-      {
-        id: "d_init",
-        speaker: "通话原声",
-        timeSec: 0,
-        durationSec: totalDuration > 0 ? Math.min(totalDuration, 15) : 8,
-        text: "真实音频已成功录入，点击上方备忘录音频卡片可听完整原声。"
-      }
-    ];
+    return [];
   }
 
   const items: DialogueItem[] = [];
@@ -28,11 +20,10 @@ function parseTranscriptToDialogues(rawTranscript: string, totalDuration = 0): D
   const timeStep = totalDuration > 0 ? Math.max(3, Math.floor(totalDuration / Math.max(lines.length, 1))) : 5;
 
   lines.forEach((line, idx) => {
-    // 自动判定角色 A / 角色 B
-    let speaker = idx % 2 === 0 ? "说话人 A (我)" : "说话人 B (对方)";
+    let speaker = idx % 2 === 0 ? "发言人 1" : "发言人 2";
     let cleanText = line;
 
-    if (/^(说话人\s*[A-Z1-9]|对方|我|客户|经理|参与者)[:：\s]*/i.test(line)) {
+    if (/^(发言人\s*[0-9A-Za-z]|说话人\s*[0-9A-Za-z]|我|对方|参会人)[:：\s]*/i.test(line)) {
       const match = line.match(/^([^:：]+)[:：\s]*(.*)$/);
       if (match) {
         speaker = match[1].trim();
@@ -40,14 +31,15 @@ function parseTranscriptToDialogues(rawTranscript: string, totalDuration = 0): D
       }
     }
 
-    const durationSec = Math.max(3, Math.min(25, Math.ceil(cleanText.length / 4)));
+    const durationSec = Math.max(2, Math.min(25, Math.ceil(cleanText.length / 4)));
 
     items.push({
       id: `diag_${idx}_${Date.now()}`,
       speaker,
       timeSec: currentTime,
       durationSec,
-      text: cleanText
+      text: cleanText,
+      isKeyPoint: idx === 1 || cleanText.includes("重点") || cleanText.includes("完成")
     });
 
     currentTime += durationSec + 1;
@@ -57,29 +49,47 @@ function parseTranscriptToDialogues(rawTranscript: string, totalDuration = 0): D
 }
 
 /**
+ * 依据分段对白动态提取时间轴章节
+ */
+function generateChaptersFromDialogues(dialogues: DialogueItem[]): ChapterItem[] {
+  if (dialogues.length === 0) {
+    return [
+      { id: "c_init", timeSec: 0, title: "录音开始" }
+    ];
+  }
+
+  return dialogues.slice(0, 6).map((d, i) => ({
+    id: `chap_${i}`,
+    timeSec: d.timeSec,
+    title: d.text.length > 16 ? `${d.text.slice(0, 16)}…` : d.text
+  }));
+}
+
+/**
  * 使用 Apple Intelligence 本地大模型处理文本内容
  */
-async function processWithLocalLLM(rawTranscript: string): Promise<{ summary: CallSummary; title: string } | null> {
+async function processWithLocalLLM(rawTranscript: string): Promise<Partial<MeetingMinutes> | null> {
   if (typeof LanguageModelSession === "undefined" || !LanguageModelSession.isAvailable) {
     return null;
   }
 
   try {
     const session = new LanguageModelSession({
-      instructions: "你是一个专业的通话纪要整理助理。请输出严格的 JSON 格式，不要包含任何 markdown 代码块外部的文字。"
+      instructions: "你是一个专业的会议纪要整理助理。请输出严格的 JSON 格式。"
     });
 
-    session.prewarm("整理通话");
+    session.prewarm("整理会议");
 
-    const prompt = `请对以下真实通话听写文本进行分析，提取通话标题、核心主旨、关键共识与待办事项：
+    const prompt = `请对以下真实录音文本进行分析并提炼会议纪要：
 ${rawTranscript}
 
-请严格按如下 JSON 结构返回：
+严格返回如下 JSON 结构：
 {
-  "title": "通话标题",
-  "overview": "核心主旨概述",
-  "keyPoints": ["要点1", "要点2"],
-  "actionItems": ["待办事项1", "待办事项2"]
+  "title": "会议主题",
+  "overview": "会议概要",
+  "keyPoints": ["核心要点1", "核心要点2"],
+  "decisions": ["关键决议1"],
+  "actionItems": [{"task": "任务内容", "assignee": "负责人", "dueDate": "截止日期"}]
 }`;
 
     const res = await session.respond(prompt, { temperature: 0.2 });
@@ -89,12 +99,17 @@ ${rawTranscript}
       const cleaned = res.content.replace(/```json/gi, "").replace(/```/g, "").trim();
       const parsed = JSON.parse(cleaned);
       return {
-        title: parsed.title || "通话纪要",
-        summary: {
-          overview: parsed.overview || "",
-          keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints : [],
-          actionItems: Array.isArray(parsed.actionItems) ? parsed.actionItems : []
-        }
+        title: parsed.title,
+        overview: parsed.overview,
+        keyPoints: parsed.keyPoints || [],
+        decisions: parsed.decisions || [],
+        actionItems: (parsed.actionItems || []).map((a: any, i: number) => ({
+          id: `act_${i}`,
+          task: a.task || a,
+          assignee: a.assignee || "待定",
+          dueDate: a.dueDate || "待确认",
+          done: false
+        }))
       };
     }
   } catch (e) {
@@ -112,14 +127,15 @@ async function processWithCloudLLM(
   apiKey: string,
   model: string,
   rawTranscript: string
-): Promise<{ summary: CallSummary; title: string } | null> {
-  const prompt = `你是一个专业的通话纪要整理专家。以下是真实的通话对话内容，请提炼结构化纪要。
+): Promise<Partial<MeetingMinutes> | null> {
+  const prompt = `你是一个专业的会议纪要整理专家。以下是真实的对话对白，请提炼结构化纪要。
 必须返回纯 JSON 对象，格式如下：
 {
-  "title": "简明清晰的通话主题",
-  "overview": "通话背景与主旨概述（1-2句）",
-  "keyPoints": ["核心共识1", "核心讨论点2"],
-  "actionItems": ["待办1（责任人/时间）", "待办2"]
+  "title": "会议主题",
+  "overview": "会议主旨概要",
+  "keyPoints": ["核心重点1", "核心重点2"],
+  "decisions": ["达成结论1"],
+  "actionItems": [{"task": "待办任务", "assignee": "负责人", "dueDate": "截止时间"}]
 }
 
 对话原文：
@@ -146,12 +162,17 @@ ${rawTranscript}`;
     if (content) {
       const parsed = JSON.parse(content);
       return {
-        title: parsed.title || "通话纪要",
-        summary: {
-          overview: parsed.overview || "",
-          keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints : [],
-          actionItems: Array.isArray(parsed.actionItems) ? parsed.actionItems : []
-        }
+        title: parsed.title,
+        overview: parsed.overview,
+        keyPoints: parsed.keyPoints || [],
+        decisions: parsed.decisions || [],
+        actionItems: (parsed.actionItems || []).map((a: any, i: number) => ({
+          id: `act_cloud_${i}`,
+          task: a.task || a,
+          assignee: a.assignee || "待定",
+          dueDate: a.dueDate || "待定",
+          done: false
+        }))
       };
     }
   } catch (err) {
@@ -173,73 +194,89 @@ export async function analyzeCallAudio(
 ): Promise<CallRecord> {
   const settings = getAISettings();
   const now = Date.now();
-  const cleanTitle = fileName.replace(/\.[^.]+$/, "") || "通话录音";
+  const cleanTitle = fileName.replace(/^call_\d+_/, "").replace(/\.[^.]+$/, "") || "会议录音";
 
-  // 1. 若传入了真实听写文本，优先执行多角色分段与 AI 提取
+  const dateObj = new Date(now);
+  const pad = (n: number) => n.toString().padStart(2, "0");
+  const dateStr = `${dateObj.getFullYear()}年${dateObj.getMonth() + 1}月${dateObj.getDate()}日 ${pad(dateObj.getHours())}:${pad(dateObj.getMinutes())}`;
+  const durationStr = duration > 0 ? `${Math.ceil(duration / 60)} 分钟` : "未计";
+
+  // 1. 若传入了真实听写文本，优先执行分角色切分与 AI 提炼
   if (rawInputText && rawInputText.trim().length > 0) {
-    let result = null;
+    let aiMinutes: Partial<MeetingMinutes> | null = null;
     if (settings.provider === "local") {
-      result = await processWithLocalLLM(rawInputText);
+      aiMinutes = await processWithLocalLLM(rawInputText);
     } else if (settings.apiKey) {
-      result = await processWithCloudLLM(settings.endpoint, settings.apiKey, settings.model, rawInputText);
+      aiMinutes = await processWithCloudLLM(settings.endpoint, settings.apiKey, settings.model, rawInputText);
     }
 
     const dialogues = parseTranscriptToDialogues(rawInputText, duration);
+    const chapters = generateChaptersFromDialogues(dialogues);
+
+    const minutes: MeetingMinutes = {
+      title: aiMinutes?.title || `${cleanTitle} · 会议纪要`,
+      dateStr,
+      durationStr,
+      overview: aiMinutes?.overview || `已根据真实文本转写录入，共识别 ${dialogues.length} 段发言。`,
+      keyPoints: aiMinutes?.keyPoints && aiMinutes.keyPoints.length > 0 ? aiMinutes.keyPoints : ["已成功完成文字转写与对话分角色"],
+      decisions: aiMinutes?.decisions && aiMinutes.decisions.length > 0 ? aiMinutes.decisions : ["无特别决议记录"],
+      actionItems: aiMinutes?.actionItems || []
+    };
 
     return {
-      id: `call_${now}`,
-      title: result?.title || cleanTitle,
+      id: `rec_${now}`,
+      title: minutes.title,
       createdAt: now,
       audioPath,
       audioFileName: fileName,
       fileSizeBytes,
       duration,
       dialogues,
-      summary: result?.summary || {
-        overview: `基于真实听写文本提取，共包含 ${dialogues.length} 轮对话。`,
-        keyPoints: ["已自动提取对话内容", "点击上方录音卡片可随时听取完整原声"],
-        actionItems: ["可根据对话内容进行跟进"]
+      chapters,
+      minutes,
+      summary: {
+        overview: minutes.overview,
+        keyPoints: minutes.keyPoints,
+        actionItems: minutes.actionItems.map((a) => `${a.task} (负责人: ${a.assignee})`)
       }
     };
   }
 
-  // 2. 若当前未传入文本且未配置云端 ASR：实事求是展示真实文件信息，绝对不造假！
-  const defaultDialogues: DialogueItem[] = [
-    {
-      id: "d_real_1",
-      speaker: "说话人 A",
-      timeSec: 0,
-      durationSec: duration > 0 ? Math.min(Math.floor(duration / 2), 10) : 5,
-      text: "【真实音频已归档】点击上方备忘录卡片或本语音条可回听原声。"
-    },
-    {
-      id: "d_real_2",
-      speaker: "说话人 B",
-      timeSec: duration > 0 ? Math.floor(duration / 2) : 6,
-      durationSec: duration > 0 ? Math.min(Math.floor(duration / 2), 12) : 6,
-      text: "如需生成详细逐字对白与待办清单，可在备忘录中将听写文本一并分享，或在设置中配置云端大模型 API。"
-    }
-  ];
+  // 2. 若纯音频、尚未转写：实事求是呈现真实音频元数据，绝不编造虚假人名与假对白！
+  const minutes: MeetingMinutes = {
+    title: `${cleanTitle} · 录音记录`,
+    dateStr,
+    durationStr,
+    overview: `真实音频「${fileName}」已安全持久化保存在专属目录，文件大小 ${formatBytes(fileSizeBytes)}。`,
+    keyPoints: [
+      "真实音频文件已成功归档入沙盒专属目录",
+      "顶部原生音频卡片支持随时播放原声、声波波形与倍速调节"
+    ],
+    decisions: [
+      "待进行语音识别或 AI 转写提炼"
+    ],
+    actionItems: [
+      { id: "act_init", task: "在转写详情页中点击转写或在备忘录分享听写文本", assignee: "我", dueDate: "随时", done: false }
+    ]
+  };
 
   return {
-    id: `call_${now}`,
-    title: `录音: ${cleanTitle}`,
+    id: `rec_${now}`,
+    title: cleanTitle,
     createdAt: now,
     audioPath,
     audioFileName: fileName,
     fileSizeBytes,
     duration,
-    dialogues: defaultDialogues,
+    dialogues: [],
+    chapters: [
+      { id: "c0", timeSec: 0, title: "音频开始点" }
+    ],
+    minutes,
     summary: {
-      overview: `已成功保存真实录音文件「${fileName}」，大小 ${formatBytes(fileSizeBytes)}，录音存放在沙盒 Documents/CallRecordings/ 专属目录中。`,
-      keyPoints: [
-        "真实录音文件已持久化保存在专属目录中",
-        "顶部原生音频卡片支持随时播放原声、波形进度与倍速调节"
-      ],
-      actionItems: [
-        "在设置页中可配置转写模式与 AI 模型密钥",
-        "备忘录支持一键将听写文本共享到本脚本进行精细提取"
-      ]
+      overview: minutes.overview,
+      keyPoints: minutes.keyPoints,
+      actionItems: ["可进行语音转写或 AI 提炼"]
     }
   };
 }

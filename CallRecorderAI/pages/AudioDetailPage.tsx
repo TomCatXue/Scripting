@@ -10,6 +10,7 @@ import {
   Button,
   ScrollView,
   Spacer,
+  Image,
   SharedAudioSession,
   AVPlayer
 } from "scripting";
@@ -30,9 +31,9 @@ export function AudioDetailPage({
   const dismiss = Navigation.useDismiss();
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
-  const [duration, setDuration] = useState<number>(record.duration || 62);
+  const [duration, setDuration] = useState<number>(record.duration || 60);
   const [rate, setRate] = useState<number>(1.0);
-  const [activeSegment, setActiveSegment] = useState<"minutes" | "key" | "todo" | "raw">("minutes");
+  const [activeSegment, setActiveSegment] = useState<"timeline" | "raw">("timeline");
 
   // 初始化 AVPlayer
   const player = useMemo(() => {
@@ -101,7 +102,7 @@ export function AudioDetailPage({
   return (
     <NavigationStack>
       <VStack
-        navigationTitle="会议详情"
+        navigationTitle="录音与章节详情"
         navigationBarTitleDisplayMode="inline"
         toolbar={{
           cancellationAction: (
@@ -112,9 +113,9 @@ export function AudioDetailPage({
       >
         <ScrollView>
           <VStack spacing={14} padding={16}>
-            {/* 1. 顶部会议录音信息卡片 (设计图第4屏顶部) */}
+            {/* 1. 顶部会议录音信息卡片 (设计图第4屏样式 + SF Symbols) */}
             <VStack
-              padding={14}
+              padding={16}
               spacing={10}
               background="secondarySystemBackground"
               cornerRadius={16}
@@ -124,38 +125,38 @@ export function AudioDetailPage({
                   padding={8}
                   background="systemBlue"
                   cornerRadius={10}
-                  frame={{ width: 36, height: 36 }}
+                  frame={{ width: 38, height: 38 }}
                   alignment="center"
                 >
-                  <Text font="caption1" foregroundStyle="white">📄</Text>
+                  <Image systemName="doc.fill" font={18} foregroundStyle="white" />
                 </VStack>
 
-                <VStack spacing={2} alignment="leading">
+                <VStack spacing={3} alignment="leading">
                   <Text font="headline">{record.title}</Text>
                   <Text font="caption2" foregroundStyle="secondaryLabel">
-                    {record.minutes.dateStr || "2026年4月26日 10:00 - 11:20"} · {record.minutes.durationStr || "共 1.3 小时"}
+                    {record.minutes.dateStr} · {record.minutes.durationStr}
                   </Text>
                 </VStack>
 
                 <Spacer />
 
-                {/* AI 纪要已生成胶囊徽标 */}
-                <HStack padding={4} background="systemGreen" cornerRadius={6}>
-                  <Text font="caption2" foregroundStyle="white">
-                    🔒 AI 纪要已生成
+                <HStack padding={5} background="systemGreen" cornerRadius={6} spacing={4} alignment="center">
+                  <Image systemName="checkmark.shield.fill" font={10} foregroundStyle="white" />
+                  <Text font="caption2" foregroundStyle="white" fontWeight="bold">
+                    已归档
                   </Text>
                 </HStack>
               </HStack>
             </VStack>
 
-            {/* 2. 原生声波播放器大卡片 (设计图第4屏双色声波) */}
+            {/* 2. 原生声波播放器大卡片 (设计图第4屏双色声波 + SF Symbols) */}
             <VStack
               padding={16}
               spacing={12}
               background="secondarySystemBackground"
               cornerRadius={16}
             >
-              {/* 声波波形 */}
+              {/* 渐变声波波形 */}
               <HStack alignment="center">
                 <Spacer />
                 <WaveformView progressRatio={progressRatio} height={46} />
@@ -165,11 +166,12 @@ export function AudioDetailPage({
               {/* 播放控制与进度条 */}
               <HStack alignment="center" spacing={12}>
                 <Button
-                  title={isPlaying ? " ⏸ " : " ▶️ "}
+                  title=" "
+                  systemImage={isPlaying ? "pause.circle.fill" : "play.circle.fill"}
                   action={handleTogglePlay}
                 />
 
-                <Text font="caption1" foregroundStyle="secondaryLabel">
+                <Text font="caption1" foregroundStyle="secondaryLabel" monospacedDigit>
                   {formatSeconds(currentTime)} / {formatSeconds(duration)}
                 </Text>
 
@@ -182,99 +184,94 @@ export function AudioDetailPage({
               </HStack>
             </VStack>
 
-            {/* 3. 分段切换栏 (会议纪要 / 重点 / 待办 / 原文) */}
+            {/* 3. 分段切换栏 */}
             <HStack padding={6} spacing={8} background="secondarySystemBackground" cornerRadius={10}>
               <Button
-                title={activeSegment === "minutes" ? "• 会议纪要 •" : "会议纪要"}
-                action={() => setActiveSegment("minutes")}
+                title={activeSegment === "timeline" ? "• 章节时间轴 •" : "章节时间轴"}
+                action={() => setActiveSegment("timeline")}
               />
               <Spacer />
               <Button
-                title={activeSegment === "key" ? "• 重点 •" : "重点"}
-                action={() => setActiveSegment("key")}
-              />
-              <Spacer />
-              <Button
-                title={activeSegment === "todo" ? "• 待办 •" : "待办"}
-                action={() => setActiveSegment("todo")}
-              />
-              <Spacer />
-              <Button
-                title={activeSegment === "raw" ? "• 原文 •" : "原文"}
+                title={activeSegment === "raw" ? "• 对话原文 •" : "对话原文"}
                 action={() => setActiveSegment("raw")}
               />
             </HStack>
 
-            {/* 4. 时间轴 / 章节章节卡片 (设计图纵向时间线) */}
-            <VStack
-              padding={14}
-              spacing={12}
-              background="secondarySystemBackground"
-              cornerRadius={16}
-            >
-              <Text font="headline">时间轴 (点击跳转原声)</Text>
+            {/* 4. 时间轴 / 章节列表 (设计图纵向时间线 + 点击联动) */}
+            {activeSegment === "timeline" && (
+              <VStack
+                padding={16}
+                spacing={14}
+                background="secondarySystemBackground"
+                cornerRadius={16}
+              >
+                <HStack alignment="center" spacing={6}>
+                  <Image systemName="clock.arrow.circlepath" font={14} foregroundStyle="systemBlue" />
+                  <Text font="headline">章节时间轴 (点击跳转回听)</Text>
+                </HStack>
 
-              <VStack spacing={14}>
-                {record.chapters.map((chap) => {
-                  const isCurrent = currentTime >= chap.timeSec && currentTime < chap.timeSec + 15;
-                  return (
-                    <HStack key={chap.id} alignment="center" spacing={10}>
-                      {/* 时间戳 */}
-                      <Text
-                        font="caption1"
-                        fontWeight="bold"
-                        foregroundStyle={isCurrent ? "systemBlue" : "secondaryLabel"}
-                      >
-                        {formatSeconds(chap.timeSec)}
-                      </Text>
+                <VStack spacing={14}>
+                  {record.chapters.map((chap) => {
+                    const isCurrent = currentTime >= chap.timeSec && currentTime < chap.timeSec + 15;
+                    return (
+                      <HStack key={chap.id} alignment="center" spacing={10}>
+                        <Text
+                          font="caption1"
+                          fontWeight="bold"
+                          monospacedDigit
+                          foregroundStyle={isCurrent ? "systemBlue" : "secondaryLabel"}
+                        >
+                          {formatSeconds(chap.timeSec)}
+                        </Text>
 
-                      {/* 纵向连线圆点 */}
-                      <Text foregroundStyle="systemBlue">•</Text>
+                        <Image
+                          systemName="circle.fill"
+                          font={8}
+                          foregroundStyle={isCurrent ? "systemBlue" : "tertiaryLabel"}
+                        />
 
-                      {/* 章节主题 (点触直接联动跳播) */}
-                      <Button
-                        title={chap.title}
-                        action={() => handleSeek(chap.timeSec)}
-                      />
+                        <Button
+                          title={chap.title}
+                          action={() => handleSeek(chap.timeSec)}
+                        />
 
-                      <Spacer />
+                        <Spacer />
 
-                      <Button
-                        title="🔊 听"
-                        action={() => handleSeek(chap.timeSec)}
-                      />
-                    </HStack>
-                  );
-                })}
+                        <Button
+                          title=" "
+                          systemImage="speaker.wave.2.fill"
+                          action={() => handleSeek(chap.timeSec)}
+                        />
+                      </HStack>
+                    );
+                  })}
+                </VStack>
               </VStack>
-            </VStack>
+            )}
 
-            {/* 5. 相关附件卡片 (设计图底部 PDF 文件) */}
-            <VStack
-              padding={14}
-              spacing={8}
-              background="secondarySystemBackground"
-              cornerRadius={16}
-            >
-              <Text font="headline">相关文件</Text>
-              <HStack alignment="center" spacing={10}>
-                <VStack
-                  padding={6}
-                  background="systemRed"
-                  cornerRadius={6}
-                  frame={{ width: 32, height: 32 }}
-                  alignment="center"
-                >
-                  <Text font="caption1" foregroundStyle="white">PDF</Text>
-                </VStack>
-                <VStack spacing={2} alignment="leading">
-                  <Text font="subheadline">项目需求文档.pdf</Text>
-                  <Text font="caption2" foregroundStyle="secondaryLabel">2.4 MB</Text>
-                </VStack>
-                <Spacer />
-                <Button title="⬇️ 导出" action={() => {}} />
-              </HStack>
-            </VStack>
+            {/* 5. 原文纯文本分段 */}
+            {activeSegment === "raw" && (
+              <VStack
+                padding={16}
+                spacing={10}
+                background="secondarySystemBackground"
+                cornerRadius={16}
+              >
+                <Text font="headline">录音转写原文</Text>
+                {record.dialogues.length === 0 ? (
+                  <Text font="caption1" foregroundStyle="secondaryLabel">暂无分段原文</Text>
+                ) : (
+                  record.dialogues.map((d) => (
+                    <VStack key={d.id} spacing={3} alignment="leading">
+                      <Text font="caption2" foregroundStyle="systemBlue" fontWeight="bold">
+                        {d.speaker} · {formatSeconds(d.timeSec)}
+                      </Text>
+                      <Text font="body">{d.text}</Text>
+                    </VStack>
+                  ))
+                )}
+              </VStack>
+            )}
           </VStack>
         </ScrollView>
       </VStack>

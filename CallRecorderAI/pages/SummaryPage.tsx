@@ -7,7 +7,8 @@ import {
   Text,
   Button,
   ScrollView,
-  Spacer
+  Spacer,
+  Image
 } from "scripting";
 import type { CallRecord } from "../types";
 import { translateSingle } from "../translation_service";
@@ -40,14 +41,14 @@ export function SummaryPage({
   const handleCopy = async () => {
     const md = `# ${record.minutes.title} · AI 摘要
 
-## 📌 会议概要
+## 会议概要
 ${record.minutes.overview}
 
-## 💡 核心重点
+## 核心重点
 ${record.minutes.keyPoints.map((k, i) => `${i + 1}. ${k}`).join("\n")}
 
-## 🎯 决议与结论
-${record.minutes.decisions.map((d, i) => `• ${d}`).join("\n")}
+## 决议与结论
+${record.minutes.decisions.map((d) => `• ${d}`).join("\n")}
 `;
     if (typeof Pasteboard !== "undefined" && typeof Pasteboard.setString === "function") {
       await Pasteboard.setString(md);
@@ -70,20 +71,22 @@ ${record.minutes.decisions.map((d, i) => `• ${d}`).join("\n")}
       >
         <ScrollView>
           <VStack spacing={14} padding={16} alignment="leading">
-            {/* 顶栏控制：翻译 & 拷贝 */}
-            <HStack alignment="center">
+            {/* 顶栏控制：翻译 & 拷贝 (SF Symbols) */}
+            <HStack alignment="center" spacing={12}>
               <Button
-                title={translatedOverview ? "隐藏英文翻译" : (isTranslating ? "翻译中…" : "🌐 双语翻译 (Apple/AI)")}
+                title={translatedOverview ? "收起译文" : (isTranslating ? "翻译中…" : "双语翻译")}
+                systemImage="translate"
                 action={handleTranslateSummary}
               />
               <Spacer />
               <Button
-                title={copied ? "✅ 已复制" : "📋 复制摘要"}
+                title={copied ? "已复制" : "复制摘要"}
+                systemImage="doc.on.doc"
                 action={handleCopy}
               />
             </HStack>
 
-            {/* 1. 会议概要卡片 */}
+            {/* 1. 会议概要卡片 (SF Symbol) */}
             <VStack
               padding={16}
               spacing={8}
@@ -92,8 +95,9 @@ ${record.minutes.decisions.map((d, i) => `• ${d}`).join("\n")}
               alignment="leading"
             >
               <HStack alignment="center" spacing={6}>
+                <Image systemName="text.quote" font={16} foregroundStyle="systemGreen" />
                 <Text font="headline" foregroundStyle="systemGreen">
-                  📌 会议概要
+                  会议概要
                 </Text>
               </HStack>
               <Text font="body">
@@ -118,9 +122,13 @@ ${record.minutes.decisions.map((d, i) => `• ${d}`).join("\n")}
               cornerRadius={16}
               alignment="leading"
             >
-              <Text font="headline" foregroundStyle="systemBlue">
-                💡 核心重点
-              </Text>
+              <HStack alignment="center" spacing={6}>
+                <Image systemName="sparkles" font={16} foregroundStyle="systemBlue" />
+                <Text font="headline" foregroundStyle="systemBlue">
+                  核心重点
+                </Text>
+              </HStack>
+
               {record.minutes.keyPoints.map((kp, idx) => (
                 <HStack key={idx} alignment="top" spacing={8}>
                   <VStack
@@ -147,9 +155,13 @@ ${record.minutes.decisions.map((d, i) => `• ${d}`).join("\n")}
               cornerRadius={16}
               alignment="leading"
             >
-              <Text font="headline" foregroundStyle="systemIndigo">
-                🎯 结论与决议
-              </Text>
+              <HStack alignment="center" spacing={6}>
+                <Image systemName="flag.fill" font={16} foregroundStyle="systemIndigo" />
+                <Text font="headline" foregroundStyle="systemIndigo">
+                  结论与决议
+                </Text>
+              </HStack>
+
               {record.minutes.decisions.map((dec, idx) => (
                 <HStack key={idx} alignment="top" spacing={6}>
                   <Text foregroundStyle="systemIndigo">•</Text>

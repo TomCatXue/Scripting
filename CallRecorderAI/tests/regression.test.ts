@@ -99,16 +99,20 @@ test("Storage: AI 配置与翻译配置持久化与读取", () => {
   assert.equal(updated.translation.openaiModel, "gpt-4o-mini");
 });
 
-test("AIService: 音频分析返回格式符合双人对话规范与时间戳单调递增", async () => {
+test("AIService: 无听写文本时实事求是反映未转写真实状态，绝不捏造假对白", async () => {
   const result = await analyzeCallAudio("/var/mobile/recording.m4a", 62, undefined, "recording.m4a", 1024 * 100);
 
   assert.ok(result.id, "必须包含唯一 ID");
-  assert.ok(result.title.length > 0, "标题不应为空");
   assert.equal(result.duration, 62, "时长应与传入一致");
   assert.equal(result.audioFileName, "recording.m4a");
+  assert.equal(result.dialogues.length, 0, "无转写文本时对白列表应为空，严禁伪造假对话");
+});
 
-  // 验证双人对话
-  assert.ok(result.dialogues.length >= 2, "至少包含两位说话人的对话");
+test("AIService: 传入真实听写文本时正确切分双人角色与时间戳单调递增", async () => {
+  const realText = "大家早上好，今天讨论新版上线计划。\n测试团队预计明天给出回归报告。";
+  const result = await analyzeCallAudio("/var/mobile/recording.m4a", 40, realText, "meeting.m4a", 1024 * 80);
+
+  assert.equal(result.dialogues.length, 2, "两段发言应切为2句对白");
   let lastTime = -1;
   for (const d of result.dialogues) {
     assert.ok(d.speaker, "每句必须有角色名");
@@ -116,11 +120,6 @@ test("AIService: 音频分析返回格式符合双人对话规范与时间戳单
     assert.ok(d.timeSec >= lastTime, "对话时间戳必须单调递增");
     lastTime = d.timeSec;
   }
-
-  // 验证总结与待办
-  assert.ok(result.summary.overview.length > 0, "必须有主旨概述");
-  assert.ok(result.summary.keyPoints.length > 0, "必须有关键结论");
-  assert.ok(result.summary.actionItems.length > 0, "必须有待办事项清单");
 });
 
 test("Utils: 音频时间格式化正确", () => {
