@@ -23,6 +23,7 @@ import {
   formatBytes
 } from "../audio_manager";
 import { CallDetailView } from "../components/CallDetailView";
+import { RecordingPage } from "./RecordingPage";
 
 function formatSeconds(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -58,7 +59,7 @@ export function HomePage() {
     loadData();
   }, []);
 
-  // 进入二级详情页
+  // 进入二级详情页 (聚合转写、纪要、摘要与时间轴)
   const handleOpenDetail = async (record: CallRecord) => {
     try {
       await Navigation.present({
@@ -66,8 +67,23 @@ export function HomePage() {
       });
       loadData();
     } catch (e) {
-      console.error("打开二级详情页失败:", e);
+      console.error("打开详情页失败:", e);
     }
+  };
+
+  // 打开页面 1: 实时会议录音
+  const handleStartLiveRecording = async () => {
+    await Navigation.present({
+      element: (
+        <RecordingPage
+          onFinishRecording={(rec) => {
+            loadData();
+            handleOpenDetail(rec);
+          }}
+        />
+      )
+    });
+    loadData();
   };
 
   // 选取本地录音导入（归档入专属目录并解析）
@@ -109,14 +125,37 @@ export function HomePage() {
   return (
     <NavigationStack>
       <List
-        navigationTitle="通话录音归档"
+        navigationTitle="AI 会议与录音归档"
         navigationBarTitleDisplayMode="large"
       >
-        {/* 顶部存储空间概览 */}
-        <Section header={<Text>录音文件存储概览</Text>}>
-          <VStack spacing={10} padding={4}>
+        {/* 1. 核心操作功能区 (启动录音中页面 & 从文件导入) */}
+        <Section header={<Text>录音与导入</Text>}>
+          <VStack spacing={12} padding={4}>
+            {/* 大按钮: 开启现场会议录音 (页面 1) */}
+            <Button
+              title="🔴 开始会议录音 (实时转写)"
+              action={handleStartLiveRecording}
+            />
+
+            <HStack spacing={10}>
+              <Button
+                title={isProcessing ? "导入中…" : "📂 导入本地录音文件"}
+                action={handlePickAudio}
+              />
+              <Spacer />
+              <Button
+                title="🔄 刷新列表"
+                action={loadData}
+              />
+            </HStack>
+          </VStack>
+        </Section>
+
+        {/* 2. 存储空间概览卡片 */}
+        <Section header={<Text>录音存储目录概览</Text>}>
+          <VStack spacing={8} padding={4}>
             <HStack alignment="center">
-              <Text font="headline">📁 存储目录</Text>
+              <Text font="headline">📁 存储位置</Text>
               <Spacer />
               <Text font="subheadline" foregroundStyle="systemIndigo">
                 {getFriendlyStoragePath()}
@@ -129,25 +168,13 @@ export function HomePage() {
               </Text>
               <Spacer />
               <Text font="caption1" foregroundStyle="secondaryLabel">
-                总占用: {storageSummary.formattedSize}
+                空间占用: {storageSummary.formattedSize}
               </Text>
-            </HStack>
-
-            <HStack spacing={10}>
-              <Button
-                title={isProcessing ? "导入中…" : "📂 从文件 App 导入录音"}
-                action={handlePickAudio}
-              />
-              <Spacer />
-              <Button
-                title="🔄 刷新列表"
-                action={loadData}
-              />
             </HStack>
           </VStack>
         </Section>
 
-        {/* 真实录音文件列表 */}
+        {/* 3. 真实录音文件列表 */}
         <Section header={<Text>所有录音文件 ({records.length})</Text>}>
           {records.length === 0 ? (
             <VStack padding={36} alignment="center" spacing={10}>
@@ -155,7 +182,7 @@ export function HomePage() {
                 暂无通话录音
               </Text>
               <Text font="caption1" foregroundStyle="tertiaryLabel">
-                在备忘录通话录音中点击「...」选择「共享音频」到 Scripting，即可自动归档在此处。
+                点击上方「开始会议录音」或从备忘录分享音频。
               </Text>
             </VStack>
           ) : (
@@ -187,7 +214,7 @@ export function HomePage() {
                   </Text>
                   <Spacer />
                   <Button
-                    title="进入回听 & 微信对话"
+                    title="查看详情与转写 >"
                     action={() => handleOpenDetail(item)}
                   />
                 </HStack>

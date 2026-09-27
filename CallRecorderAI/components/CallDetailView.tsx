@@ -6,12 +6,16 @@ import {
   HStack,
   Button,
   ScrollView,
-  Divider
+  Divider,
+  Spacer
 } from "scripting";
 import type { CallRecord } from "../types";
 import { AppleNotesAudioCard } from "./AppleNotesAudioCard";
 import { WeChatDialogueList } from "./WeChatDialogueList";
-import { SummaryCard } from "./SummaryCard";
+import { TranscriptPage } from "../pages/TranscriptPage";
+import { MinutesPage } from "../pages/MinutesPage";
+import { SummaryPage } from "../pages/SummaryPage";
+import { AudioDetailPage } from "../pages/AudioDetailPage";
 
 export interface CallDetailViewProps {
   record: CallRecord;
@@ -19,14 +23,36 @@ export interface CallDetailViewProps {
 
 export function CallDetailView({ record }: CallDetailViewProps) {
   const dismiss = Navigation.useDismiss();
-  const [activeTab, setActiveTab] = useState<"dialogue" | "summary">("dialogue");
   const [seekTime, setSeekTime] = useState<number | null>(null);
   const [currentPlayTime, setCurrentPlayTime] = useState<number>(0);
   const [isPlayingGlobal, setIsPlayingGlobal] = useState<boolean>(false);
 
-  // 微信语音条点击事件响应
-  const handlePlayAtTime = (sec: number) => {
-    setSeekTime(sec);
+  // 打开页面 2: 转写详情与回听联动页
+  const handleOpenTranscript = async () => {
+    await Navigation.present({
+      element: <TranscriptPage record={record} />
+    });
+  };
+
+  // 打开页面 3: 录音详情与章节时间轴
+  const handleOpenAudioDetail = async () => {
+    await Navigation.present({
+      element: <AudioDetailPage record={record} />
+    });
+  };
+
+  // 打开页面 4: AI 摘要与结论
+  const handleOpenSummary = async () => {
+    await Navigation.present({
+      element: <SummaryPage record={record} />
+    });
+  };
+
+  // 打开页面 5: 会议纪要与待办清单
+  const handleOpenMinutes = async () => {
+    await Navigation.present({
+      element: <MinutesPage record={record} />
+    });
   };
 
   return (
@@ -39,7 +65,7 @@ export function CallDetailView({ record }: CallDetailViewProps) {
             <Button title="返回" action={dismiss} />
           )
         }}
-        spacing={0}
+        spacing={10}
       >
         {/* 最上面：备忘录风格原生音频卡片 */}
         <VStack padding={12} background="systemBackground">
@@ -56,41 +82,39 @@ export function CallDetailView({ record }: CallDetailViewProps) {
           />
         </VStack>
 
-        <Divider />
-
-        {/* 微信式对话与 AI 总结切换 */}
-        <HStack
-          padding={8}
-          spacing={8}
-          background="secondarySystemBackground"
-        >
+        {/* 6 大核心页面快速直达金刚区 */}
+        <HStack padding={8} spacing={8} background="secondarySystemBackground" cornerRadius={12}>
           <Button
-            title={activeTab === "dialogue" ? "💬 微信式对话流 (已选)" : "💬 微信式对话流"}
-            action={() => setActiveTab("dialogue")}
+            title="💬 转写详情"
+            action={handleOpenTranscript}
           />
+          <Spacer />
           <Button
-            title={activeTab === "summary" ? "📝 AI 智能总结 (已选)" : "📝 AI 智能总结"}
-            action={() => setActiveTab("summary")}
+            title="📋 会议纪要"
+            action={handleOpenMinutes}
+          />
+          <Spacer />
+          <Button
+            title="💡 AI 摘要"
+            action={handleOpenSummary}
+          />
+          <Spacer />
+          <Button
+            title="⏱️ 时间轴"
+            action={handleOpenAudioDetail}
           />
         </HStack>
 
         <Divider />
 
-        {/* 滚动内容区 */}
+        {/* 仿微信语音聊天流：每个语音条下紧随转文字 */}
         <ScrollView>
-          {activeTab === "dialogue" ? (
-            <WeChatDialogueList
-              dialogues={record.dialogues}
-              currentPlayTime={currentPlayTime}
-              isPlayingGlobal={isPlayingGlobal}
-              onPlayAtTime={handlePlayAtTime}
-            />
-          ) : (
-            <SummaryCard
-              title={record.title}
-              summary={record.summary}
-            />
-          )}
+          <WeChatDialogueList
+            dialogues={record.dialogues}
+            currentPlayTime={currentPlayTime}
+            isPlayingGlobal={isPlayingGlobal}
+            onPlayAtTime={(sec) => setSeekTime(sec)}
+          />
         </ScrollView>
       </VStack>
     </NavigationStack>
