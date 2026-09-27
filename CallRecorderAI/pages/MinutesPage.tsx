@@ -21,6 +21,7 @@ export function MinutesPage({
   const [actionItems, setActionItems] = useState<ActionItem[]>(record.minutes.actionItems);
   const [isExported, setIsExported] = useState<boolean>(false);
 
+  // 规范第 18 条：直接点击 ☐ → ✓ 交互切换完成状态
   const toggleActionItem = (id: string) => {
     setActionItems((prev) =>
       prev.map((item) => (item.id === id ? { ...item, done: !item.done } : item))
@@ -60,7 +61,7 @@ ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.as
           topBarLeading: (
             <Button
               title=" "
-              systemImage="chevron.backward"
+              systemImage="chevron.left"
               action={dismiss}
             />
           ),
@@ -90,7 +91,7 @@ ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.as
       >
         <ScrollView>
           <VStack spacing={14} padding={4}>
-            {/* 1. 会议纪要信息头卡 (原图第3屏: 蓝色文件图标 + 项目例会·会议纪要 + 时间 + 共 1.3 小时) */}
+            {/* 1. 会议纪要信息头卡 (规范第 16 条: 项目例会 · AI纪要 + 时间) */}
             <VStack
               padding={16}
               spacing={10}
@@ -98,7 +99,6 @@ ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.as
               cornerRadius={18}
             >
               <HStack alignment="center" spacing={12}>
-                {/* 蓝色文件大图标 */}
                 <VStack
                   padding={8}
                   background="systemBlue"
@@ -109,7 +109,6 @@ ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.as
                   <Image systemName="doc.text.fill" font={18} foregroundStyle="white" />
                 </VStack>
 
-                {/* 标题与时间 */}
                 <VStack spacing={4} alignment="leading">
                   <Text font="headline" fontWeight="bold">
                     {record.minutes.title}
@@ -121,7 +120,6 @@ ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.as
 
                 <Spacer />
 
-                {/* 右侧蓝色胶囊：共 1.3 小时 */}
                 <HStack
                   padding={4}
                   background="systemBackground"
@@ -134,7 +132,7 @@ ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.as
               </HStack>
             </VStack>
 
-            {/* 2. 会议摘要卡片 (原图第3屏: 绿色图标 + 会议摘要 + 正文段落) */}
+            {/* 2. 会议摘要 (规范第 16 条: 简洁文档排版) */}
             <VStack
               padding={16}
               spacing={10}
@@ -142,16 +140,8 @@ ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.as
               cornerRadius={18}
               alignment="leading"
             >
-              <HStack alignment="center" spacing={8}>
-                <VStack
-                  padding={4}
-                  background="systemTeal"
-                  cornerRadius={6}
-                  alignment="center"
-                  frame={{ width: 22, height: 22 }}
-                >
-                  <Image systemName="text.quote" font={12} foregroundStyle="white" />
-                </VStack>
+              <HStack alignment="center" spacing={6}>
+                <Image systemName="sparkles" font={14} foregroundStyle="systemTeal" />
                 <Text font="headline" fontWeight="bold">
                   会议摘要
                 </Text>
@@ -162,7 +152,7 @@ ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.as
               </Text>
             </VStack>
 
-            {/* 3. 核心要点卡片 (原图第3屏: 青蓝图标 + 蓝色实心数字圆点清单) */}
+            {/* 3. 核心要点 (规范第 17 条: 采用 1 2 3 4 圆形数字序号，拒绝冗余图标) */}
             <VStack
               padding={16}
               spacing={12}
@@ -170,25 +160,14 @@ ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.as
               cornerRadius={18}
               alignment="leading"
             >
-              <HStack alignment="center" spacing={8}>
-                <VStack
-                  padding={4}
-                  background="systemBlue"
-                  cornerRadius={6}
-                  alignment="center"
-                  frame={{ width: 22, height: 22 }}
-                >
-                  <Image systemName="lightbulb.fill" font={12} foregroundStyle="white" />
-                </VStack>
-                <Text font="headline" fontWeight="bold">
-                  核心要点
-                </Text>
-              </HStack>
+              <Text font="headline" fontWeight="bold">
+                核心要点
+              </Text>
 
-              <VStack spacing={10}>
+              <VStack spacing={12}>
                 {record.minutes.keyPoints.map((point, idx) => (
                   <HStack key={idx} alignment="top" spacing={10}>
-                    {/* 蓝色实心小圆圈 */}
+                    {/* 圆形数字编号 ① ② ③ ④ */}
                     <VStack
                       padding={2}
                       background="systemBlue"
@@ -208,7 +187,7 @@ ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.as
               </VStack>
             </VStack>
 
-            {/* 4. 待办事项卡片 (原图第3屏: 青绿图标 + 勾选框 + 任务 + 负责人 + 截止日期) */}
+            {/* 4. 待办事项 (规范第 18 条: 点击 ☐ → ✓ 变成完成状态，含负责人与截止日期) */}
             <VStack
               padding={16}
               spacing={12}
@@ -216,16 +195,8 @@ ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.as
               cornerRadius={18}
               alignment="leading"
             >
-              <HStack alignment="center" spacing={8}>
-                <VStack
-                  padding={4}
-                  background="systemTeal"
-                  cornerRadius={6}
-                  alignment="center"
-                  frame={{ width: 22, height: 22 }}
-                >
-                  <Image systemName="checkmark.circle.fill" font={12} foregroundStyle="white" />
-                </VStack>
+              <HStack alignment="center" spacing={6}>
+                <Image systemName="checkmark.circle" font={14} foregroundStyle="systemTeal" />
                 <Text font="headline" fontWeight="bold">
                   待办事项
                 </Text>
@@ -234,10 +205,10 @@ ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.as
               <VStack spacing={12}>
                 {actionItems.map((act) => (
                   <HStack key={act.id} alignment="center" spacing={10}>
-                    {/* 原生勾选框 */}
+                    {/* 勾选框：☐ → ✓ */}
                     <Button
                       title=" "
-                      systemImage={act.done ? "checkmark.square.fill" : "square"}
+                      systemImage={act.done ? "checkmark.circle.fill" : "circle"}
                       action={() => toggleActionItem(act.id)}
                     />
 
@@ -267,7 +238,7 @@ ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.as
 
         <Spacer />
 
-        {/* 5. 底部固定主操作大胶囊按键 (原图第3屏: 导出会议纪要) */}
+        {/* 5. 底部大按钮: 导出会议纪要 */}
         <VStack
           padding={14}
           background="systemBlue"
@@ -275,7 +246,7 @@ ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.as
           alignment="center"
         >
           <Button
-            title={isExported ? "已复制完整纪要到剪贴板 ✓" : "导出会议纪要"}
+            title={isExported ? "已复制完整纪要 Markdown ✓" : "导出会议纪要"}
             action={handleExport}
           />
         </VStack>

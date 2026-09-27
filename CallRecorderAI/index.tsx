@@ -6,6 +6,7 @@ import {
   Script
 } from "scripting";
 import { HomePage } from "./pages/HomePage";
+import { AllMinutesPage } from "./pages/AllMinutesPage";
 import { SettingsPage } from "./pages/SettingsPage";
 
 export function RootAppView() {
@@ -13,18 +14,29 @@ export function RootAppView() {
 
   return (
     <TabView selection={selection}>
+      {/* Tab 1: 录音 (主录音列表与即时录音) */}
       <Tab
-        title="首页录音"
-        systemImage="waveform.and.mic"
+        title="录音"
+        systemImage="waveform"
         value={0}
       >
         <HomePage />
       </Tab>
 
+      {/* Tab 2: 纪要 (AI 会议纪要与待办事项聚合库) */}
       <Tab
-        title="设置与说明"
-        systemImage="gearshape.fill"
+        title="纪要"
+        systemImage="doc.text"
         value={1}
+      >
+        <AllMinutesPage />
+      </Tab>
+
+      {/* Tab 3: 我的 (AI 大模型、转写引擎、语言与数据管理) */}
+      <Tab
+        title="我的"
+        systemImage="person.crop.circle"
+        value={2}
       >
         <SettingsPage />
       </Tab>

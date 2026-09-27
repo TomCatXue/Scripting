@@ -39,11 +39,13 @@ export function AudioDetailPage({
 }) {
   const dismiss = Navigation.useDismiss();
 
-  // 播放状态：对齐原图第4屏进度 00:12:36 与总时长 01:02:18
+  // 播放器状态 (规范第 14 条)
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(756); // 00:12:36
   const [duration, setDuration] = useState<number>(record.duration || 3738); // 01:02:18
   const [rate, setRate] = useState<number>(1.0);
+
+  // 规范第 15 条：播放器下 Tab (纪要 / 重点 / 待办 / 原文)
   const [activeTab, setActiveTab] = useState<"minutes" | "key" | "todo" | "raw">("minutes");
   const [isExpandedTimeline, setIsExpandedTimeline] = useState<boolean>(true);
 
@@ -107,20 +109,24 @@ export function AudioDetailPage({
     }
   };
 
+  const handleSkip = (delta: number) => {
+    const next = Math.max(0, Math.min(duration, currentTime + delta));
+    player.currentTime = next;
+    setCurrentTime(next);
+  };
+
   const toggleRate = () => {
     const next = rate === 1.0 ? 1.5 : rate === 1.5 ? 2.0 : 1.0;
     setRate(next);
     player.rate = next;
   };
 
-  // 跳转到 AI 会议纪要独立页
   const handleOpenMinutesPage = async () => {
     await Navigation.present({
       element: <MinutesPage record={record} />
     });
   };
 
-  // 跳转到转写详情独立页
   const handleOpenTranscriptPage = async () => {
     await Navigation.present({
       element: <TranscriptPage record={record} />
@@ -129,7 +135,6 @@ export function AudioDetailPage({
 
   const progressRatio = duration > 0 ? Math.min(1, Math.max(0, currentTime / duration)) : 0;
 
-  // 时间轴列表（对照原图 6 个时间节点）
   const timelineItems = record.chapters && record.chapters.length > 0 ? record.chapters : [
     { id: "c0", timeSec: 0, title: "会议开始，项目进展回顾" },
     { id: "c1", timeSec: 8, title: "开发进度完成 80%" },
@@ -148,13 +153,13 @@ export function AudioDetailPage({
           topBarLeading: (
             <Button
               title=" "
-              systemImage="chevron.backward"
+              systemImage="chevron.left"
               action={dismiss}
             />
           ),
           principal: (
             <Text font="headline" fontWeight="bold">
-              会议详情
+              录音详情
             </Text>
           ),
           topBarTrailing: (
@@ -171,7 +176,7 @@ export function AudioDetailPage({
       >
         <ScrollView>
           <VStack spacing={14} padding={4}>
-            {/* 1. 顶部会议录音信息卡片 (原图第4屏: 蓝色 D 图标 + 项目例会录音 + 时间 + 1.3 小时 + AI 纪要已生成) */}
+            {/* 1. 录音基础信息卡片 (规范第 13 条: 标题、日期、时长、2 位说话人、✨ AI 纪要已生成) */}
             <VStack
               padding={16}
               spacing={8}
@@ -179,7 +184,6 @@ export function AudioDetailPage({
               cornerRadius={18}
             >
               <HStack alignment="center" spacing={12}>
-                {/* 蓝色 D 文档小图标 */}
                 <VStack
                   padding={8}
                   background="systemBlue"
@@ -201,9 +205,9 @@ export function AudioDetailPage({
                   </Text>
                   <HStack alignment="center" spacing={8}>
                     <Text font="caption1" foregroundStyle="secondaryLabel">
-                      1.3 小时
+                      1小时18分钟 · 2位说话人
                     </Text>
-                    {/* 浅绿胶囊：AI 纪要已生成 */}
+                    {/* ✨ AI 纪要状态标签 (规范第 22 条) */}
                     <HStack
                       padding={3}
                       background="systemBackground"
@@ -213,7 +217,7 @@ export function AudioDetailPage({
                     >
                       <Image systemName="sparkles" font={9} foregroundStyle="systemTeal" />
                       <Text font="caption2" foregroundStyle="systemTeal" fontWeight="bold">
-                        AI 纪要已生成
+                        ✨ AI 纪要已生成
                       </Text>
                     </HStack>
                   </HStack>
@@ -223,33 +227,71 @@ export function AudioDetailPage({
               </HStack>
             </VStack>
 
-            {/* 2. 原生双色声波播放器大卡片 (原图第4屏: 深青蓝已播/浅青绿未播 + 播放控制) */}
+            {/* 2. 播放器卡片 (规范第 14 条: 柱状波形、播放按键、15 秒快退/快进、倍速、时间滑轨) */}
             <VStack
               padding={16}
               spacing={12}
               background="secondarySystemBackground"
               cornerRadius={18}
             >
-              {/* 双色渐变声波柱状图 */}
+              {/* 波形 */}
               <HStack alignment="center">
                 <Spacer />
                 <WaveformView
                   progressRatio={progressRatio}
-                  height={46}
+                  height={50}
                   mode="playback"
                 />
                 <Spacer />
               </HStack>
 
-              {/* 播放控制与进度指示 */}
-              <HStack alignment="center" spacing={10}>
-                {/* 蓝色实心播放按钮 */}
+              {/* 进度指示 */}
+              <VStack spacing={4}>
+                <HStack alignment="center">
+                  <VStack
+                    frame={{ width: Math.max(8, progressRatio * 260), height: 3 }}
+                    background="systemBlue"
+                    cornerRadius={2}
+                  />
+                  <VStack
+                    frame={{ width: 8, height: 8 }}
+                    background="systemBlue"
+                    cornerRadius={4}
+                  />
+                  <VStack
+                    frame={{ height: 3 }}
+                    background="tertiarySystemFill"
+                    cornerRadius={2}
+                  />
+                </HStack>
+
+                <HStack alignment="center">
+                  <Text font="caption2" foregroundStyle="secondaryLabel" monospacedDigit>
+                    {formatHours(currentTime)}
+                  </Text>
+                  <Spacer />
+                  <Text font="caption2" foregroundStyle="secondaryLabel" monospacedDigit>
+                    {formatHours(duration)}
+                  </Text>
+                </HStack>
+              </VStack>
+
+              {/* 控制行 */}
+              <HStack alignment="center" spacing={24}>
+                <Spacer />
+
+                <Button
+                  title=" "
+                  systemImage="gobackward.15"
+                  action={() => handleSkip(-15)}
+                />
+
                 <VStack
-                  padding={8}
+                  padding={12}
                   background="systemBlue"
-                  cornerRadius={18}
+                  cornerRadius={24}
                   alignment="center"
-                  frame={{ width: 36, height: 36 }}
+                  frame={{ width: 48, height: 48 }}
                 >
                   <Button
                     title=" "
@@ -258,28 +300,12 @@ export function AudioDetailPage({
                   />
                 </VStack>
 
-                {/* 时间与滑轨 */}
-                <VStack spacing={3}>
-                  <Text font="caption1" foregroundStyle="secondaryLabel" monospacedDigit>
-                    {formatHours(currentTime)} / {formatHours(duration)}
-                  </Text>
-                  <HStack alignment="center">
-                    <VStack
-                      frame={{ width: Math.max(6, progressRatio * 150), height: 3 }}
-                      background="systemBlue"
-                      cornerRadius={2}
-                    />
-                    <VStack
-                      frame={{ height: 3 }}
-                      background="tertiarySystemFill"
-                      cornerRadius={2}
-                    />
-                  </HStack>
-                </VStack>
+                <Button
+                  title=" "
+                  systemImage="goforward.15"
+                  action={() => handleSkip(15)}
+                />
 
-                <Spacer />
-
-                {/* 倍速切换胶囊 (原图: 1.0x) */}
                 <HStack
                   padding={4}
                   background="systemBackground"
@@ -290,26 +316,26 @@ export function AudioDetailPage({
                     action={toggleRate}
                   />
                 </HStack>
+
+                <Spacer />
               </HStack>
             </VStack>
 
-            {/* 3. 分段 Tab 切换栏 (原图第4屏: 会议纪要 / 重点 / 待办 / 原文) */}
+            {/* 3. 播放器下方 Tab (规范第 15 条: 纪要 / 重点 / 待办 / 原文) */}
             <HStack alignment="center" spacing={16} padding={4}>
-              {/* 会议纪要 */}
               <VStack alignment="center" spacing={4}>
                 <Button
-                  title="会议纪要"
+                  title="纪要"
                   action={() => {
                     setActiveTab("minutes");
                     handleOpenMinutesPage();
                   }}
                 />
                 {activeTab === "minutes" && (
-                  <VStack frame={{ width: 48, height: 2 }} background="systemTeal" cornerRadius={1} />
+                  <VStack frame={{ width: 32, height: 2 }} background="systemTeal" cornerRadius={1} />
                 )}
               </VStack>
 
-              {/* 重点 */}
               <VStack alignment="center" spacing={4}>
                 <Button
                   title="重点"
@@ -320,7 +346,6 @@ export function AudioDetailPage({
                 )}
               </VStack>
 
-              {/* 待办 */}
               <VStack alignment="center" spacing={4}>
                 <Button
                   title="待办"
@@ -331,7 +356,6 @@ export function AudioDetailPage({
                 )}
               </VStack>
 
-              {/* 原文 */}
               <VStack alignment="center" spacing={4}>
                 <Button
                   title="原文"
@@ -348,7 +372,7 @@ export function AudioDetailPage({
               <Spacer />
             </HStack>
 
-            {/* 4. 时间轴内容模块 (原图第4屏: 竖向青蓝色时间线与圆点 + 展开全部) */}
+            {/* 4. 时间轴功能 (规范第 19 条: 竖向连线 + 实心圆点 + 点击跳转回播) */}
             <VStack
               padding={16}
               spacing={12}
@@ -365,14 +389,13 @@ export function AudioDetailPage({
                   const isCurrent = currentTime >= item.timeSec && currentTime < item.timeSec + 15;
                   return (
                     <HStack key={item.id} alignment="center" spacing={8}>
-                      {/* 时间轴实心青蓝圆点 */}
+                      {/* 实心圆点 */}
                       <VStack
                         frame={{ width: 8, height: 8 }}
                         background={isCurrent ? "systemBlue" : "systemTeal"}
                         cornerRadius={4}
                       />
 
-                      {/* 时间戳 */}
                       <Text
                         font="subheadline"
                         foregroundStyle="secondaryLabel"
@@ -381,7 +404,7 @@ export function AudioDetailPage({
                         {formatSeconds(item.timeSec)}
                       </Text>
 
-                      {/* 节点标题（点击跳跃回听） */}
+                      {/* 点击该节点直接跳播回放 */}
                       <Button
                         title={item.title}
                         action={() => handleSeek(item.timeSec)}
@@ -390,7 +413,6 @@ export function AudioDetailPage({
                   );
                 })}
 
-                {/* 展开全部 ⌄ 操作 */}
                 <HStack alignment="center" padding={4}>
                   <Spacer />
                   <Button
@@ -402,7 +424,7 @@ export function AudioDetailPage({
               </VStack>
             </VStack>
 
-            {/* 5. 相关文件模块 (原图第4屏: 红色 PDF 卡片 + 项目需求文档.pdf + 2.4 MB + 下载按钮) */}
+            {/* 5. 相关文件 */}
             <VStack
               padding={16}
               spacing={10}
@@ -415,7 +437,6 @@ export function AudioDetailPage({
               </Text>
 
               <HStack alignment="center" spacing={12}>
-                {/* 红色 PDF 小图标卡片 */}
                 <VStack
                   padding={8}
                   background="systemRed"
@@ -437,7 +458,6 @@ export function AudioDetailPage({
 
                 <Spacer />
 
-                {/* 下载/导出图标按钮 */}
                 <Button
                   title=" "
                   systemImage="arrow.down.to.line"
