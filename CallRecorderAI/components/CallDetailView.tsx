@@ -10,7 +10,7 @@ import {
   ScrollView,
   Divider
 } from "scripting";
-import { CallRecord } from "../types";
+import type { CallRecord } from "../types";
 import { PlayerBar } from "./PlayerBar";
 import { DialogueList } from "./DialogueList";
 import { SummaryCard } from "./SummaryCard";

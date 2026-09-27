@@ -8,7 +8,7 @@ import {
   Button,
   Spacer
 } from "scripting";
-import { CallSummary } from "../types";
+import type { CallSummary } from "../types";
 
 export interface SummaryCardProps {
   title: string;
@@ -51,7 +51,7 @@ ${summary.actionItems.map((a) => `- [ ] ${a}`).join("\n")}
         background="secondarySystemBackground"
         cornerRadius={12}
       >
-        <Text font="subheadline" foregroundColor="systemIndigo">
+        <Text font="subheadline" foregroundStyle="systemIndigo">
           📌 核心主旨概述
         </Text>
         <Text font="body">{summary.overview}</Text>
@@ -65,12 +65,12 @@ ${summary.actionItems.map((a) => `- [ ] ${a}`).join("\n")}
         background="secondarySystemBackground"
         cornerRadius={12}
       >
-        <Text font="subheadline" foregroundColor="systemIndigo">
+        <Text font="subheadline" foregroundStyle="systemIndigo">
           🤝 达成共识与关键讨论
         </Text>
         {summary.keyPoints.map((kp, idx) => (
           <HStack key={idx} alignment="top" spacing={6}>
-            <Text foregroundColor="secondaryLabel">•</Text>
+            <Text foregroundStyle="secondaryLabel">•</Text>
             <Text font="body">{kp}</Text>
           </HStack>
         ))}
@@ -84,7 +84,7 @@ ${summary.actionItems.map((a) => `- [ ] ${a}`).join("\n")}
         background="secondarySystemBackground"
         cornerRadius={12}
       >
-        <Text font="subheadline" foregroundColor="systemIndigo">
+        <Text font="subheadline" foregroundStyle="systemIndigo">
           📋 待办事项清单 (Action Items)
         </Text>
         {summary.actionItems.map((item, idx) => (

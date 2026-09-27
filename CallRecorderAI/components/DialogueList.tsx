@@ -2,10 +2,9 @@ import {
   VStack,
   HStack,
   Text,
-  Button,
-  Spacer
+  Button
 } from "scripting";
-import { DialogueItem } from "../types";
+import type { DialogueItem } from "../types";
 
 function formatTime(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -22,7 +21,7 @@ export function DialogueList({ dialogues, onPlayAtTime }: DialogueListProps) {
   if (!dialogues || dialogues.length === 0) {
     return (
       <VStack padding={30} alignment="center" spacing={8}>
-        <Text foregroundColor="secondaryLabel">暂无对话记录</Text>
+        <Text foregroundStyle="secondaryLabel">暂无对话记录</Text>
       </VStack>
     );
   }
@@ -43,7 +42,7 @@ export function DialogueList({ dialogues, onPlayAtTime }: DialogueListProps) {
             <HStack spacing={8} alignment="center">
               {isSpeakerA && (
                 <>
-                  <Text font="caption1" foregroundColor="secondaryLabel">
+                  <Text font="caption1" foregroundStyle="secondaryLabel">
                     {item.speaker} · {formatTime(item.timeSec)}
                   </Text>
                   <Button
@@ -59,7 +58,7 @@ export function DialogueList({ dialogues, onPlayAtTime }: DialogueListProps) {
                     title="🔊 听这句"
                     action={() => onPlayAtTime(item.timeSec)}
                   />
-                  <Text font="caption1" foregroundColor="secondaryLabel">
+                  <Text font="caption1" foregroundStyle="secondaryLabel">
                     {item.speaker} · {formatTime(item.timeSec)}
                   </Text>
                 </>
@@ -73,7 +72,7 @@ export function DialogueList({ dialogues, onPlayAtTime }: DialogueListProps) {
               cornerRadius={14}
             >
               <Text
-                foregroundColor={isSpeakerA ? "white" : "label"}
+                foregroundStyle={isSpeakerA ? "white" : "label"}
                 font="body"
               >
                 {item.text}

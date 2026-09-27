@@ -4,12 +4,24 @@ import {
   Navigation,
   NavigationStack,
   VStack,
-  Text,
-  Button
+  Text
 } from "scripting";
 import { saveRecord } from "./storage";
 import { analyzeCallAudio } from "./ai_service";
 import { CallDetailView } from "./components/CallDetailView";
+
+function EmptyPromptView() {
+  return (
+    <NavigationStack>
+      <VStack padding={24} spacing={16} alignment="center">
+        <Text font="headline">未接收到录音数据</Text>
+        <Text font="subheadline" foregroundStyle="secondaryLabel">
+          请在备忘录 App 中打开通话录音卡片，点击右上角更多按钮选择“共享音频”或“共享听写文本”。
+        </Text>
+      </VStack>
+    </NavigationStack>
+  );
+}
 
 async function run() {
   const filePaths = Intent.fileURLsParameter;
@@ -23,16 +35,7 @@ async function run() {
   // 1. 如果没有收到文件也没有收到文本，给出轻量提示后退出
   if ((!filePaths || filePaths.length === 0) && !rawText) {
     await Navigation.present({
-      element: (
-        <NavigationStack>
-          <VStack padding={24} spacing={16} alignment="center">
-            <Text font="headline">未接收到录音数据</Text>
-            <Text font="subheadline" foregroundColor="secondaryLabel">
-              请在“备忘录”App 中打开通话录音卡片，点击右上角「...」选择「共享音频」或「共享听写文本」。
-            </Text>
-          </VStack>
-        </NavigationStack>
-      )
+      element: <EmptyPromptView />
     });
     Script.exit(Intent.text("未收到输入"));
     return;

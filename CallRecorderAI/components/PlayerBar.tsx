@@ -138,7 +138,7 @@ export function PlayerBar({
         />
 
         {/* 播放时间与总时长 */}
-        <Text font="subheadline" foregroundColor="secondaryLabel">
+        <Text font="subheadline" foregroundStyle="secondaryLabel">
           {formatSeconds(currentTime)} / {formatSeconds(duration || initialDuration)}
         </Text>
 

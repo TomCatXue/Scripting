@@ -13,7 +13,7 @@ import {
   Spacer,
   Script
 } from "scripting";
-import { CallRecord } from "./types";
+import type { CallRecord } from "./types";
 import { getAllRecords, saveRecord, deleteRecord } from "./storage";
 import { analyzeCallAudio } from "./ai_service";
 import { CallDetailView } from "./components/CallDetailView";
@@ -78,17 +78,17 @@ export function MainListView() {
               background="secondarySystemBackground"
               cornerRadius={14}
             >
-              <Text font="headline" foregroundColor="systemIndigo">
+              <Text font="headline" foregroundStyle="systemIndigo">
                 🎙️ 使用说明
               </Text>
-              <Text font="subheadline" foregroundColor="secondaryLabel">
+              <Text font="subheadline" foregroundStyle="secondaryLabel">
                 1. 备忘录中打开任意通话录音；
               </Text>
-              <Text font="subheadline" foregroundColor="secondaryLabel">
-                2. 点击录音卡片右上角「...」选择「共享音频」；
+              <Text font="subheadline" foregroundStyle="secondaryLabel">
+                2. 点击录音卡片右上角“...”选择“共享音频”；
               </Text>
-              <Text font="subheadline" foregroundColor="secondaryLabel">
-                3. 在系统分享面板中选取「Scripting」即可自动唤起分析。
+              <Text font="subheadline" foregroundStyle="secondaryLabel">
+                3. 在系统分享面板中选取“Scripting”即可自动唤起分析。
               </Text>
 
               <HStack alignment="center">
@@ -106,10 +106,10 @@ export function MainListView() {
 
             {records.length === 0 ? (
               <VStack padding={40} alignment="center" spacing={10}>
-                <Text font="body" foregroundColor="secondaryLabel">
+                <Text font="body" foregroundStyle="secondaryLabel">
                   暂无通话记录
                 </Text>
-                <Text font="caption1" foregroundColor="tertiaryLabel">
+                <Text font="caption1" foregroundStyle="tertiaryLabel">
                   请从备忘录分享音频，或点击上方按钮加载演示
                 </Text>
               </VStack>
@@ -133,13 +133,13 @@ export function MainListView() {
 
                   <Text
                     font="subheadline"
-                    foregroundColor="secondaryLabel"
+                    foregroundStyle="secondaryLabel"
                   >
                     {item.summary.overview}
                   </Text>
 
                   <HStack alignment="center">
-                    <Text font="caption1" foregroundColor="tertiaryLabel">
+                    <Text font="caption1" foregroundStyle="tertiaryLabel">
                       📅 {formatDate(item.createdAt)} · ⏱️ {formatSeconds(item.duration)}
                     </Text>
                     <Spacer />
