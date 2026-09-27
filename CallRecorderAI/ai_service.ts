@@ -1,88 +1,59 @@
 import type { CallRecord, DialogueItem, CallSummary } from "./types";
 import { getAISettings } from "./storage";
+import { formatBytes } from "./audio_manager";
 
 /**
- * 示例演示数据生成器（包含精确的时间戳、单句时长以及仿真微信对话记录）
+ * 将整段文本根据停顿、换行或角色标号切分为仿微信对白数据
  */
-function createMockAnalysis(audioPath: string, duration: number, fileName = "call_demo.m4a", fileSizeBytes = 1024 * 780): CallRecord {
-  const now = Date.now();
-  const dialogues: DialogueItem[] = [
-    {
-      id: "d1",
-      speaker: "说话人 A (我)",
-      timeSec: 1,
-      durationSec: 5,
-      text: "喂，李经理您好！关于上次沟通的智慧园区项目合同细节，您这边确认过了吗？"
-    },
-    {
-      id: "d2",
-      speaker: "说话人 B (客户)",
-      timeSec: 6,
-      durationSec: 8,
-      text: "小陈你好，方案和技术协议我们法务和技术部门都看过了，主体框架没问题，主要有两点细节需要商榷。"
-    },
-    {
-      id: "d3",
-      speaker: "说话人 A (我)",
-      timeSec: 15,
-      durationSec: 3,
-      text: "好的李经理，您请讲，我们立刻根据您的要求调整。"
-    },
-    {
-      id: "d4",
-      speaker: "说话人 B (客户)",
-      timeSec: 19,
-      durationSec: 12,
-      text: "第一是首付款比例希望从 30% 调整为 20%，尾款在验收满一年后付清；第二是私有化部署的服务器要求下周三之前先到位配合联调。"
-    },
-    {
-      id: "d5",
-      speaker: "说话人 A (我)",
-      timeSec: 32,
-      durationSec: 11,
-      text: "关于首付款比例，我请示过财务总监，如果下周能正式盖章回传，20% 可以特批；服务器硬件我们已经备齐，周二即可进场安装。"
-    },
-    {
-      id: "d6",
-      speaker: "说话人 B (客户)",
-      timeSec: 45,
-      durationSec: 7,
-      text: "那太顺利了！你把修改后的终版合同电子版今天下班前发我，我明天上午直接找总经理签字盖章。"
-    },
-    {
-      id: "d7",
-      speaker: "说话人 A (我)",
-      timeSec: 54,
-      durationSec: 6,
-      text: "好的李经理！今天下午 5 点前我准时发到您企业微信和邮箱，感谢李经理的支持！"
+function parseTranscriptToDialogues(rawTranscript: string, totalDuration = 0): DialogueItem[] {
+  const lines = rawTranscript
+    .split(/\n+/)
+    .map((l) => l.trim())
+    .filter(Boolean);
+
+  if (lines.length === 0) {
+    return [
+      {
+        id: "d_init",
+        speaker: "通话原声",
+        timeSec: 0,
+        durationSec: totalDuration > 0 ? Math.min(totalDuration, 15) : 8,
+        text: "真实音频已成功录入，点击上方备忘录音频卡片可听完整原声。"
+      }
+    ];
+  }
+
+  const items: DialogueItem[] = [];
+  let currentTime = 0;
+  const timeStep = totalDuration > 0 ? Math.max(3, Math.floor(totalDuration / Math.max(lines.length, 1))) : 5;
+
+  lines.forEach((line, idx) => {
+    // 自动判定角色 A / 角色 B
+    let speaker = idx % 2 === 0 ? "说话人 A (我)" : "说话人 B (对方)";
+    let cleanText = line;
+
+    if (/^(说话人\s*[A-Z1-9]|对方|我|客户|经理|参与者)[:：\s]*/i.test(line)) {
+      const match = line.match(/^([^:：]+)[:：\s]*(.*)$/);
+      if (match) {
+        speaker = match[1].trim();
+        cleanText = match[2].trim() || cleanText;
+      }
     }
-  ];
 
-  const summary: CallSummary = {
-    overview: "双方就智慧园区项目合同条款进行最终确认。客户提出首付比例调整为 20% 及服务器提前进场要求，我方予以确认落实。",
-    keyPoints: [
-      "合同付款节奏：首付款比例由 30% 调整为 20%，附带条件为下周完成盖章回传。",
-      "技术配合节点：私有化部署服务器已备齐，提前至下周二进场配合客户联调。",
-      "签署进展：客户确认主体框架通过审核，承诺在收到终版合同后明日上午呈批盖章。"
-    ],
-    actionItems: [
-      "今日 17:00 前将修订后的终版合同电子版发送给李经理（责任人：我）",
-      "明日上午跟进李经理完成总经理签字与合同盖章（责任人：我）",
-      "下周二安排运维工程团队携服务器设备进驻园区现场（责任人：工程部）"
-    ]
-  };
+    const durationSec = Math.max(3, Math.min(25, Math.ceil(cleanText.length / 4)));
 
-  return {
-    id: `call_${now}`,
-    title: "智慧园区项目合同款项与交付推进通话",
-    createdAt: now,
-    audioPath,
-    audioFileName: fileName,
-    fileSizeBytes,
-    duration: duration > 0 ? duration : 62,
-    dialogues,
-    summary
-  };
+    items.push({
+      id: `diag_${idx}_${Date.now()}`,
+      speaker,
+      timeSec: currentTime,
+      durationSec,
+      text: cleanText
+    });
+
+    currentTime += durationSec + 1;
+  });
+
+  return items;
 }
 
 /**
@@ -95,12 +66,12 @@ async function processWithLocalLLM(rawTranscript: string): Promise<{ summary: Ca
 
   try {
     const session = new LanguageModelSession({
-      instructions: "你是一个专业的商务通话纪要整理助理。请输出严格的 JSON 格式，不要包含任何 markdown 代码块外部的文字。"
+      instructions: "你是一个专业的通话纪要整理助理。请输出严格的 JSON 格式，不要包含任何 markdown 代码块外部的文字。"
     });
 
     session.prewarm("整理通话");
 
-    const prompt = `请对以下对话文本进行分析，提取通话标题、核心主旨、关键共识与待办事项：
+    const prompt = `请对以下真实通话听写文本进行分析，提取通话标题、核心主旨、关键共识与待办事项：
 ${rawTranscript}
 
 请严格按如下 JSON 结构返回：
@@ -118,7 +89,7 @@ ${rawTranscript}
       const cleaned = res.content.replace(/```json/gi, "").replace(/```/g, "").trim();
       const parsed = JSON.parse(cleaned);
       return {
-        title: parsed.title || "商务通话纪要",
+        title: parsed.title || "通话纪要",
         summary: {
           overview: parsed.overview || "",
           keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints : [],
@@ -142,7 +113,7 @@ async function processWithCloudLLM(
   model: string,
   rawTranscript: string
 ): Promise<{ summary: CallSummary; title: string } | null> {
-  const prompt = `你是一个专业的通话纪要整理专家。以下是两人通话的对话内容，请提炼结构化纪要。
+  const prompt = `你是一个专业的通话纪要整理专家。以下是真实的通话对话内容，请提炼结构化纪要。
 必须返回纯 JSON 对象，格式如下：
 {
   "title": "简明清晰的通话主题",
@@ -191,7 +162,7 @@ ${rawTranscript}`;
 }
 
 /**
- * 对外主接口：分析音频并生成双人对话原文记录与 AI 结构化总结
+ * 对外主接口：分析音频并生成真实对话与总结（无任何虚假伪造数据）
  */
 export async function analyzeCallAudio(
   audioPath: string,
@@ -201,8 +172,10 @@ export async function analyzeCallAudio(
   fileSizeBytes = 0
 ): Promise<CallRecord> {
   const settings = getAISettings();
+  const now = Date.now();
+  const cleanTitle = fileName.replace(/\.[^.]+$/, "") || "通话录音";
 
-  // 若传入了备忘录听写文本，调用配置的模式生成总结
+  // 1. 若传入了真实听写文本，优先执行多角色分段与 AI 提取
   if (rawInputText && rawInputText.trim().length > 0) {
     let result = null;
     if (settings.provider === "local") {
@@ -211,29 +184,62 @@ export async function analyzeCallAudio(
       result = await processWithCloudLLM(settings.endpoint, settings.apiKey, settings.model, rawInputText);
     }
 
-    if (result) {
-      return {
-        id: `call_${Date.now()}`,
-        title: result.title,
-        createdAt: Date.now(),
-        audioPath,
-        audioFileName: fileName,
-        fileSizeBytes,
-        duration,
-        dialogues: [
-          {
-            id: "d1",
-            speaker: "双方对话原文",
-            timeSec: 0,
-            durationSec: duration > 0 ? duration : 30,
-            text: rawInputText
-          }
-        ],
-        summary: result.summary
-      };
-    }
+    const dialogues = parseTranscriptToDialogues(rawInputText, duration);
+
+    return {
+      id: `call_${now}`,
+      title: result?.title || cleanTitle,
+      createdAt: now,
+      audioPath,
+      audioFileName: fileName,
+      fileSizeBytes,
+      duration,
+      dialogues,
+      summary: result?.summary || {
+        overview: `基于真实听写文本提取，共包含 ${dialogues.length} 轮对话。`,
+        keyPoints: ["已自动提取对话内容", "点击上方录音卡片可随时听取完整原声"],
+        actionItems: ["可根据对话内容进行跟进"]
+      }
+    };
   }
 
-  // 默认返回具备完整双人角色语音条与结构化总结的规范数据
-  return createMockAnalysis(audioPath, duration, fileName, fileSizeBytes);
+  // 2. 若当前未传入文本且未配置云端 ASR：实事求是展示真实文件信息，绝对不造假！
+  const defaultDialogues: DialogueItem[] = [
+    {
+      id: "d_real_1",
+      speaker: "说话人 A",
+      timeSec: 0,
+      durationSec: duration > 0 ? Math.min(Math.floor(duration / 2), 10) : 5,
+      text: "【真实音频已归档】点击上方备忘录卡片或本语音条可回听原声。"
+    },
+    {
+      id: "d_real_2",
+      speaker: "说话人 B",
+      timeSec: duration > 0 ? Math.floor(duration / 2) : 6,
+      durationSec: duration > 0 ? Math.min(Math.floor(duration / 2), 12) : 6,
+      text: "如需生成详细逐字对白与待办清单，可在备忘录中将听写文本一并分享，或在设置中配置云端大模型 API。"
+    }
+  ];
+
+  return {
+    id: `call_${now}`,
+    title: `录音: ${cleanTitle}`,
+    createdAt: now,
+    audioPath,
+    audioFileName: fileName,
+    fileSizeBytes,
+    duration,
+    dialogues: defaultDialogues,
+    summary: {
+      overview: `已成功保存真实录音文件「${fileName}」，大小 ${formatBytes(fileSizeBytes)}，录音存放在沙盒 Documents/CallRecordings/ 专属目录中。`,
+      keyPoints: [
+        "真实录音文件已持久化保存在专属目录中",
+        "顶部原生音频卡片支持随时播放原声、波形进度与倍速调节"
+      ],
+      actionItems: [
+        "在设置页中可配置转写模式与 AI 模型密钥",
+        "备忘录支持一键将听写文本共享到本脚本进行精细提取"
+      ]
+    }
+  };
 }

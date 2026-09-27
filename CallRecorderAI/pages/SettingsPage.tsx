@@ -46,7 +46,7 @@ export function SettingsPage() {
         <Section header={<Text>录音文件存储位置</Text>}>
           <VStack spacing={8} padding={4}>
             <HStack alignment="center">
-              <Text font="headline">📁 存储目录</Text>
+              <Text font="headline">📁 专属存储目录</Text>
               <Spacer />
               <Text font="subheadline" foregroundStyle="systemIndigo">
                 {getFriendlyStoragePath()}
@@ -54,7 +54,7 @@ export function SettingsPage() {
             </HStack>
 
             <Text font="caption1" foregroundStyle="secondaryLabel">
-              所有从备忘录分享或手动导入的录音文件，均被统一集中保存在 App 沙盒 Documents/CallRecordings/ 专属文件夹中。
+              所有从备忘录分享或手动导入的录音文件，均被统一集中保存在 App 沙盒 Documents/CallRecordings/ 专属文件夹中，杜绝散落，长期有效。
             </Text>
 
             <HStack alignment="center">
@@ -63,22 +63,22 @@ export function SettingsPage() {
               </Text>
               <Spacer />
               <Text font="caption1" foregroundStyle="tertiaryLabel">
-                占用存储: {storageInfo.formattedSize}
+                空间占用: {storageInfo.formattedSize}
               </Text>
             </HStack>
           </VStack>
         </Section>
 
         {/* 2. 转写模式选择与说明 */}
-        <Section header={<Text>转写与分析模式</Text>}>
-          <VStack spacing={12} padding={4}>
+        <Section header={<Text>转写与提取模式</Text>}>
+          <VStack spacing={14} padding={4}>
             {/* 模式 A */}
             <VStack spacing={6} alignment="leading">
               <HStack alignment="center">
                 <Text font="headline">🎙️ 音频直接转文字 (ASR 引擎模式)</Text>
                 <Spacer />
                 <Button
-                  title={settings.transcriptionMode === "asr_direct" ? "✅ 当前选用" : "选择"}
+                  title={settings.transcriptionMode === "asr_direct" ? "✅ 当前使用" : "切换"}
                   action={() => handleModeChange("asr_direct")}
                 />
               </HStack>
@@ -93,7 +93,7 @@ export function SettingsPage() {
                 <Text font="headline">🤖 AI 多模态大模型转写 (智能纪要模式)</Text>
                 <Spacer />
                 <Button
-                  title={settings.transcriptionMode === "ai_multimodal" ? "✅ 当前选用" : "选择"}
+                  title={settings.transcriptionMode === "ai_multimodal" ? "✅ 当前使用" : "切换"}
                   action={() => handleModeChange("ai_multimodal")}
                 />
               </HStack>
@@ -136,17 +136,20 @@ export function SettingsPage() {
         {/* 4. 使用指引 */}
         <Section header={<Text>使用指南</Text>}>
           <VStack spacing={8} padding={4}>
-            <Text font="subheadline">📌 如何导入通话录音？</Text>
+            <Text font="subheadline">📌 如何分享与归档录音？</Text>
             <Text font="caption1" foregroundStyle="secondaryLabel">
-              方式一：在系统备忘录中打开通话录音卡片，点击「...」选择「共享音频」，选取 Scripting 即可自动分析并录入。
+              1. 电话挂断后，在系统备忘录「通话录音」文件夹中打开该条录音卡片；
             </Text>
             <Text font="caption1" foregroundStyle="secondaryLabel">
-              方式二：在备忘录点「保存音频文件」到“文件”App，在首页点击「📂 选取本地录音导入」直接选取。
+              2. 点击录音卡片右上角「...」选择「共享音频」，在系统分享面板中选取 Scripting；
+            </Text>
+            <Text font="caption1" foregroundStyle="secondaryLabel">
+              3. 录音即刻自动转存入 Documents/CallRecordings/ 并自动解析呈现！
             </Text>
 
             <Text font="subheadline">💬 仿微信对话条如何听原声？</Text>
             <Text font="caption1" foregroundStyle="secondaryLabel">
-              进入二级详情页后，下方的每条微信语音条均带有单句时长（如 8"），点击该语音条即可单独听取这句对话的原声，下方紧随逐字记录。
+              二级详情页中，每条微信语音条均带有单句时长（如 6"），点击语音条即可单独听取这句对话的原声，下方紧随逐字记录。
             </Text>
           </VStack>
         </Section>

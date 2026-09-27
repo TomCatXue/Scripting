@@ -15,7 +15,13 @@ import {
 import type { CallRecord } from "../types";
 import { getAllRecords, saveRecord, deleteRecord } from "../storage";
 import { analyzeCallAudio } from "../ai_service";
-import { persistIncomingAudio, getFriendlyStoragePath, getStorageUsageSummary } from "../audio_manager";
+import {
+  persistIncomingAudio,
+  getFriendlyStoragePath,
+  getStorageUsageSummary,
+  discoverUnindexedAudios,
+  formatBytes
+} from "../audio_manager";
 import { CallDetailView } from "../components/CallDetailView";
 
 function formatSeconds(sec: number): string {
@@ -36,7 +42,11 @@ export function HomePage() {
 
   const loadData = () => {
     try {
-      setRecords(getAllRecords());
+      const stored = getAllRecords();
+      // 物理文件双向扫描：自动扫描 Documents/CallRecordings 物理目录，补全未索引录音
+      const synced = discoverUnindexedAudios(stored);
+      setRecords(synced);
+
       const s = getStorageUsageSummary();
       setStorageSummary({ fileCount: s.fileCount, formattedSize: s.formattedSize });
     } catch (e) {
@@ -73,26 +83,19 @@ export function HomePage() {
       if (picked && picked.length > 0) {
         const sourcePath = picked[0];
         const persisted = persistIncomingAudio(sourcePath);
-        const record = await analyzeCallAudio(persisted.fullPath, 0, "", persisted.fileName, persisted.sizeBytes);
+        const record = await analyzeCallAudio(
+          persisted.fullPath,
+          0,
+          "",
+          persisted.fileName,
+          persisted.sizeBytes
+        );
         saveRecord(record);
         loadData();
         await handleOpenDetail(record);
       }
     } catch (err) {
       console.error("导入分析录音失败:", err);
-    } finally {
-      setIsProcessing(false);
-    }
-  };
-
-  // 加载商务通话演示
-  const handleCreateMock = async () => {
-    setIsProcessing(true);
-    try {
-      const mock = await analyzeCallAudio("mock_call_audio.m4a", 62, "", "call_demo.m4a", 1024 * 780);
-      saveRecord(mock);
-      loadData();
-      await handleOpenDetail(mock);
     } finally {
       setIsProcessing(false);
     }
@@ -106,61 +109,64 @@ export function HomePage() {
   return (
     <NavigationStack>
       <List
-        navigationTitle="录音归档与记录"
+        navigationTitle="通话录音归档"
         navigationBarTitleDisplayMode="large"
       >
-        {/* 存储空间与快速导入卡片 */}
-        <Section header={<Text>录音存储与管理</Text>}>
+        {/* 顶部存储空间概览 */}
+        <Section header={<Text>录音文件存储概览</Text>}>
           <VStack spacing={10} padding={4}>
             <HStack alignment="center">
+              <Text font="headline">📁 存储目录</Text>
+              <Spacer />
               <Text font="subheadline" foregroundStyle="systemIndigo">
-                📁 存储位置:
-              </Text>
-              <Text font="caption1" foregroundStyle="secondaryLabel">
                 {getFriendlyStoragePath()}
               </Text>
             </HStack>
 
             <HStack alignment="center">
-              <Text font="caption1" foregroundStyle="tertiaryLabel">
-                归档录音: {storageSummary.fileCount} 个文件 · 空间占用: {storageSummary.formattedSize}
+              <Text font="caption1" foregroundStyle="secondaryLabel">
+                已归档录音: {storageSummary.fileCount} 个文件
+              </Text>
+              <Spacer />
+              <Text font="caption1" foregroundStyle="secondaryLabel">
+                总占用: {storageSummary.formattedSize}
               </Text>
             </HStack>
 
             <HStack spacing={10}>
               <Button
-                title={isProcessing ? "导入中…" : "📂 选取本地录音导入"}
+                title={isProcessing ? "导入中…" : "📂 从文件 App 导入录音"}
                 action={handlePickAudio}
               />
               <Spacer />
               <Button
-                title="✨ 体验示例录音"
-                action={handleCreateMock}
+                title="🔄 刷新列表"
+                action={loadData}
               />
             </HStack>
           </VStack>
         </Section>
 
-        {/* 所有录音文件列表 */}
+        {/* 真实录音文件列表 */}
         <Section header={<Text>所有录音文件 ({records.length})</Text>}>
           {records.length === 0 ? (
-            <VStack padding={24} alignment="center" spacing={8}>
-              <Text font="body" foregroundStyle="secondaryLabel">
-                暂无录音文件
+            <VStack padding={36} alignment="center" spacing={10}>
+              <Text font="headline" foregroundStyle="secondaryLabel">
+                暂无通话录音
               </Text>
               <Text font="caption1" foregroundStyle="tertiaryLabel">
-                从备忘录点「共享音频」或点击上方按钮导入
+                在备忘录通话录音中点击「...」选择「共享音频」到 Scripting，即可自动归档在此处。
               </Text>
             </VStack>
           ) : (
             records.map((item) => (
               <VStack
                 key={item.id}
-                spacing={8}
-                padding={4}
+                spacing={10}
+                padding={6}
               >
                 <HStack alignment="center">
-                  <Text font="headline">{item.title}</Text>
+                  <Text font="headline">🎙️ {item.title}</Text>
                   <Spacer />
                   <Button
                     title="🗑️"
@@ -177,7 +183,7 @@ export function HomePage() {
 
                 <HStack alignment="center">
                   <Text font="caption1" foregroundStyle="tertiaryLabel">
-                    📅 {formatDate(item.createdAt)} · ⏱️ {formatSeconds(item.duration)}
+                    📅 {formatDate(item.createdAt)} · 📦 {formatBytes(item.fileSizeBytes || 0)}
                   </Text>
                   <Spacer />
                   <Button

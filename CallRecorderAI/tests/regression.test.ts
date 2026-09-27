@@ -2,7 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { saveRecord, getAllRecords, getRecordById, deleteRecord, getAISettings, saveAISettings } from "../storage.ts";
 import { analyzeCallAudio } from "../ai_service.ts";
-import { AUDIO_FOLDER_NAME, getOrCreateRecordingsDir } from "../audio_manager.ts";
+import { AUDIO_FOLDER_NAME, discoverUnindexedAudios } from "../audio_manager.ts";
 import type { CallRecord } from "../types.ts";
 
 function formatSeconds(sec: number): string {
@@ -17,10 +17,12 @@ test("Storage: 能够正确保存、查询、列表与删除通话记录", () =>
     title: "测试通话",
     createdAt: Date.now(),
     audioPath: "/path/to/test.m4a",
+    audioFileName: "test.m4a",
     duration: 45,
+    fileSizeBytes: 1024 * 50,
     dialogues: [
-      { id: "1", speaker: "说话人 A", timeSec: 0, text: "你好" },
-      { id: "2", speaker: "说话人 B", timeSec: 5, text: "收到" }
+      { id: "1", speaker: "说话人 A", timeSec: 0, durationSec: 5, text: "你好" },
+      { id: "2", speaker: "说话人 B", timeSec: 5, durationSec: 8, text: "收到" }
     ],
     summary: {
       overview: "测试概述",
@@ -47,11 +49,17 @@ test("AudioManager: 录音统一存储目录名称规范", () => {
   assert.equal(AUDIO_FOLDER_NAME, "CallRecordings");
 });
 
+test("AudioManager: 物理文件扫描兜底正常运行", () => {
+  const list = discoverUnindexedAudios([]);
+  assert.ok(Array.isArray(list), "应当返回数组");
+});
+
 test("Storage: AI 配置持久化与读取", () => {
   const initial = getAISettings();
   assert.ok(initial.provider, "应该存在默认 provider");
 
   saveAISettings({
+    transcriptionMode: "asr_direct",
     provider: "openai",
     apiKey: "sk-test123456",
     endpoint: "https://api.openai.com/v1",
@@ -59,17 +67,19 @@ test("Storage: AI 配置持久化与读取", () => {
   });
 
   const updated = getAISettings();
+  assert.equal(updated.transcriptionMode, "asr_direct");
   assert.equal(updated.provider, "openai");
   assert.equal(updated.apiKey, "sk-test123456");
   assert.equal(updated.model, "gpt-4o");
 });
 
 test("AIService: 音频分析返回格式符合双人对话规范与时间戳单调递增", async () => {
-  const result = await analyzeCallAudio("/var/mobile/recording.m4a", 62);
+  const result = await analyzeCallAudio("/var/mobile/recording.m4a", 62, undefined, "recording.m4a", 1024 * 100);
 
   assert.ok(result.id, "必须包含唯一 ID");
   assert.ok(result.title.length > 0, "标题不应为空");
   assert.equal(result.duration, 62, "时长应与传入一致");
+  assert.equal(result.audioFileName, "recording.m4a");
 
   // 验证双人对话
   assert.ok(result.dialogues.length >= 2, "至少包含两位说话人的对话");

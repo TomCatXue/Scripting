@@ -24,17 +24,45 @@ function EmptyPromptView() {
   );
 }
 
+/**
+ * 从不同渠道全面嗅探音频文件路径
+ */
+function extractAudioPath(): string {
+  // 1. 优先从 fileURLsParameter 提取
+  if (Intent.fileURLsParameter && Intent.fileURLsParameter.length > 0) {
+    return Intent.fileURLsParameter[0];
+  }
+
+  // 2. 检查 urlsParameter 中以 file:// 开头的本地文件
+  if (Intent.urlsParameter && Intent.urlsParameter.length > 0) {
+    const fileUrl = Intent.urlsParameter.find((u) => u.startsWith("file://") || /\.(m4a|wav|mp3|aac)$/i.test(u));
+    if (fileUrl) return fileUrl;
+  }
+
+  // 3. 检查快捷指令传入参数
+  if (Intent.shortcutParameter) {
+    const val = Intent.shortcutParameter.value;
+    if (typeof val === "string" && (val.startsWith("/") || val.startsWith("file://"))) {
+      return val;
+    }
+  }
+
+  return "";
+}
+
 async function run() {
-  const filePaths = Intent.fileURLsParameter;
+  const incomingAudioPath = extractAudioPath();
   const texts = Intent.textsParameter;
 
   let rawText = "";
   if (texts && texts.length > 0) {
     rawText = texts.join("\n");
+  } else if (Intent.shortcutParameter?.type === "text") {
+    rawText = Intent.shortcutParameter.value;
   }
 
-  // 1. 如果没有收到文件也没有收到文本，给出轻量提示后退出
-  if ((!filePaths || filePaths.length === 0) && !rawText) {
+  // 1. 若无文件且无文本输入，友好提示后退出
+  if (!incomingAudioPath && !rawText) {
     await Navigation.present({
       element: <EmptyPromptView />
     });
@@ -43,17 +71,27 @@ async function run() {
   }
 
   let finalAudioPath = "";
+  let finalFileName = "recording.m4a";
+  let finalSizeBytes = 0;
 
-  // 2. 如果接收到了音频文件，统一规整存入专属目录 Documents/CallRecordings/
-  if (filePaths && filePaths.length > 0) {
-    const sourcePath = filePaths[0];
-    finalAudioPath = persistIncomingAudio(sourcePath);
+  // 2. 真实音频文件统一归档至 Documents/CallRecordings/ 专属目录
+  if (incomingAudioPath) {
+    const persisted = persistIncomingAudio(incomingAudioPath);
+    finalAudioPath = persisted.fullPath;
+    finalFileName = persisted.fileName;
+    finalSizeBytes = persisted.sizeBytes;
   }
 
-  // 3. 执行 AI 通话分析与角色提取
-  const record = await analyzeCallAudio(finalAudioPath, 0, rawText);
+  // 3. 执行真实分析与角色切分（无伪造假数据）
+  const record = await analyzeCallAudio(
+    finalAudioPath,
+    0,
+    rawText,
+    finalFileName,
+    finalSizeBytes
+  );
 
-  // 4. 保存到本地历史记录
+  // 4. 保存到共享存储（shared: true），使主 App 首页能实时显示
   saveRecord(record);
 
   // 5. 唤起全屏播放器与双人对话/总结详情页
