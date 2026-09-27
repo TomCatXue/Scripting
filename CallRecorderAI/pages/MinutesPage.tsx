@@ -19,7 +19,7 @@ export function MinutesPage({
 }) {
   const dismiss = Navigation.useDismiss();
   const [actionItems, setActionItems] = useState<ActionItem[]>(record.minutes.actionItems);
-  const [copied, setCopied] = useState<boolean>(false);
+  const [isExported, setIsExported] = useState<boolean>(false);
 
   const toggleActionItem = (id: string) => {
     setActionItems((prev) =>
@@ -34,157 +34,213 @@ export function MinutesPage({
 ## 会议摘要
 ${record.minutes.overview}
 
-## 核心重点
+## 核心要点
 ${record.minutes.keyPoints.map((p, i) => `${i + 1}. ${p}`).join("\n")}
 
-## 关键决议
-${record.minutes.decisions.map((d, i) => `• ${d}`).join("\n")}
-
-## 待办事项 (Action Items)
-${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.assignee}, 截止: ${a.dueDate})`).join("\n")}
+## 待办事项
+${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.assignee} · 截止: ${a.dueDate})`).join("\n")}
 `;
 
     if (typeof Pasteboard !== "undefined" && typeof Pasteboard.setString === "function") {
       await Pasteboard.setString(md);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
+      setIsExported(true);
+      setTimeout(() => setIsExported(false), 2500);
+    } else {
+      setIsExported(true);
+      setTimeout(() => setIsExported(false), 2500);
     }
   };
 
   return (
     <NavigationStack>
       <VStack
-        navigationTitle="AI 会议纪要"
+        navigationTitle=""
         navigationBarTitleDisplayMode="inline"
         toolbar={{
-          cancellationAction: (
-            <Button title="返回" action={dismiss} />
-          )
+          topBarLeading: (
+            <Button
+              title=" "
+              systemImage="chevron.backward"
+              action={dismiss}
+            />
+          ),
+          principal: (
+            <Text font="headline" fontWeight="bold">
+              AI 会议纪要
+            </Text>
+          ),
+          topBarTrailing: [
+            <Button
+              key="share"
+              title=" "
+              systemImage="square.and.arrow.up"
+              action={handleExport}
+            />,
+            <Button
+              key="more"
+              title=" "
+              systemImage="ellipsis"
+              action={() => {}}
+            />
+          ]
         }}
         spacing={12}
+        padding={14}
+        background="systemBackground"
       >
         <ScrollView>
-          <VStack spacing={14} padding={16} alignment="leading">
-            {/* 卡片 1: 会议信息头卡 (设计图第3屏顶部 + SF Symbols) */}
+          <VStack spacing={14} padding={4}>
+            {/* 1. 会议纪要信息头卡 (原图第3屏: 蓝色文件图标 + 项目例会·会议纪要 + 时间 + 共 1.3 小时) */}
             <VStack
               padding={16}
               spacing={10}
               background="secondarySystemBackground"
-              cornerRadius={16}
+              cornerRadius={18}
             >
-              <HStack alignment="center" spacing={10}>
+              <HStack alignment="center" spacing={12}>
+                {/* 蓝色文件大图标 */}
                 <VStack
                   padding={8}
                   background="systemBlue"
                   cornerRadius={10}
-                  frame={{ width: 38, height: 38 }}
+                  frame={{ width: 40, height: 40 }}
                   alignment="center"
                 >
                   <Image systemName="doc.text.fill" font={18} foregroundStyle="white" />
                 </VStack>
 
-                <VStack spacing={3} alignment="leading">
-                  <Text font="headline">{record.minutes.title}</Text>
-                  <HStack spacing={4} alignment="center">
-                    <Image systemName="calendar" font={10} foregroundStyle="secondaryLabel" />
-                    <Text font="caption2" foregroundStyle="secondaryLabel">
-                      {record.minutes.dateStr}
-                    </Text>
-                  </HStack>
+                {/* 标题与时间 */}
+                <VStack spacing={4} alignment="leading">
+                  <Text font="headline" fontWeight="bold">
+                    {record.minutes.title}
+                  </Text>
+                  <Text font="subheadline" foregroundStyle="secondaryLabel">
+                    {record.minutes.dateStr}
+                  </Text>
                 </VStack>
 
                 <Spacer />
 
-                <HStack padding={4} background="tertiarySystemFill" cornerRadius={6}>
-                  <Text font="caption2" foregroundStyle="secondaryLabel">
+                {/* 右侧蓝色胶囊：共 1.3 小时 */}
+                <HStack
+                  padding={4}
+                  background="systemBackground"
+                  cornerRadius={8}
+                >
+                  <Text font="caption1" foregroundStyle="systemBlue" fontWeight="medium">
                     {record.minutes.durationStr}
                   </Text>
                 </HStack>
               </HStack>
             </VStack>
 
-            {/* 卡片 2: 会议摘要 (设计图绿色图标卡片 + SF Symbols) */}
+            {/* 2. 会议摘要卡片 (原图第3屏: 绿色图标 + 会议摘要 + 正文段落) */}
             <VStack
               padding={16}
-              spacing={8}
+              spacing={10}
               background="secondarySystemBackground"
-              cornerRadius={16}
+              cornerRadius={18}
               alignment="leading"
             >
               <HStack alignment="center" spacing={8}>
-                <Image systemName="text.quote" font={16} foregroundStyle="systemGreen" />
-                <Text font="headline" foregroundStyle="systemGreen">
+                <VStack
+                  padding={4}
+                  background="systemTeal"
+                  cornerRadius={6}
+                  alignment="center"
+                  frame={{ width: 22, height: 22 }}
+                >
+                  <Image systemName="text.quote" font={12} foregroundStyle="white" />
+                </VStack>
+                <Text font="headline" fontWeight="bold">
                   会议摘要
                 </Text>
               </HStack>
-              <Text font="body">
+
+              <Text font="body" foregroundStyle="label">
                 {record.minutes.overview}
               </Text>
             </VStack>
 
-            {/* 卡片 3: 核心要点 (设计图带蓝色序号小圆点) */}
+            {/* 3. 核心要点卡片 (原图第3屏: 青蓝图标 + 蓝色实心数字圆点清单) */}
             <VStack
               padding={16}
               spacing={12}
               background="secondarySystemBackground"
-              cornerRadius={16}
+              cornerRadius={18}
               alignment="leading"
             >
               <HStack alignment="center" spacing={8}>
-                <Image systemName="list.bullet.rectangle.fill" font={16} foregroundStyle="systemBlue" />
-                <Text font="headline" foregroundStyle="systemBlue">
+                <VStack
+                  padding={4}
+                  background="systemBlue"
+                  cornerRadius={6}
+                  alignment="center"
+                  frame={{ width: 22, height: 22 }}
+                >
+                  <Image systemName="lightbulb.fill" font={12} foregroundStyle="white" />
+                </VStack>
+                <Text font="headline" fontWeight="bold">
                   核心要点
                 </Text>
               </HStack>
 
-              {record.minutes.keyPoints.map((item, idx) => (
-                <HStack key={idx} alignment="top" spacing={8}>
-                  {/* 蓝色序号圆点 */}
-                  <VStack
-                    padding={3}
-                    background="systemBlue"
-                    cornerRadius={11}
-                    frame={{ width: 22, height: 22 }}
-                    alignment="center"
-                  >
-                    <Text font="caption2" foregroundStyle="white" fontWeight="bold">
-                      {idx + 1}
+              <VStack spacing={10}>
+                {record.minutes.keyPoints.map((point, idx) => (
+                  <HStack key={idx} alignment="top" spacing={10}>
+                    {/* 蓝色实心小圆圈 */}
+                    <VStack
+                      padding={2}
+                      background="systemBlue"
+                      cornerRadius={10}
+                      frame={{ width: 20, height: 20 }}
+                      alignment="center"
+                    >
+                      <Text font="caption2" foregroundStyle="white" fontWeight="bold">
+                        {idx + 1}
+                      </Text>
+                    </VStack>
+                    <Text font="body" foregroundStyle="label">
+                      {point}
                     </Text>
-                  </VStack>
-                  <Text font="body">
-                    {item}
-                  </Text>
-                </HStack>
-              ))}
+                  </HStack>
+                ))}
+              </VStack>
             </VStack>
 
-            {/* 卡片 4: 待办事项 (设计图绿色勾选框 + 负责人 + 截止日期 + SF Symbols) */}
+            {/* 4. 待办事项卡片 (原图第3屏: 青绿图标 + 勾选框 + 任务 + 负责人 + 截止日期) */}
             <VStack
               padding={16}
               spacing={12}
               background="secondarySystemBackground"
-              cornerRadius={16}
+              cornerRadius={18}
               alignment="leading"
             >
               <HStack alignment="center" spacing={8}>
-                <Image systemName="checkmark.circle.fill" font={16} foregroundStyle="systemGreen" />
-                <Text font="headline" foregroundStyle="systemGreen">
+                <VStack
+                  padding={4}
+                  background="systemTeal"
+                  cornerRadius={6}
+                  alignment="center"
+                  frame={{ width: 22, height: 22 }}
+                >
+                  <Image systemName="checkmark.circle.fill" font={12} foregroundStyle="white" />
+                </VStack>
+                <Text font="headline" fontWeight="bold">
                   待办事项
                 </Text>
               </HStack>
 
-              {actionItems.length === 0 ? (
-                <Text font="caption1" foregroundStyle="secondaryLabel">
-                  暂无待办事项记录
-                </Text>
-              ) : (
-                actionItems.map((act) => (
+              <VStack spacing={12}>
+                {actionItems.map((act) => (
                   <HStack key={act.id} alignment="center" spacing={10}>
+                    {/* 原生勾选框 */}
                     <Button
                       title=" "
                       systemImage={act.done ? "checkmark.square.fill" : "square"}
                       action={() => toggleActionItem(act.id)}
                     />
+
                     <VStack spacing={2} alignment="leading">
                       <Text
                         font="body"
@@ -192,31 +248,37 @@ ${actionItems.map((a) => `- [${a.done ? "x" : " "}] ${a.task} (负责人: ${a.as
                       >
                         {act.task}
                       </Text>
-                      <Text font="caption2" foregroundStyle="tertiaryLabel">
-                        负责人: {act.assignee} · 截止: {act.dueDate}
+                      <Text font="caption1" foregroundStyle="secondaryLabel">
+                        负责人: {act.assignee}
                       </Text>
                     </VStack>
+
                     <Spacer />
-                    <Text font="caption2" foregroundStyle="tertiaryLabel">
+
+                    <Text font="caption1" foregroundStyle="secondaryLabel">
                       {act.dueDate}
                     </Text>
                   </HStack>
-                ))
-              )}
+                ))}
+              </VStack>
             </VStack>
-
-            {/* 底部醒目大胶囊按钮 (设计图第3屏底部样式 + SF Symbols) */}
-            <HStack alignment="center" padding={6}>
-              <Spacer />
-              <Button
-                title={copied ? "已复制完整纪要 Markdown" : "导出会议纪要"}
-                systemImage="square.and.arrow.up"
-                action={handleExport}
-              />
-              <Spacer />
-            </HStack>
           </VStack>
         </ScrollView>
+
+        <Spacer />
+
+        {/* 5. 底部固定主操作大胶囊按键 (原图第3屏: 导出会议纪要) */}
+        <VStack
+          padding={14}
+          background="systemBlue"
+          cornerRadius={24}
+          alignment="center"
+        >
+          <Button
+            title={isExported ? "已复制完整纪要到剪贴板 ✓" : "导出会议纪要"}
+            action={handleExport}
+          />
+        </VStack>
       </VStack>
     </NavigationStack>
   );

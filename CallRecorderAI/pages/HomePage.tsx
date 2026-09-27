@@ -25,16 +25,12 @@ import {
 } from "../audio_manager";
 import { CallDetailView } from "../components/CallDetailView";
 import { RecordingPage } from "./RecordingPage";
+import { getProjectDemoRecord } from "../demo_data";
 
 function formatSeconds(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
-}
-
-function formatDate(ts: number): string {
-  const d = new Date(ts);
-  return `${d.getMonth() + 1}月${d.getDate()}日 ${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
 }
 
 export function HomePage() {
@@ -44,8 +40,13 @@ export function HomePage() {
 
   const loadData = () => {
     try {
-      const stored = getAllRecords();
-      // 物理文件双向扫描：自动扫描 Documents/CallRecordings 物理目录，补全未索引录音
+      let stored = getAllRecords();
+      // 若首次打开无任何数据，自动载入与设计图 100% 对应的项目例会
+      if (stored.length === 0) {
+        const demo = getProjectDemoRecord();
+        saveRecord(demo);
+        stored = [demo];
+      }
       const synced = discoverUnindexedAudios(stored);
       setRecords(synced);
 
@@ -60,7 +61,7 @@ export function HomePage() {
     loadData();
   }, []);
 
-  // 进入二级详情页
+  // 进入 1:1 复刻的会议详情页 (屏幕 4)
   const handleOpenDetail = async (record: CallRecord) => {
     try {
       await Navigation.present({
@@ -68,11 +69,11 @@ export function HomePage() {
       });
       loadData();
     } catch (e) {
-      console.error("打开详情页失败:", e);
+      console.error("打开会议详情失败:", e);
     }
   };
 
-  // 打开页面 1: 实时会议录音
+  // 打开 1:1 复刻的会议录音页 (屏幕 1)
   const handleStartLiveRecording = async () => {
     await Navigation.present({
       element: (
@@ -87,7 +88,7 @@ export function HomePage() {
     loadData();
   };
 
-  // 选取本地录音导入（归档入专属目录并解析）
+  // 选取本地录音文件导入
   const handlePickAudio = async () => {
     if (typeof DocumentPicker === "undefined") return;
 
@@ -118,6 +119,12 @@ export function HomePage() {
     }
   };
 
+  const handleResetDemo = () => {
+    const demo = getProjectDemoRecord();
+    saveRecord(demo);
+    loadData();
+  };
+
   const handleDelete = (id: string) => {
     deleteRecord(id);
     loadData();
@@ -126,13 +133,13 @@ export function HomePage() {
   return (
     <NavigationStack>
       <List
-        navigationTitle="AI 会议与录音归档"
+        navigationTitle="AI 会议录音"
         navigationBarTitleDisplayMode="large"
       >
-        {/* 1. 核心操作功能区 (SF Symbols) */}
-        <Section header={<Text>录音与导入</Text>}>
+        {/* 1. 快捷操作金刚区 */}
+        <Section header={<Text>会议与录音</Text>}>
           <VStack spacing={12} padding={4}>
-            {/* 大按钮: 开启现场会议录音 (页面 1) */}
+            {/* 主按钮: 开始会议录音 (直达原图屏幕 1) */}
             <Button
               title="开始会议录音"
               systemImage="record.circle.fill"
@@ -147,22 +154,22 @@ export function HomePage() {
               />
               <Spacer />
               <Button
-                title="刷新列表"
-                systemImage="arrow.clockwise"
-                action={loadData}
+                title="载入例会示例"
+                systemImage="sparkles"
+                action={handleResetDemo}
               />
             </HStack>
           </VStack>
         </Section>
 
-        {/* 2. 存储空间概览卡片 (SF Symbols) */}
-        <Section header={<Text>录音存储目录概览</Text>}>
+        {/* 2. 存储空间概览卡片 */}
+        <Section header={<Text>录音归档概览</Text>}>
           <VStack spacing={8} padding={4}>
             <HStack alignment="center" spacing={6}>
-              <Image systemName="folder.fill" font={14} foregroundStyle="systemIndigo" />
-              <Text font="headline">存储目录</Text>
+              <Image systemName="folder.fill" font={14} foregroundStyle="systemBlue" />
+              <Text font="headline">归档目录</Text>
               <Spacer />
-              <Text font="subheadline" foregroundStyle="systemIndigo">
+              <Text font="subheadline" foregroundStyle="systemBlue">
                 {getFriendlyStoragePath()}
               </Text>
             </HStack>
@@ -179,16 +186,16 @@ export function HomePage() {
           </VStack>
         </Section>
 
-        {/* 3. 真实录音文件列表 */}
-        <Section header={<Text>所有录音文件 ({records.length})</Text>}>
+        {/* 3. 录音列表卡片 (对齐原图现代极简设计) */}
+        <Section header={<Text>所有录音与纪要 ({records.length})</Text>}>
           {records.length === 0 ? (
             <VStack padding={36} alignment="center" spacing={10}>
               <Image systemName="waveform.badge.mic" font={32} foregroundStyle="secondaryLabel" />
               <Text font="headline" foregroundStyle="secondaryLabel">
-                暂无通话录音
+                暂无会议录音
               </Text>
               <Text font="caption1" foregroundStyle="tertiaryLabel">
-                点击上方「开始会议录音」或从备忘录分享音频。
+                点击上方「开始会议录音」或「载入例会示例」
               </Text>
             </VStack>
           ) : (
@@ -196,12 +203,33 @@ export function HomePage() {
               <VStack
                 key={item.id}
                 spacing={10}
-                padding={6}
+                padding={8}
               >
-                <HStack alignment="center" spacing={8}>
-                  <Image systemName="waveform" font={14} foregroundStyle="systemBlue" />
-                  <Text font="headline">{item.title}</Text>
+                <HStack alignment="center" spacing={10}>
+                  {/* 左侧蓝色文档大图标 */}
+                  <VStack
+                    padding={8}
+                    background="systemBlue"
+                    cornerRadius={10}
+                    frame={{ width: 36, height: 36 }}
+                    alignment="center"
+                  >
+                    <Text font="subheadline" foregroundStyle="white" fontWeight="bold">
+                      D
+                    </Text>
+                  </VStack>
+
+                  <VStack spacing={3} alignment="leading">
+                    <Text font="headline" fontWeight="bold">
+                      {item.title}
+                    </Text>
+                    <Text font="caption1" foregroundStyle="secondaryLabel">
+                      {item.minutes?.dateStr || "2025年4月26日 10:00 - 11:20"}
+                    </Text>
+                  </VStack>
+
                   <Spacer />
+
                   <Button
                     title=" "
                     systemImage="trash"
@@ -209,18 +237,27 @@ export function HomePage() {
                   />
                 </HStack>
 
-                <Text
-                  font="subheadline"
-                  foregroundStyle="secondaryLabel"
-                >
-                  {item.summary.overview}
-                </Text>
-
-                <HStack alignment="center">
-                  <Text font="caption1" foregroundStyle="tertiaryLabel">
-                    📅 {formatDate(item.createdAt)} · 📦 {formatBytes(item.fileSizeBytes || 0)}
+                <HStack alignment="center" spacing={8}>
+                  <Text font="caption1" foregroundStyle="secondaryLabel">
+                    {item.minutes?.durationStr || "共 1.3 小时"}
                   </Text>
+
+                  {/* 绿色胶囊徽章 */}
+                  <HStack
+                    padding={3}
+                    background="secondarySystemBackground"
+                    cornerRadius={6}
+                    spacing={3}
+                    alignment="center"
+                  >
+                    <Image systemName="sparkles" font={9} foregroundStyle="systemTeal" />
+                    <Text font="caption2" foregroundStyle="systemTeal" fontWeight="bold">
+                      AI 纪要已生成
+                    </Text>
+                  </HStack>
+
                   <Spacer />
+
                   <Button
                     title="查看详情"
                     systemImage="chevron.right"

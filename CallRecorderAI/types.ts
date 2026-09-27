@@ -10,6 +10,7 @@ export interface DialogueItem {
   text: string;          // 逐字记录文本
   translatedText?: string; // 翻译后的译文
   isKeyPoint?: boolean;  // 是否标记为关键重点
+  highlightText?: string; // 重点高亮关键词句（浅蓝底高亮）
 }
 
 export interface ChapterItem {
@@ -25,6 +26,13 @@ export interface ActionItem {
   assignee: string;      // 负责人 (如 "张三")
   dueDate: string;       // 截止日期 (如 "4月28日")
   done: boolean;         // 完成状态
+}
+
+export interface AttachedFile {
+  id: string;
+  name: string;          // 文件名 (如 "项目需求文档.pdf")
+  sizeStr: string;       // 文件大小展示 (如 "2.4 MB")
+  type: string;          // 格式 (如 "pdf")
 }
 
 export interface MeetingMinutes {
@@ -53,6 +61,7 @@ export interface CallRecord {
     keyPoints: string[];
     actionItems: string[];
   };
+  attachedFiles?: AttachedFile[];
 }
 
 // 翻译引擎类型

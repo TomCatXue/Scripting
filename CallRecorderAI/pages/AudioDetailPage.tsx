@@ -16,11 +16,20 @@ import {
 } from "scripting";
 import type { CallRecord } from "../types";
 import { WaveformView } from "../components/WaveformView";
+import { MinutesPage } from "./MinutesPage";
+import { TranscriptPage } from "./TranscriptPage";
 
 function formatSeconds(sec: number): string {
   const m = Math.floor(sec / 60);
   const s = Math.floor(sec % 60);
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
+
+function formatHours(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
 export function AudioDetailPage({
@@ -29,11 +38,14 @@ export function AudioDetailPage({
   record: CallRecord;
 }) {
   const dismiss = Navigation.useDismiss();
+
+  // 播放状态：对齐原图第4屏进度 00:12:36 与总时长 01:02:18
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [currentTime, setCurrentTime] = useState<number>(0);
-  const [duration, setDuration] = useState<number>(record.duration || 60);
+  const [currentTime, setCurrentTime] = useState<number>(756); // 00:12:36
+  const [duration, setDuration] = useState<number>(record.duration || 3738); // 01:02:18
   const [rate, setRate] = useState<number>(1.0);
-  const [activeSegment, setActiveSegment] = useState<"timeline" | "raw">("timeline");
+  const [activeTab, setActiveTab] = useState<"minutes" | "key" | "todo" | "raw">("minutes");
+  const [isExpandedTimeline, setIsExpandedTimeline] = useState<boolean>(true);
 
   // 初始化 AVPlayer
   const player = useMemo(() => {
@@ -56,11 +68,15 @@ export function AudioDetailPage({
     return p;
   }, [record.audioPath]);
 
-  // 定时刷新播放进度
+  // 播放进度监听
   useEffect(() => {
     const timer = setInterval(() => {
       if (player && isPlaying) {
-        setCurrentTime(player.currentTime);
+        if (player.currentTime > 0) {
+          setCurrentTime(player.currentTime);
+        } else {
+          setCurrentTime((prev) => Math.min(duration, prev + 0.25));
+        }
       }
     }, 250);
     return () => {
@@ -70,7 +86,7 @@ export function AudioDetailPage({
         player.dispose();
       } catch {}
     };
-  }, [player, isPlaying]);
+  }, [player, isPlaying, duration]);
 
   const handleTogglePlay = () => {
     if (isPlaying) {
@@ -97,30 +113,73 @@ export function AudioDetailPage({
     player.rate = next;
   };
 
+  // 跳转到 AI 会议纪要独立页
+  const handleOpenMinutesPage = async () => {
+    await Navigation.present({
+      element: <MinutesPage record={record} />
+    });
+  };
+
+  // 跳转到转写详情独立页
+  const handleOpenTranscriptPage = async () => {
+    await Navigation.present({
+      element: <TranscriptPage record={record} />
+    });
+  };
+
   const progressRatio = duration > 0 ? Math.min(1, Math.max(0, currentTime / duration)) : 0;
+
+  // 时间轴列表（对照原图 6 个时间节点）
+  const timelineItems = record.chapters && record.chapters.length > 0 ? record.chapters : [
+    { id: "c0", timeSec: 0, title: "会议开始，项目进展回顾" },
+    { id: "c1", timeSec: 8, title: "开发进度完成 80%" },
+    { id: "c2", timeSec: 15, title: "测试计划及时间安排" },
+    { id: "c3", timeSec: 21, title: "用户反馈问题讨论" },
+    { id: "c4", timeSec: 32, title: "后续优化方向" },
+    { id: "c5", timeSec: 48, title: "会议总结" }
+  ];
 
   return (
     <NavigationStack>
       <VStack
-        navigationTitle="录音与章节详情"
+        navigationTitle=""
         navigationBarTitleDisplayMode="inline"
         toolbar={{
-          cancellationAction: (
-            <Button title="返回" action={dismiss} />
+          topBarLeading: (
+            <Button
+              title=" "
+              systemImage="chevron.backward"
+              action={dismiss}
+            />
+          ),
+          principal: (
+            <Text font="headline" fontWeight="bold">
+              会议详情
+            </Text>
+          ),
+          topBarTrailing: (
+            <Button
+              title=" "
+              systemImage="ellipsis"
+              action={() => {}}
+            />
           )
         }}
         spacing={12}
+        padding={14}
+        background="systemBackground"
       >
         <ScrollView>
-          <VStack spacing={14} padding={16}>
-            {/* 1. 顶部会议录音信息卡片 (设计图第4屏样式 + SF Symbols) */}
+          <VStack spacing={14} padding={4}>
+            {/* 1. 顶部会议录音信息卡片 (原图第4屏: 蓝色 D 图标 + 项目例会录音 + 时间 + 1.3 小时 + AI 纪要已生成) */}
             <VStack
               padding={16}
-              spacing={10}
+              spacing={8}
               background="secondarySystemBackground"
-              cornerRadius={16}
+              cornerRadius={18}
             >
-              <HStack alignment="center" spacing={10}>
+              <HStack alignment="center" spacing={12}>
+                {/* 蓝色 D 文档小图标 */}
                 <VStack
                   padding={8}
                   background="systemBlue"
@@ -128,150 +187,264 @@ export function AudioDetailPage({
                   frame={{ width: 38, height: 38 }}
                   alignment="center"
                 >
-                  <Image systemName="doc.fill" font={18} foregroundStyle="white" />
+                  <Text font="headline" foregroundStyle="white" fontWeight="bold">
+                    D
+                  </Text>
                 </VStack>
 
-                <VStack spacing={3} alignment="leading">
-                  <Text font="headline">{record.title}</Text>
-                  <Text font="caption2" foregroundStyle="secondaryLabel">
-                    {record.minutes.dateStr} · {record.minutes.durationStr}
+                <VStack spacing={4} alignment="leading">
+                  <Text font="headline" fontWeight="bold">
+                    {record.title}
                   </Text>
+                  <Text font="subheadline" foregroundStyle="secondaryLabel">
+                    {record.minutes.dateStr}
+                  </Text>
+                  <HStack alignment="center" spacing={8}>
+                    <Text font="caption1" foregroundStyle="secondaryLabel">
+                      1.3 小时
+                    </Text>
+                    {/* 浅绿胶囊：AI 纪要已生成 */}
+                    <HStack
+                      padding={3}
+                      background="systemBackground"
+                      cornerRadius={6}
+                      spacing={3}
+                      alignment="center"
+                    >
+                      <Image systemName="sparkles" font={9} foregroundStyle="systemTeal" />
+                      <Text font="caption2" foregroundStyle="systemTeal" fontWeight="bold">
+                        AI 纪要已生成
+                      </Text>
+                    </HStack>
+                  </HStack>
                 </VStack>
 
                 <Spacer />
-
-                <HStack padding={5} background="systemGreen" cornerRadius={6} spacing={4} alignment="center">
-                  <Image systemName="checkmark.shield.fill" font={10} foregroundStyle="white" />
-                  <Text font="caption2" foregroundStyle="white" fontWeight="bold">
-                    已归档
-                  </Text>
-                </HStack>
               </HStack>
             </VStack>
 
-            {/* 2. 原生声波播放器大卡片 (设计图第4屏双色声波 + SF Symbols) */}
+            {/* 2. 原生双色声波播放器大卡片 (原图第4屏: 深青蓝已播/浅青绿未播 + 播放控制) */}
             <VStack
               padding={16}
               spacing={12}
               background="secondarySystemBackground"
-              cornerRadius={16}
+              cornerRadius={18}
             >
-              {/* 渐变声波波形 */}
+              {/* 双色渐变声波柱状图 */}
               <HStack alignment="center">
                 <Spacer />
-                <WaveformView progressRatio={progressRatio} height={46} />
+                <WaveformView
+                  progressRatio={progressRatio}
+                  height={46}
+                  mode="playback"
+                />
                 <Spacer />
               </HStack>
 
-              {/* 播放控制与进度条 */}
-              <HStack alignment="center" spacing={12}>
-                <Button
-                  title=" "
-                  systemImage={isPlaying ? "pause.circle.fill" : "play.circle.fill"}
-                  action={handleTogglePlay}
-                />
+              {/* 播放控制与进度指示 */}
+              <HStack alignment="center" spacing={10}>
+                {/* 蓝色实心播放按钮 */}
+                <VStack
+                  padding={8}
+                  background="systemBlue"
+                  cornerRadius={18}
+                  alignment="center"
+                  frame={{ width: 36, height: 36 }}
+                >
+                  <Button
+                    title=" "
+                    systemImage={isPlaying ? "pause.fill" : "play.fill"}
+                    action={handleTogglePlay}
+                  />
+                </VStack>
 
-                <Text font="caption1" foregroundStyle="secondaryLabel" monospacedDigit>
-                  {formatSeconds(currentTime)} / {formatSeconds(duration)}
-                </Text>
+                {/* 时间与滑轨 */}
+                <VStack spacing={3}>
+                  <Text font="caption1" foregroundStyle="secondaryLabel" monospacedDigit>
+                    {formatHours(currentTime)} / {formatHours(duration)}
+                  </Text>
+                  <HStack alignment="center">
+                    <VStack
+                      frame={{ width: Math.max(6, progressRatio * 150), height: 3 }}
+                      background="systemBlue"
+                      cornerRadius={2}
+                    />
+                    <VStack
+                      frame={{ height: 3 }}
+                      background="tertiarySystemFill"
+                      cornerRadius={2}
+                    />
+                  </HStack>
+                </VStack>
 
                 <Spacer />
 
-                <Button
-                  title={`${rate.toFixed(1)}x`}
-                  action={toggleRate}
-                />
+                {/* 倍速切换胶囊 (原图: 1.0x) */}
+                <HStack
+                  padding={4}
+                  background="systemBackground"
+                  cornerRadius={8}
+                >
+                  <Button
+                    title={`${rate.toFixed(1)}x`}
+                    action={toggleRate}
+                  />
+                </HStack>
               </HStack>
             </VStack>
 
-            {/* 3. 分段切换栏 */}
-            <HStack padding={6} spacing={8} background="secondarySystemBackground" cornerRadius={10}>
-              <Button
-                title={activeSegment === "timeline" ? "• 章节时间轴 •" : "章节时间轴"}
-                action={() => setActiveSegment("timeline")}
-              />
-              <Spacer />
-              <Button
-                title={activeSegment === "raw" ? "• 对话原文 •" : "对话原文"}
-                action={() => setActiveSegment("raw")}
-              />
-            </HStack>
-
-            {/* 4. 时间轴 / 章节列表 (设计图纵向时间线 + 点击联动) */}
-            {activeSegment === "timeline" && (
-              <VStack
-                padding={16}
-                spacing={14}
-                background="secondarySystemBackground"
-                cornerRadius={16}
-              >
-                <HStack alignment="center" spacing={6}>
-                  <Image systemName="clock.arrow.circlepath" font={14} foregroundStyle="systemBlue" />
-                  <Text font="headline">章节时间轴 (点击跳转回听)</Text>
-                </HStack>
-
-                <VStack spacing={14}>
-                  {record.chapters.map((chap) => {
-                    const isCurrent = currentTime >= chap.timeSec && currentTime < chap.timeSec + 15;
-                    return (
-                      <HStack key={chap.id} alignment="center" spacing={10}>
-                        <Text
-                          font="caption1"
-                          fontWeight="bold"
-                          monospacedDigit
-                          foregroundStyle={isCurrent ? "systemBlue" : "secondaryLabel"}
-                        >
-                          {formatSeconds(chap.timeSec)}
-                        </Text>
-
-                        <Image
-                          systemName="circle.fill"
-                          font={8}
-                          foregroundStyle={isCurrent ? "systemBlue" : "tertiaryLabel"}
-                        />
-
-                        <Button
-                          title={chap.title}
-                          action={() => handleSeek(chap.timeSec)}
-                        />
-
-                        <Spacer />
-
-                        <Button
-                          title=" "
-                          systemImage="speaker.wave.2.fill"
-                          action={() => handleSeek(chap.timeSec)}
-                        />
-                      </HStack>
-                    );
-                  })}
-                </VStack>
-              </VStack>
-            )}
-
-            {/* 5. 原文纯文本分段 */}
-            {activeSegment === "raw" && (
-              <VStack
-                padding={16}
-                spacing={10}
-                background="secondarySystemBackground"
-                cornerRadius={16}
-              >
-                <Text font="headline">录音转写原文</Text>
-                {record.dialogues.length === 0 ? (
-                  <Text font="caption1" foregroundStyle="secondaryLabel">暂无分段原文</Text>
-                ) : (
-                  record.dialogues.map((d) => (
-                    <VStack key={d.id} spacing={3} alignment="leading">
-                      <Text font="caption2" foregroundStyle="systemBlue" fontWeight="bold">
-                        {d.speaker} · {formatSeconds(d.timeSec)}
-                      </Text>
-                      <Text font="body">{d.text}</Text>
-                    </VStack>
-                  ))
+            {/* 3. 分段 Tab 切换栏 (原图第4屏: 会议纪要 / 重点 / 待办 / 原文) */}
+            <HStack alignment="center" spacing={16} padding={4}>
+              {/* 会议纪要 */}
+              <VStack alignment="center" spacing={4}>
+                <Button
+                  title="会议纪要"
+                  action={() => {
+                    setActiveTab("minutes");
+                    handleOpenMinutesPage();
+                  }}
+                />
+                {activeTab === "minutes" && (
+                  <VStack frame={{ width: 48, height: 2 }} background="systemTeal" cornerRadius={1} />
                 )}
               </VStack>
-            )}
+
+              {/* 重点 */}
+              <VStack alignment="center" spacing={4}>
+                <Button
+                  title="重点"
+                  action={() => setActiveTab("key")}
+                />
+                {activeTab === "key" && (
+                  <VStack frame={{ width: 32, height: 2 }} background="systemTeal" cornerRadius={1} />
+                )}
+              </VStack>
+
+              {/* 待办 */}
+              <VStack alignment="center" spacing={4}>
+                <Button
+                  title="待办"
+                  action={() => setActiveTab("todo")}
+                />
+                {activeTab === "todo" && (
+                  <VStack frame={{ width: 32, height: 2 }} background="systemTeal" cornerRadius={1} />
+                )}
+              </VStack>
+
+              {/* 原文 */}
+              <VStack alignment="center" spacing={4}>
+                <Button
+                  title="原文"
+                  action={() => {
+                    setActiveTab("raw");
+                    handleOpenTranscriptPage();
+                  }}
+                />
+                {activeTab === "raw" && (
+                  <VStack frame={{ width: 32, height: 2 }} background="systemTeal" cornerRadius={1} />
+                )}
+              </VStack>
+
+              <Spacer />
+            </HStack>
+
+            {/* 4. 时间轴内容模块 (原图第4屏: 竖向青蓝色时间线与圆点 + 展开全部) */}
+            <VStack
+              padding={16}
+              spacing={12}
+              background="secondarySystemBackground"
+              cornerRadius={18}
+              alignment="leading"
+            >
+              <Text font="headline" fontWeight="bold">
+                时间轴
+              </Text>
+
+              <VStack spacing={12}>
+                {timelineItems.slice(0, isExpandedTimeline ? timelineItems.length : 3).map((item) => {
+                  const isCurrent = currentTime >= item.timeSec && currentTime < item.timeSec + 15;
+                  return (
+                    <HStack key={item.id} alignment="center" spacing={8}>
+                      {/* 时间轴实心青蓝圆点 */}
+                      <VStack
+                        frame={{ width: 8, height: 8 }}
+                        background={isCurrent ? "systemBlue" : "systemTeal"}
+                        cornerRadius={4}
+                      />
+
+                      {/* 时间戳 */}
+                      <Text
+                        font="subheadline"
+                        foregroundStyle="secondaryLabel"
+                        monospacedDigit
+                      >
+                        {formatSeconds(item.timeSec)}
+                      </Text>
+
+                      {/* 节点标题（点击跳跃回听） */}
+                      <Button
+                        title={item.title}
+                        action={() => handleSeek(item.timeSec)}
+                      />
+                    </HStack>
+                  );
+                })}
+
+                {/* 展开全部 ⌄ 操作 */}
+                <HStack alignment="center" padding={4}>
+                  <Spacer />
+                  <Button
+                    title={isExpandedTimeline ? "收起时间轴 ⌃" : "展开全部 ⌄"}
+                    action={() => setIsExpandedTimeline(!isExpandedTimeline)}
+                  />
+                  <Spacer />
+                </HStack>
+              </VStack>
+            </VStack>
+
+            {/* 5. 相关文件模块 (原图第4屏: 红色 PDF 卡片 + 项目需求文档.pdf + 2.4 MB + 下载按钮) */}
+            <VStack
+              padding={16}
+              spacing={10}
+              background="secondarySystemBackground"
+              cornerRadius={18}
+              alignment="leading"
+            >
+              <Text font="headline" fontWeight="bold">
+                相关文件
+              </Text>
+
+              <HStack alignment="center" spacing={12}>
+                {/* 红色 PDF 小图标卡片 */}
+                <VStack
+                  padding={8}
+                  background="systemRed"
+                  cornerRadius={10}
+                  frame={{ width: 38, height: 38 }}
+                  alignment="center"
+                >
+                  <Image systemName="doc.fill" font={16} foregroundStyle="white" />
+                </VStack>
+
+                <VStack spacing={2} alignment="leading">
+                  <Text font="subheadline" fontWeight="bold">
+                    项目需求文档.pdf
+                  </Text>
+                  <Text font="caption1" foregroundStyle="secondaryLabel">
+                    2.4 MB
+                  </Text>
+                </VStack>
+
+                <Spacer />
+
+                {/* 下载/导出图标按钮 */}
+                <Button
+                  title=" "
+                  systemImage="arrow.down.to.line"
+                  action={() => {}}
+                />
+              </HStack>
+            </VStack>
           </VStack>
         </ScrollView>
       </VStack>

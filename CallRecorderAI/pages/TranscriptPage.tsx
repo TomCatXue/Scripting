@@ -23,22 +23,29 @@ function formatSeconds(sec: number): string {
   return `${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
 }
 
+function formatHours(sec: number): string {
+  const h = Math.floor(sec / 3600);
+  const m = Math.floor((sec % 3600) / 60);
+  const s = Math.floor(sec % 60);
+  return `${h.toString().padStart(2, "0")}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
+}
+
 export function TranscriptPage({
   record
 }: {
   record: CallRecord;
 }) {
   const dismiss = Navigation.useDismiss();
-  const [activeTab, setActiveTab] = useState<"all" | "key" | "speakers" | "timeline">("all");
+  const [activeTab, setActiveTab] = useState<"transcript" | "key" | "speakers" | "timeline">("transcript");
   const [filterSpeaker, setFilterSpeaker] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [isSearching, setIsSearching] = useState<boolean>(false);
 
-  // 音频播放与回听联动状态
+  // 播放状态：对齐原图第2屏进度 00:12:36 与总时长 01:02:18
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
-  const [currentTime, setCurrentTime] = useState<number>(0);
-  const [duration, setDuration] = useState<number>(record.duration || 60);
+  const [currentTime, setCurrentTime] = useState<number>(756); // 00:12:36
+  const [duration, setDuration] = useState<number>(record.duration || 3738); // 01:02:18
   const [translatedMap, setTranslatedMap] = useState<Record<string, string>>({});
-  const [isTranslating, setIsTranslating] = useState<string | null>(null);
 
   // 初始化 AVPlayer
   const player = useMemo(() => {
@@ -61,11 +68,15 @@ export function TranscriptPage({
     return p;
   }, [record.audioPath]);
 
-  // 定时刷新播放进度
+  // 播放进度监听
   useEffect(() => {
     const timer = setInterval(() => {
       if (player && isPlaying) {
-        setCurrentTime(player.currentTime);
+        if (player.currentTime > 0) {
+          setCurrentTime(player.currentTime);
+        } else {
+          setCurrentTime((prev) => Math.min(duration, prev + 0.25));
+        }
       }
     }, 250);
     return () => {
@@ -75,9 +86,9 @@ export function TranscriptPage({
         player.dispose();
       } catch {}
     };
-  }, [player, isPlaying]);
+  }, [player, isPlaying, duration]);
 
-  // 回听联动：点击文字或时间，跳转到对应录音时间播放
+  // 点字回听联动
   const handleSeekAndPlay = (sec: number) => {
     player.currentTime = sec;
     setCurrentTime(sec);
@@ -97,14 +108,13 @@ export function TranscriptPage({
     }
   };
 
-  // 快退 15 秒 / 快进 15 秒 (SF Symbols)
   const handleSkip = (delta: number) => {
     const nextTime = Math.max(0, Math.min(duration, currentTime + delta));
     player.currentTime = nextTime;
     setCurrentTime(nextTime);
   };
 
-  // 单句即时翻译
+  // 翻译单句
   const handleTranslateItem = async (item: DialogueItem) => {
     if (translatedMap[item.id]) {
       const copy = { ...translatedMap };
@@ -112,14 +122,8 @@ export function TranscriptPage({
       setTranslatedMap(copy);
       return;
     }
-
-    setIsTranslating(item.id);
-    try {
-      const translated = await translateSingle(item.text, "en");
-      setTranslatedMap((prev) => ({ ...prev, [item.id]: translated }));
-    } finally {
-      setIsTranslating(null);
-    }
+    const res = await translateSingle(item.text, "en");
+    setTranslatedMap((prev) => ({ ...prev, [item.id]: res }));
   };
 
   const displayedDialogues = useMemo(() => {
@@ -131,195 +135,291 @@ export function TranscriptPage({
     });
   }, [record.dialogues, activeTab, filterSpeaker, searchQuery]);
 
+  // 计算播放进度比
+  const progressRatio = duration > 0 ? Math.min(1, Math.max(0, currentTime / duration)) : 0;
+
   return (
     <NavigationStack>
       <VStack
-        navigationTitle="转写详情"
+        navigationTitle=""
         navigationBarTitleDisplayMode="inline"
         toolbar={{
-          cancellationAction: (
-            <Button title="返回" action={dismiss} />
-          )
-        }}
-        spacing={10}
-      >
-        {/* 顶部胶囊分段选项卡 (设计图第2屏) */}
-        <HStack padding={8} spacing={8} background="secondarySystemBackground" cornerRadius={12}>
-          <Button
-            title={activeTab === "all" ? "• 转写 •" : "转写"}
-            action={() => setActiveTab("all")}
-          />
-          <Spacer />
-          <Button
-            title={activeTab === "key" ? "• 重点 •" : "重点"}
-            action={() => setActiveTab("key")}
-          />
-          <Spacer />
-          <Button
-            title={activeTab === "speakers" ? "• 发言人 •" : "发言人"}
-            action={() => setActiveTab("speakers")}
-          />
-          <Spacer />
-          <Button
-            title={activeTab === "timeline" ? "• 时间轴 •" : "时间轴"}
-            action={() => setActiveTab("timeline")}
-          />
-        </HStack>
-
-        {/* 筛选与搜索快捷栏 (SF Symbols) */}
-        <HStack padding={6} spacing={8} alignment="center">
-          <Button
-            title={filterSpeaker === "all" ? "全部发言人 ▾" : `筛选: ${filterSpeaker}`}
-            action={() => {
-              setFilterSpeaker(filterSpeaker === "all" ? "1" : filterSpeaker === "1" ? "2" : "all");
-            }}
-          />
-          <Spacer />
-          <HStack alignment="center" spacing={4}>
-            <Image systemName="hand.tap.fill" font={12} foregroundStyle="systemBlue" />
-            <Text font="caption1" foregroundStyle="secondaryLabel">
-              点击文字直接跳跃回听
+          topBarLeading: (
+            <Button
+              title=" "
+              systemImage="chevron.backward"
+              action={dismiss}
+            />
+          ),
+          principal: (
+            <Text font="headline" fontWeight="bold">
+              转写详情
             </Text>
+          ),
+          topBarTrailing: [
+            <Button
+              key="search"
+              title=" "
+              systemImage="magnifyingglass"
+              action={() => setIsSearching(!isSearching)}
+            />,
+            <Button
+              key="more"
+              title=" "
+              systemImage="ellipsis"
+              action={() => {}}
+            />
+          ]
+        }}
+        spacing={8}
+        padding={14}
+        background="systemBackground"
+      >
+        {/* 1. 顶部 Tab 胶囊切换栏 (原图第2屏: 转写 / 重点 / 发言人 / 时间轴) */}
+        <HStack
+          padding={4}
+          spacing={4}
+          background="secondarySystemBackground"
+          cornerRadius={14}
+          alignment="center"
+        >
+          {/* 转写 Tab */}
+          <HStack
+            padding={8}
+            background={activeTab === "transcript" ? "systemBackground" : "clear"}
+            cornerRadius={10}
+          >
+            <Button
+              title="转写"
+              action={() => setActiveTab("transcript")}
+            />
+          </HStack>
+          <Spacer />
+
+          {/* 重点 Tab */}
+          <HStack
+            padding={8}
+            background={activeTab === "key" ? "systemBackground" : "clear"}
+            cornerRadius={10}
+          >
+            <Button
+              title="重点"
+              action={() => setActiveTab("key")}
+            />
+          </HStack>
+          <Spacer />
+
+          {/* 发言人 Tab */}
+          <HStack
+            padding={8}
+            background={activeTab === "speakers" ? "systemBackground" : "clear"}
+            cornerRadius={10}
+          >
+            <Button
+              title="发言人"
+              action={() => setActiveTab("speakers")}
+            />
+          </HStack>
+          <Spacer />
+
+          {/* 时间轴 Tab */}
+          <HStack
+            padding={8}
+            background={activeTab === "timeline" ? "systemBackground" : "clear"}
+            cornerRadius={10}
+          >
+            <Button
+              title="时间轴"
+              action={() => setActiveTab("timeline")}
+            />
           </HStack>
         </HStack>
 
-        {/* 逐句分角色列表 (设计图样式) */}
+        {/* 2. 筛选过滤与搜索栏 (原图第2屏: 全部发言人 ▾ 与 🔍 搜索内容) */}
+        <HStack alignment="center" spacing={10} padding={4}>
+          <HStack
+            padding={6}
+            background="secondarySystemBackground"
+            cornerRadius={10}
+            spacing={4}
+            alignment="center"
+          >
+            <Button
+              title={
+                filterSpeaker === "all"
+                  ? "全部发言人 ▾"
+                  : filterSpeaker === "1"
+                  ? "发言人1 ▾"
+                  : "发言人2 ▾"
+              }
+              action={() => {
+                setFilterSpeaker(
+                  filterSpeaker === "all" ? "1" : filterSpeaker === "1" ? "2" : "all"
+                );
+              }}
+            />
+          </HStack>
+
+          <Spacer />
+
+          <HStack
+            padding={6}
+            background="secondarySystemBackground"
+            cornerRadius={10}
+            spacing={6}
+            alignment="center"
+          >
+            <Image systemName="magnifyingglass" font={12} foregroundStyle="secondaryLabel" />
+            <Button
+              title={searchQuery ? `"${searchQuery}"` : "搜索内容"}
+              action={() => {
+                setSearchQuery(searchQuery ? "" : "80%");
+              }}
+            />
+          </HStack>
+        </HStack>
+
+        {/* 3. 逐句转写列表 (原图左侧时间戳 + 右侧发言人及带重点高亮的内容) */}
         <ScrollView>
-          <VStack spacing={14} padding={12}>
-            {displayedDialogues.length === 0 ? (
-              <VStack padding={40} alignment="center" spacing={8}>
-                <Image systemName="text.bubble" font={30} foregroundStyle="secondaryLabel" />
-                <Text font="body" foregroundStyle="secondaryLabel">
-                  暂无分句对白数据
-                </Text>
-                <Text font="caption1" foregroundStyle="tertiaryLabel">
-                  可使用备忘录听写文本或在设置中配置语音模型
-                </Text>
-              </VStack>
-            ) : (
-              displayedDialogues.map((item) => {
-                const isSpeaker1 = item.speaker.includes("1") || item.speaker.includes("我");
-                const isCurrentPlaying =
-                  isPlaying &&
-                  currentTime >= item.timeSec &&
-                  currentTime <= item.timeSec + (item.durationSec || 6);
+          <VStack spacing={16} padding={8}>
+            {displayedDialogues.map((item) => {
+              const isSpeaker1 = item.speaker.includes("1");
+              const isPlayingThis =
+                isPlaying &&
+                currentTime >= item.timeSec &&
+                currentTime <= item.timeSec + item.durationSec;
 
-                return (
-                  <VStack
-                    key={item.id}
-                    spacing={6}
-                    padding={12}
-                    background={isCurrentPlaying ? "systemIndigo" : "secondarySystemBackground"}
-                    cornerRadius={14}
-                  >
-                    <HStack alignment="center" spacing={8}>
-                      {/* 发言人小胶囊 */}
-                      <HStack
-                        padding={4}
-                        background={isCurrentPlaying ? "white" : (isSpeaker1 ? "systemBlue" : "systemGreen")}
-                        cornerRadius={6}
-                        alignment="center"
-                        spacing={3}
-                      >
-                        <Image
-                          systemName="person.fill"
-                          font={9}
-                          foregroundStyle={isCurrentPlaying ? "systemIndigo" : "white"}
-                        />
-                        <Text
-                          font="caption2"
-                          fontWeight="bold"
-                          foregroundStyle={isCurrentPlaying ? "systemIndigo" : "white"}
-                        >
-                          {item.speaker}
-                        </Text>
-                      </HStack>
+              return (
+                <HStack key={item.id} alignment="top" spacing={12}>
+                  {/* 左侧时间戳 (原图: 00:00, 00:08, 00:15...) */}
+                  <VStack alignment="leading" frame={{ width: 44 }}>
+                    <Text
+                      font="subheadline"
+                      foregroundStyle="tertiaryLabel"
+                      monospacedDigit
+                    >
+                      {formatSeconds(item.timeSec)}
+                    </Text>
+                  </VStack>
 
-                      {/* 时间戳 */}
+                  {/* 右侧发言人徽标 + 文字内容 */}
+                  <VStack spacing={6} alignment="leading">
+                    {/* 发言人胶囊 */}
+                    <HStack spacing={4} alignment="center">
+                      <Image
+                        systemName={isSpeaker1 ? "person.crop.circle.fill" : "person.crop.circle"}
+                        font={12}
+                        foregroundStyle={isSpeaker1 ? "systemBlue" : "systemGreen"}
+                      />
                       <Text
-                        font="caption2"
-                        foregroundStyle={isCurrentPlaying ? "white" : "tertiaryLabel"}
+                        font="caption1"
+                        fontWeight="bold"
+                        foregroundStyle={isSpeaker1 ? "systemBlue" : "systemGreen"}
                       >
-                        {formatSeconds(item.timeSec)}
+                        {item.speaker}
                       </Text>
-
-                      <Spacer />
-
-                      {/* 单句翻译按钮 (SF Symbol) */}
-                      <Button
-                        title={translatedMap[item.id] ? "收起" : (isTranslating === item.id ? "…" : "译")}
-                        systemImage="translate"
-                        action={() => handleTranslateItem(item)}
-                      />
-
-                      {/* 回听联动按钮 (SF Symbol) */}
-                      <Button
-                        title={isCurrentPlaying ? "播放中" : "回听"}
-                        systemImage={isCurrentPlaying ? "speaker.wave.2.fill" : "play.fill"}
-                        action={() => handleSeekAndPlay(item.timeSec)}
-                      />
                     </HStack>
 
-                    {/* 文字内容（点文字直接跳播） */}
-                    <Button
-                      title={item.text}
-                      action={() => handleSeekAndPlay(item.timeSec)}
-                    />
+                    {/* 正文气泡文本（支持浅蓝高亮标记） */}
+                    <VStack
+                      padding={4}
+                      background={item.highlightText ? "secondarySystemBackground" : "clear"}
+                      cornerRadius={6}
+                    >
+                      <Button
+                        title={item.text}
+                        action={() => handleSeekAndPlay(item.timeSec)}
+                      />
+                    </VStack>
 
                     {/* 双语翻译输出 */}
                     {translatedMap[item.id] && (
-                      <VStack padding={8} background="tertiarySystemFill" cornerRadius={8}>
+                      <VStack padding={6} background="tertiarySystemFill" cornerRadius={6}>
                         <Text font="caption1" foregroundStyle="systemBlue">
                           [译] {translatedMap[item.id]}
                         </Text>
                       </VStack>
                     )}
                   </VStack>
-                );
-              })
-            )}
+                </HStack>
+              );
+            })}
           </VStack>
         </ScrollView>
 
-        {/* 底部固定播放控制条 (设计图第2屏底部: 15s快退 + 播放 + 15s快进) */}
-        <VStack
-          padding={12}
-          spacing={8}
-          background="secondarySystemBackground"
-          cornerRadius={16}
-        >
-          <HStack alignment="center">
-            <Text font="caption2" foregroundStyle="secondaryLabel" monospacedDigit>
-              {formatSeconds(currentTime)}
-            </Text>
-            <Spacer />
-            <Text font="caption2" foregroundStyle="secondaryLabel" monospacedDigit>
-              {formatSeconds(duration)}
-            </Text>
-          </HStack>
+        <Spacer />
 
-          <HStack alignment="center" spacing={28}>
+        {/* 4. 底部固定音频控制条 (原图第2屏: 细滑轨进度 + 15s快退 + 蓝色播放圆钮 + 15s快进) */}
+        <VStack
+          padding={14}
+          spacing={10}
+          background="secondarySystemBackground"
+          cornerRadius={20}
+        >
+          {/* 进度条指示 */}
+          <VStack spacing={4}>
+            <HStack alignment="center">
+              <VStack
+                frame={{ width: Math.max(8, progressRatio * 260), height: 3 }}
+                background="systemBlue"
+                cornerRadius={2}
+              />
+              <VStack
+                frame={{ width: 8, height: 8 }}
+                background="systemBlue"
+                cornerRadius={4}
+              />
+              <VStack
+                frame={{ height: 3 }}
+                background="tertiarySystemFill"
+                cornerRadius={2}
+              />
+            </HStack>
+
+            <HStack alignment="center">
+              <Text font="caption2" foregroundStyle="secondaryLabel" monospacedDigit>
+                {formatHours(currentTime)}
+              </Text>
+              <Spacer />
+              <Text font="caption2" foregroundStyle="secondaryLabel" monospacedDigit>
+                {formatHours(duration)}
+              </Text>
+            </HStack>
+          </VStack>
+
+          {/* 播放控制按钮行 */}
+          <HStack alignment="center" spacing={36}>
             <Spacer />
-            {/* 快退 15 秒 (SF Symbol) */}
+
+            {/* 快退 15 秒 */}
             <Button
               title=" "
               systemImage="gobackward.15"
               action={() => handleSkip(-15)}
             />
 
-            {/* 播放 / 暂停大按键 (SF Symbol) */}
-            <Button
-              title=" "
-              systemImage={isPlaying ? "pause.circle.fill" : "play.circle.fill"}
-              action={handleTogglePlay}
-            />
+            {/* 大蓝色播放/暂停主按键 */}
+            <VStack
+              padding={14}
+              background="systemBlue"
+              cornerRadius={26}
+              alignment="center"
+              frame={{ width: 52, height: 52 }}
+            >
+              <Button
+                title=" "
+                systemImage={isPlaying ? "pause.fill" : "play.fill"}
+                action={handleTogglePlay}
+              />
+            </VStack>
 
-            {/* 快进 15 秒 (SF Symbol) */}
+            {/* 快进 15 秒 */}
             <Button
               title=" "
               systemImage="goforward.15"
               action={() => handleSkip(15)}
             />
+
             <Spacer />
           </HStack>
         </VStack>

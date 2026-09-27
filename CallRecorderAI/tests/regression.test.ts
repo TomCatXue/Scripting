@@ -4,6 +4,7 @@ import { saveRecord, getAllRecords, getRecordById, deleteRecord, getAISettings, 
 import { analyzeCallAudio } from "../ai_service.ts";
 import { AUDIO_FOLDER_NAME, discoverUnindexedAudios } from "../audio_manager.ts";
 import { translateSingle } from "../translation_service.ts";
+import { getProjectDemoRecord } from "../demo_data.ts";
 import type { CallRecord } from "../types.ts";
 
 function formatSeconds(sec: number): string {
@@ -128,3 +129,38 @@ test("Utils: 音频时间格式化正确", () => {
   assert.equal(formatSeconds(62), "01:02");
   assert.equal(formatSeconds(365), "06:05");
 });
+
+test("DesignContract: 设计图项目例会 1:1 范例数据字段契约完整", () => {
+  const demo = getProjectDemoRecord();
+  assert.equal(demo.title, "项目例会录音");
+  assert.equal(demo.minutes.title, "项目例会·会议纪要");
+  assert.equal(demo.minutes.dateStr, "2025年4月26日  10:00 - 11:20");
+  assert.equal(demo.minutes.durationStr, "共 1.3 小时");
+  assert.equal(demo.duration, 3738, "总时长秒数对应 01:02:18");
+
+  // 验证对白逐句完全吻合
+  assert.equal(demo.dialogues.length, 5);
+  assert.equal(demo.dialogues[0].speaker, "发言人1");
+  assert.equal(demo.dialogues[1].speaker, "发言人2");
+  assert.ok(demo.dialogues[1].highlightText?.includes("80%"), "第2句应包含80%重点高亮");
+  assert.equal(demo.dialogues[2].speaker, "发言人1");
+  assert.equal(demo.dialogues[3].speaker, "发言人2");
+  assert.equal(demo.dialogues[4].speaker, "发言人1");
+
+  // 验证纪要三大模块
+  assert.ok(demo.minutes.overview.includes("80%"), "会议摘要应包含80%开发进度");
+  assert.equal(demo.minutes.keyPoints.length, 4, "核心要点应为4条");
+  assert.equal(demo.minutes.actionItems.length, 3, "待办事项应为3条");
+  assert.equal(demo.minutes.actionItems[0].assignee, "张三");
+  assert.equal(demo.minutes.actionItems[1].assignee, "李四");
+  assert.equal(demo.minutes.actionItems[2].assignee, "王五");
+
+  // 验证时间轴与附件
+  assert.equal(demo.chapters.length, 6, "时间轴应有6个节点");
+  assert.equal(demo.chapters[0].title, "会议开始，项目进展回顾");
+  assert.equal(demo.chapters[1].title, "开发进度完成 80%");
+  assert.ok(demo.attachedFiles && demo.attachedFiles.length > 0, "应包含相关附件");
+  assert.equal(demo.attachedFiles![0].name, "项目需求文档.pdf");
+  assert.equal(demo.attachedFiles![0].sizeStr, "2.4 MB");
+});
+
