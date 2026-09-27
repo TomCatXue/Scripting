@@ -4,9 +4,10 @@
 
 export interface DialogueItem {
   id: string;
-  speaker: string;      // 例如 "说话人 A (我)" 或 "说话人 B (对方)"
-  timeSec: number;       // 音频对应起始时间（秒），用于点击定位原声播放
-  text: string;          // 逐字记录内容
+  speaker: string;      // 例如 "我" / "对方" / "说话人 A" / "说话人 B"
+  timeSec: number;       // 音频起始时间（秒），用于点击定位原声播放
+  durationSec: number;   // 该单句音频持续时长（秒），用于渲染仿微信语音条长度 (如 8")
+  text: string;          // 逐字记录与转写文本
 }
 
 export interface CallSummary {
@@ -19,15 +20,21 @@ export interface CallRecord {
   id: string;
   title: string;
   createdAt: number;
-  audioPath: string;     // 持久化存储在 Documents 目录下的音频物理绝对路径
+  audioPath: string;     // 持久化存储在 Documents/CallRecordings/ 下的绝对路径
+  audioFileName: string; // 纯文件名，例如 call_20260927_183000.m4a
   duration: number;      // 音频总时长（秒）
+  fileSizeBytes: number; // 文件大小（字节）
   dialogues: DialogueItem[];
   summary: CallSummary;
 }
 
+// 转写方式：音频直接转文字 (ASR) vs AI 多模态大模型转写 (LLM)
+export type TranscriptionMode = "asr_direct" | "ai_multimodal";
+
 export type AIProvider = "local" | "aliyun" | "gemini" | "openai";
 
 export interface AISettings {
+  transcriptionMode: TranscriptionMode; // 核心转写模式
   provider: AIProvider;
   apiKey: string;
   endpoint: string;
@@ -35,6 +42,7 @@ export interface AISettings {
 }
 
 export const DEFAULT_AI_SETTINGS: AISettings = {
+  transcriptionMode: "ai_multimodal",
   provider: "local",
   apiKey: "",
   endpoint: "https://api.deepseek.com/v1",

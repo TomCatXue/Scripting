@@ -56,8 +56,18 @@ export function useMemo<T>(fn: () => T, deps?: any[]): T {
   return fn();
 }
 
+export function useObservable<T>(init: T): { value: T; subscribe: any; unsubscribe: any } {
+  return {
+    value: init,
+    subscribe: () => {},
+    unsubscribe: () => {}
+  };
+}
+
 // 基础 UI 占位
 export const NavigationStack = (props: any) => props;
+export const TabView = (props: any) => props;
+export const Tab = (props: any) => props;
 export const List = (props: any) => props;
 export const Section = (props: any) => props;
 export const VStack = (props: any) => props;

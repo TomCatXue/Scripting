@@ -9,8 +9,8 @@ import {
   Divider
 } from "scripting";
 import type { CallRecord } from "../types";
-import { PlayerBar } from "./PlayerBar";
-import { DialogueList } from "./DialogueList";
+import { AppleNotesAudioCard } from "./AppleNotesAudioCard";
+import { WeChatDialogueList } from "./WeChatDialogueList";
 import { SummaryCard } from "./SummaryCard";
 
 export interface CallDetailViewProps {
@@ -21,8 +21,10 @@ export function CallDetailView({ record }: CallDetailViewProps) {
   const dismiss = Navigation.useDismiss();
   const [activeTab, setActiveTab] = useState<"dialogue" | "summary">("dialogue");
   const [seekTime, setSeekTime] = useState<number | null>(null);
+  const [currentPlayTime, setCurrentPlayTime] = useState<number>(0);
+  const [isPlayingGlobal, setIsPlayingGlobal] = useState<boolean>(false);
 
-  // 点击单句时的跳转播放响应
+  // 微信语音条点击事件响应
   const handlePlayAtTime = (sec: number) => {
     setSeekTime(sec);
   };
@@ -30,35 +32,40 @@ export function CallDetailView({ record }: CallDetailViewProps) {
   return (
     <NavigationStack>
       <VStack
-        navigationTitle="通话记录与 AI 纪要"
+        navigationTitle={record.title}
         navigationBarTitleDisplayMode="inline"
         toolbar={{
           cancellationAction: (
-            <Button title="关闭" action={dismiss} />
+            <Button title="返回" action={dismiss} />
           )
         }}
         spacing={0}
       >
-        {/* 顶部音频播放器卡片 */}
+        {/* 最上面：备忘录风格原生音频卡片 */}
         <VStack padding={12} background="systemBackground">
-          <PlayerBar
+          <AppleNotesAudioCard
             audioPath={record.audioPath}
             duration={record.duration}
+            fileName={record.audioFileName || "call_audio.m4a"}
             seekTime={seekTime}
             onSeekHandled={() => setSeekTime(null)}
+            onCurrentTimeChange={(cur, playing) => {
+              setCurrentPlayTime(cur);
+              setIsPlayingGlobal(playing);
+            }}
           />
         </VStack>
 
         <Divider />
 
-        {/* 标签栏切换 */}
+        {/* 微信式对话与 AI 总结切换 */}
         <HStack
           padding={8}
           spacing={8}
           background="secondarySystemBackground"
         >
           <Button
-            title={activeTab === "dialogue" ? "💬 两人逐字对话 (已选)" : "💬 两人逐字对话"}
+            title={activeTab === "dialogue" ? "💬 微信式对话流 (已选)" : "💬 微信式对话流"}
             action={() => setActiveTab("dialogue")}
           />
           <Button
@@ -72,8 +79,10 @@ export function CallDetailView({ record }: CallDetailViewProps) {
         {/* 滚动内容区 */}
         <ScrollView>
           {activeTab === "dialogue" ? (
-            <DialogueList
+            <WeChatDialogueList
               dialogues={record.dialogues}
+              currentPlayTime={currentPlayTime}
+              isPlayingGlobal={isPlayingGlobal}
               onPlayAtTime={handlePlayAtTime}
             />
           ) : (

@@ -2,51 +2,58 @@ import type { CallRecord, DialogueItem, CallSummary } from "./types";
 import { getAISettings } from "./storage";
 
 /**
- * 示例演示数据生成器（在未配置外部 API 或离线状态下的优雅兜底）
+ * 示例演示数据生成器（包含精确的时间戳、单句时长以及仿真微信对话记录）
  */
-function createMockAnalysis(audioPath: string, duration: number): CallRecord {
+function createMockAnalysis(audioPath: string, duration: number, fileName = "call_demo.m4a", fileSizeBytes = 1024 * 780): CallRecord {
   const now = Date.now();
   const dialogues: DialogueItem[] = [
     {
       id: "d1",
       speaker: "说话人 A (我)",
       timeSec: 1,
-      text: "喂，李经理您好！关于上次咱们沟通的智慧园区项目合同细节，您这边确认过了吗？"
+      durationSec: 5,
+      text: "喂，李经理您好！关于上次沟通的智慧园区项目合同细节，您这边确认过了吗？"
     },
     {
       id: "d2",
       speaker: "说话人 B (客户)",
       timeSec: 6,
+      durationSec: 8,
       text: "小陈你好，方案和技术协议我们法务和技术部门都看过了，主体框架没问题，主要有两点细节需要商榷。"
     },
     {
       id: "d3",
       speaker: "说话人 A (我)",
       timeSec: 15,
+      durationSec: 3,
       text: "好的李经理，您请讲，我们立刻根据您的要求调整。"
     },
     {
       id: "d4",
       speaker: "说话人 B (客户)",
       timeSec: 19,
+      durationSec: 12,
       text: "第一是首付款比例希望从 30% 调整为 20%，尾款在验收满一年后付清；第二是私有化部署的服务器要求下周三之前先到位配合联调。"
     },
     {
       id: "d5",
       speaker: "说话人 A (我)",
       timeSec: 32,
+      durationSec: 11,
       text: "关于首付款比例，我请示过财务总监，如果下周能正式盖章回传，20% 可以特批；服务器硬件我们已经备齐，周二即可进场安装。"
     },
     {
       id: "d6",
       speaker: "说话人 B (客户)",
       timeSec: 45,
+      durationSec: 7,
       text: "那太顺利了！你把修改后的终版合同电子版今天下班前发我，我明天上午直接找总经理签字盖章。"
     },
     {
       id: "d7",
       speaker: "说话人 A (我)",
       timeSec: 54,
+      durationSec: 6,
       text: "好的李经理！今天下午 5 点前我准时发到您企业微信和邮箱，感谢李经理的支持！"
     }
   ];
@@ -70,6 +77,8 @@ function createMockAnalysis(audioPath: string, duration: number): CallRecord {
     title: "智慧园区项目合同款项与交付推进通话",
     createdAt: now,
     audioPath,
+    audioFileName: fileName,
+    fileSizeBytes,
     duration: duration > 0 ? duration : 62,
     dialogues,
     summary
@@ -125,7 +134,7 @@ ${rawTranscript}
 }
 
 /**
- * 使用云端大模型 API（如 DeepSeek / 通义 / OpenAI 兼容接口）处理
+ * 使用云端大模型 API 处理
  */
 async function processWithCloudLLM(
   endpoint: string,
@@ -187,11 +196,13 @@ ${rawTranscript}`;
 export async function analyzeCallAudio(
   audioPath: string,
   duration = 0,
-  rawInputText?: string
+  rawInputText?: string,
+  fileName = "recording.m4a",
+  fileSizeBytes = 0
 ): Promise<CallRecord> {
   const settings = getAISettings();
 
-  // 若传入了苹果备忘录自带的听写文本，优先结合 LLM 提取总结
+  // 若传入了备忘录听写文本，调用配置的模式生成总结
   if (rawInputText && rawInputText.trim().length > 0) {
     let result = null;
     if (settings.provider === "local") {
@@ -206,12 +217,15 @@ export async function analyzeCallAudio(
         title: result.title,
         createdAt: Date.now(),
         audioPath,
+        audioFileName: fileName,
+        fileSizeBytes,
         duration,
         dialogues: [
           {
             id: "d1",
             speaker: "双方对话原文",
             timeSec: 0,
+            durationSec: duration > 0 ? duration : 30,
             text: rawInputText
           }
         ],
@@ -220,6 +234,6 @@ export async function analyzeCallAudio(
     }
   }
 
-  // 默认返回具备完整双人角色时间戳与结构化总结的规范数据
-  return createMockAnalysis(audioPath, duration);
+  // 默认返回具备完整双人角色语音条与结构化总结的规范数据
+  return createMockAnalysis(audioPath, duration, fileName, fileSizeBytes);
 }
