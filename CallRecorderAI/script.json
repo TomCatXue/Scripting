@@ -1,0 +1,11 @@
+{
+  "name": "CallRecorderAI",
+  "version": "1.0.0",
+  "icon": "phone.badge.waveform",
+  "color": "systemIndigo",
+  "description": "通话录音 AI 分析器：原声播放、双人对话原文记录、AI 核心纪要与待办提取",
+  "intentInputTypes": [
+    "fileURLs"
+  ],
+  "runInApp": true
+}
