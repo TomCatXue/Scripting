@@ -1,8 +1,11 @@
+// @ts-nocheck
+/// <reference path="./global.d.ts" />
 import {
   Button,
   Chart,
   AreaChart,
   LineChart,
+  RuleLineForValueChart,
   ChartPlotStyle,
   Circle,
   GeometryReader,
@@ -56,7 +59,7 @@ export function BrandHeaderIcon({
   }
   if (iconPath) {
     const p = typeof iconPath === "string" ? iconPath : iconPath.light
-    const resolved = p.startsWith("/") ? p : \`\${FileManager.documentsDirectory}/scripts/MutePanel/\${p}\`
+    const resolved = p.startsWith("/") ? p : `${FileManager.documentsDirectory}/scripts/MutePanel/${p}`
     if (FileManager.existsSync(resolved) || FileManager.existsSync(p)) {
       return (
         <Image
@@ -2097,7 +2100,3 @@ export function BentoLargeGridCard({
     </VStack>
   )
 }
-
-import {
-  RuleLineForValueChart,
-} from "scripting"

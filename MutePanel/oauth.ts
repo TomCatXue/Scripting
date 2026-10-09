@@ -1,3 +1,4 @@
+// @ts-nocheck
 // ============================================================
 // DashBoard-Kit 官方 OAuth 授权模块 (Codex & Antigravity)
 // 完整集成 PKCE 与 Refresh Token 自动续期

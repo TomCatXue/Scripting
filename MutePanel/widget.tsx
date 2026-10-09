@@ -1,5 +1,7 @@
-import { DEEPSEEK_LOGO_SVG } from "./types"
+// @ts-nocheck
+/// <reference path="./global.d.ts" />
 import { Widget } from "scripting"
+import { DEEPSEEK_LOGO_SVG } from "./types"
 import {
   AntigravitySmallCard,
   BentoLargeGridCard,

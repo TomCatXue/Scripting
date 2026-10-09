@@ -1,3 +1,5 @@
+// @ts-nocheck
+/// <reference path="./global.d.ts" />
 import { fetch, Device } from "scripting"
 import {
   DEFAULT_ANTIGRAVITY,

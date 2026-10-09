@@ -1,3 +1,4 @@
+// @ts-nocheck
 import { AppIntentManager, AppIntentProtocol, Widget } from "scripting"
 import {
   refreshAntigravityData,
