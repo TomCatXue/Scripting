@@ -1139,12 +1139,18 @@ export function GoldPriceSmallCard({ data }: { data: GoldMarketData }) {
     { label: "10-08", value: 892 },
     { label: "10-09", value: 904.48 },
   ]
-  const minY = data.minPrice || Math.min(...marks.map(m => m.value))
-  const maxY = data.maxPrice || Math.max(...marks.map(m => m.value))
-  const color = data.isUp ? THEME.red : THEME.green
-  // 振幅兜底：区间为 0（横盘）时给一个最小跨度，否则曲线会贴边不可见
+  // 直接按实际绘制的数据求区间：避免缓存里的 minPrice/maxPrice 与实际序列不一致，
+  // 导致 Y 轴范围过大、曲线被压成一条平线。
+  const values = marks.map(m => m.value)
+  const minY = Math.min(...values)
+  const maxY = Math.max(...values)
+  // 高饱和涨跌色：红涨绿跌，且比语义色更醒目，避免细线在浅底上看不清
+  // 振幅兜底：横盘时给最小跨度，并收紧上下留白，让波动占满图高
   const span = Math.max(maxY - minY, Math.abs(maxY) * 0.004, 0.01)
-  const yScale = { from: minY - span * 0.35, to: maxY + span * 0.15 }
+  const yScale = { from: minY - span * 0.12, to: maxY + span * 0.12 }
+  const color = data.isUp
+    ? ({ light: "#FF3B30", dark: "#FF453A" } as any)
+    : ({ light: "#00B368", dark: "#30D158" } as any)
 
   return (
     <ZStack
@@ -1232,28 +1238,33 @@ export function GoldPriceSmallCard({ data }: { data: GoldMarketData }) {
             chartXAxis="hidden"
             chartYAxis="hidden"
             chartYScale={yScale}
-            frame={{ height: 46 }}
+            frame={{ maxWidth: "infinity", height: 46 }}
           >
             <AreaChart
               marks={marks.map((m) => ({
                 label: m.label,
                 value: m.value,
                 interpolationMethod: "catmullRom",
-                foregroundStyle: [color, "rgba(0, 0, 0, 0)"],
-                opacity: 0.55,
+                foregroundStyle: [color, "rgba(0, 0, 0, 0)"] as any,
               }))}
             />
             <LineChart
-              marks={marks.map((m) => ({
-                label: m.label,
-                value: m.value,
-                interpolationMethod: "catmullRom",
-                foregroundStyle: color,
-                lineStyle: { lineWidth: 2.4, lineCap: "round", lineJoin: "round" },
-              }))}
+              marks={marks.map((m, i) => {
+                const isLast = i === marks.length - 1
+                return {
+                  label: m.label,
+                  value: m.value,
+                  interpolationMethod: "catmullRom",
+                  foregroundStyle: color,
+                  lineStyle: { lineWidth: 3, lineCap: "round", lineJoin: "round" },
+                  // 最新一个数据点画实心光斑，强化「当前值」的视觉锚点
+                  symbol: isLast ? "circle" : undefined,
+                  symbolSize: isLast ? 34 : undefined,
+                }
+              })}
             />
-          </Chart>
-        </VStack>
+            </Chart>
+          </VStack>
       </VStack>
     </ZStack>
   )
@@ -1294,12 +1305,16 @@ export function GoldPriceMediumCard({ data }: { data: GoldMarketData }) {
     { label: "10-08", value: 892 },
     { label: "10-09", value: 904.48 },
   ]
-  const minY = data.minPrice || Math.min(...marks.map(m => m.value))
-  const maxY = data.maxPrice || Math.max(...marks.map(m => m.value))
-  const color = data.isUp ? THEME.red : THEME.green
-  // 振幅兜底：横盘时给最小跨度，保证曲线仍清晰可见
+  // 与列表实际绘制的序列保持一致，避免缓存区间与实际数据不匹配
+  const values = marks.map(m => m.value)
+  const minY = Math.min(...values)
+  const maxY = Math.max(...values)
+  // 高饱和涨跌色：红涨绿跌
   const span = Math.max(maxY - minY, Math.abs(maxY) * 0.004, 0.01)
-  const yScale = { from: minY - span * 0.35, to: maxY + span * 0.15 }
+  const yScale = { from: minY - span * 0.12, to: maxY + span * 0.12 }
+  const color = data.isUp
+    ? ({ light: "#FF3B30", dark: "#FF453A" } as any)
+    : ({ light: "#00B368", dark: "#30D158" } as any)
 
   return (
     <VStack
@@ -1405,25 +1420,30 @@ export function GoldPriceMediumCard({ data }: { data: GoldMarketData }) {
           chartXAxis="hidden"
           chartYAxis="hidden"
           chartYScale={yScale}
-          frame={{ height: 42 }}
+          frame={{ maxWidth: "infinity", height: 42 }}
         >
           <AreaChart
             marks={marks.map((m) => ({
               label: m.label,
               value: m.value,
               interpolationMethod: "catmullRom",
-              foregroundStyle: [color, "rgba(0, 0, 0, 0)"],
-              opacity: 0.45,
+              foregroundStyle: [color, "rgba(0, 0, 0, 0)"] as any,
             }))}
           />
           <LineChart
-            marks={marks.map((m) => ({
-              label: m.label,
-              value: m.value,
-              interpolationMethod: "catmullRom",
-              foregroundStyle: color,
-              lineStyle: { lineWidth: 2.2, lineCap: "round", lineJoin: "round" },
-            }))}
+            marks={marks.map((m, i) => {
+              const isLast = i === marks.length - 1
+              return {
+                label: m.label,
+                value: m.value,
+                interpolationMethod: "catmullRom",
+                foregroundStyle: color,
+                lineStyle: { lineWidth: 2.8, lineCap: "round", lineJoin: "round" },
+                // 最新数据点加实心光斑
+                symbol: isLast ? "circle" : undefined,
+                symbolSize: isLast ? 30 : undefined,
+              }
+            })}
           />
         </Chart>
       </VStack>
@@ -1921,7 +1941,7 @@ export function WaveformDashboardMediumCard({ props }: { props: WaveformMediumCa
       </VStack>
 
       {/* ── 右侧 7 日平滑贝塞尔波形图走势栏 (80pt) ──────────────── */}
-      <VStack spacing={3} alignment="leading">
+      <VStack spacing={3} alignment="leading" frame={{ maxWidth: "infinity" }}>
         <Spacer />
         {/* 走势栏顶标 */}
         <HStack alignment="center">
@@ -1929,7 +1949,7 @@ export function WaveformDashboardMediumCard({ props }: { props: WaveformMediumCa
             font={10}
             fontWeight="semibold"
             foregroundStyle={THEME.dim}
-            frame={{ maxWidth: "infinity", alignment: "leading" }}
+            frame={{ maxWidth: "infinity", alignment: "center" }}
           >
             {props.chartTitle}
           </Text>
@@ -1939,9 +1959,9 @@ export function WaveformDashboardMediumCard({ props }: { props: WaveformMediumCa
         </HStack>
         <Spacer />
 
-        {/* 平滑贝塞尔曲线 (CatmullRom) + 实色向下渐隐面积图 */}
+        {/* 平滑贝塞尔曲线 (CatmullRom) + 实色向下渐隐面积图 + 最新点光斑 */}
         <Chart
-          frame={{ height: 80 }}
+          frame={{ maxWidth: "infinity", height: 80 }}
           chartXAxis={{
             position: "bottom",
             tick: false,
@@ -1959,16 +1979,22 @@ export function WaveformDashboardMediumCard({ props }: { props: WaveformMediumCa
             marks={marks.map((m) => ({
               ...m,
               interpolationMethod: "catmullRom",
-              foregroundStyle: props.gradient,
+              foregroundStyle: props.gradient as any,
             }))}
           />
           <LineChart
-            marks={marks.map((m) => ({
-              ...m,
-              interpolationMethod: "catmullRom",
-              foregroundStyle: props.lineColor,
-              lineStyle: { lineWidth: 2, lineCap: "round", lineJoin: "round" },
-            }))}
+            marks={marks.map((m, i) => {
+              const isLast = i === marks.length - 1
+              return {
+                ...m,
+                interpolationMethod: "catmullRom",
+                foregroundStyle: props.lineColor,
+                lineStyle: { lineWidth: 2.6, lineCap: "round", lineJoin: "round" },
+                // 最新数据点画实心光斑，作为「当前值」的视觉锚点
+                symbol: isLast ? "circle" : undefined,
+                symbolSize: isLast ? 40 : undefined,
+              }
+            })}
           />
           <ChartPlotStyle>
             {(plot: any) => plot.clipShape("rect")}
