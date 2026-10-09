@@ -1,0 +1,31 @@
+{
+  "name" : "MutePanel",
+  "icon" : "waveform.path.ecg",
+  "color" : "#1E60FF",
+  "remoteResource" : null,
+  "iconImage" : "",
+  "permissions" : null,
+  "localizedNames" : {
+    "en" : "MutePanel",
+    "zh" : "哑巴面板 (MutePanel)"
+  },
+  "runInApp" : true,
+  "version" : "1.1.0",
+  "description" : "哑巴面板 (MutePanel)：静默高效的模块化聚合看板。支持 DeepSeek / WorkBuddy / Codex / Antigravity 实时用量与贝塞尔波形图、Au9999 黄金实时行情与 2x2 Bento 网格。",
+  "contributors" : [
+
+  ],
+  "author" : {
+    "email" : null,
+    "homepage" : null,
+    "name" : "TomCatXue"
+  },
+  "intentInputTypes" : [
+
+  ],
+  "entry" : "index.tsx",
+  "localizedDescriptions" : {
+    "zh" : "哑巴面板 (MutePanel)：静默高效的模块化聚合看板。支持 DeepSeek / WorkBuddy / Codex / Antigravity 实时用量与贝塞尔波形图、Au9999 黄金实时行情与 2x2 Bento 网格。",
+    "en" : "MutePanel: Silent and efficient modular dashboard featuring AI usage, smooth waveform charts, Au9999 gold prices, and 2x2 Bento widgets."
+  }
+}
