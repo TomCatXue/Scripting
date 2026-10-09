@@ -166,6 +166,8 @@ export async function refreshWorkBuddyData(): Promise<MetricBalanceData | null> 
     let totalCreditsCap = 0
     let signedCount = 0
     let totalRequests = 0
+    // 账号有效期：取所有账号中最晚的到期时间，换算为剩余天数
+    let latestExpiryMs = 0
 
     for (const acc of accounts) {
       const cr = Number(acc.credits || 0)
@@ -175,7 +177,25 @@ export async function refreshWorkBuddyData(): Promise<MetricBalanceData | null> 
       if (acc.checkin_done) signedCount++
       const reqs = Number(acc.token_usage?.request_count ?? acc.success_count ?? 0)
       totalRequests += reqs
+
+      // 兼容多种字段命名；无法解析时保持 0，由卡片显示 "--"
+      const rawExpiry =
+        acc.expires_at ?? acc.expire_at ?? acc.expiresAt ?? acc.expire_time ?? acc.expired_at
+      if (rawExpiry != null) {
+        const ms =
+          typeof rawExpiry === "number"
+            ? rawExpiry > 1e11
+              ? rawExpiry
+              : rawExpiry * 1000
+            : new Date(String(rawExpiry)).getTime()
+        if (Number.isFinite(ms) && ms > latestExpiryMs) latestExpiryMs = ms
+      }
     }
+
+    const validDays =
+      latestExpiryMs > 0
+        ? Math.max(0, Math.ceil((latestExpiryMs - Date.now()) / 86_400_000))
+        : undefined
 
     // 若 accounts 列表为空或为 0，回落兼容旧版 overview.billing 字段
     const bt = overview?.billing?.total
@@ -196,6 +216,7 @@ export async function refreshWorkBuddyData(): Promise<MetricBalanceData | null> 
       subValue1: totalAcc > 0 ? `${signed}/${totalAcc}` : `${signed}`,
       subLabel2: "已用",
       subValue2: used.toLocaleString("en-US"),
+      validDays,
       footerLeft: `模型 ${modelCount} · 请求 ${calls.toLocaleString("en-US")}`,
       updatedAt: new Date().toISOString(),
     }

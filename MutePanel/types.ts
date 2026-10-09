@@ -65,6 +65,8 @@ export interface MetricBalanceData {
   subValue1: string
   subLabel2: string
   subValue2: string
+  /** WorkBuddy 账号剩余有效天数（接口未提供时为空，卡片显示 --） */
+  validDays?: number
   footerLeft: string
   updatedAt: string
 }

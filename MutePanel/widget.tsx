@@ -2,6 +2,7 @@
 /// <reference path="./global.d.ts" />
 import { Widget } from "scripting"
 import { DEEPSEEK_LOGO_SVG } from "./types"
+import { brandIcon } from "./icons"
 import {
   AntigravitySmallCard,
   BentoLargeGridCard,
@@ -121,11 +122,11 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
         <WaveformDashboardMediumCard
           props={{
             title: "WorkBuddy",
-            iconPath: { light: "assets/workbuddy-icon-light.png", dark: "assets/workbuddy-icon-dark.png" },
+            iconImage: brandIcon("workbuddy"),
             mainLabel: "积分剩余总量",
             mainValue: d.mainValue || "12,164",
             subTag1: `已用 ${d.subValue2 || "7,796"}`,
-            subTag2: `已签 ${d.subValue1 || "0/4"} · 有效期 ${d.footerLeft || "51天"}`,
+            subTag2: `已签 ${d.subValue1 || "0/4"}${d.validDays != null ? ` · 有效期 ${d.validDays} 天` : ""}`,
             chartTitle: "近7日消耗趋势",
             peakText: "峰值 1,300",
             trendData: [
@@ -148,7 +149,7 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
         <WaveformDashboardMediumCard
           props={{
             title: "Codex",
-            iconPath: { light: "assets/codex-light.png", dark: "assets/codex-dark.png" },
+            iconImage: brandIcon("codex"),
             mainLabel: "5小时可用额度",
             mainValue: `${Math.round(d.item1?.pct ?? 83)}%`,
             subTag1: `周额度 ${Math.round(d.item2?.pct ?? 0)}%`,
@@ -175,11 +176,11 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
         <WaveformDashboardMediumCard
           props={{
             title: "Antigravity",
-            iconPath: { light: "assets/antigravity-light.png", dark: "assets/antigravity-dark.png" },
+            iconImage: brandIcon("antigravity"),
             mainLabel: "Gemini 冷却倒计时",
             mainValue: d.item1?.timer || "12m",
             subTag1: `Claude/GPT ${d.item2?.timer || "4h59m"}`,
-            subTag2: `Gem周 ${Math.round(d.item1?.pct ?? 82)}% · 最新 39%`,
+            subTag2: `Gem周 ${d.stat1?.value || "--"} · C/G周 ${d.stat2?.value || "--"}`,
             chartTitle: "近7日调用走势",
             peakText: "峰值 75%",
             trendData: [
