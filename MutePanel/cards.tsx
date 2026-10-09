@@ -26,6 +26,7 @@ import {
   MetricBalanceData,
   VpnNodeData,
   DEEPSEEK_WHALE_SVG,
+  DEEPSEEK_LOGO_SVG,
 } from "./types"
 
 // ── 品牌图标渲染（支持 SVG、UIImage、本地图片、SF Symbol）──
@@ -53,19 +54,23 @@ export function BrandHeaderIcon({
       />
     )
   }
+  if (iconPath) {
+    const p = typeof iconPath === "string" ? iconPath : iconPath.light
+    const resolved = p.startsWith("/") ? p : \`\${FileManager.documentsDirectory}/scripts/MutePanel/\${p}\`
+    if (FileManager.existsSync(resolved) || FileManager.existsSync(p)) {
+      return (
+        <Image
+          filePath={iconPath}
+          resizable={true}
+          frame={{ width: size, height: size }}
+        />
+      )
+    }
+  }
   if (iconImage) {
     return (
       <Image
         image={iconImage}
-        resizable={true}
-        frame={{ width: size, height: size }}
-      />
-    )
-  }
-  if (iconPath) {
-    return (
-      <Image
-        filePath={iconPath}
         resizable={true}
         frame={{ width: size, height: size }}
       />
@@ -1330,45 +1335,46 @@ export function SegmentedSquareBar({
   filled = 8,
   pct,
   activeColor,
-  height = 8,
+  size = 10,
 }: {
   total?: number
   filled?: number
   pct?: number
   activeColor?: any
-  height?: number
+  size?: number
 }) {
-  // 计算当前使用或剩余百分比并支持平滑变色（绿 -> 黄 -> 橙 -> 红）
   const currentPct = pct !== undefined ? pct : Math.round((filled / total) * 100)
   const squareColor = activeColor || remainColor(currentPct)
   const effectiveFilled = pct !== undefined ? Math.max(0, Math.min(total, Math.round((pct / 100) * total))) : filled
-  const inactiveBorder = { light: "rgba(0,0,0,0.08)", dark: "rgba(255,255,255,0.12)" }
+  const inactiveBorder = { light: "rgba(0,0,0,0.06)", dark: "rgba(255,255,255,0.10)" }
 
   return (
-    <HStack spacing={3} alignment="center" frame={{ maxWidth: "infinity", height }}>
+    <HStack spacing={4} alignment="center" frame={{ maxWidth: "infinity", height: size }}>
       {Array.from({ length: total }).map((_, i) => (
-        <ZStack key={i} frame={{ maxWidth: "infinity", height }}>
+        <ZStack key={i} frame={{ width: size, height: size }}>
           {i < effectiveFilled ? (
             <RoundedRectangle
               fill={squareColor}
               cornerRadius={2}
-              frame={{ maxWidth: "infinity", height }}
+              frame={{ width: size, height: size }}
             />
           ) : (
             <RoundedRectangle
               fill={inactiveBorder}
               cornerRadius={2}
-              frame={{ maxWidth: "infinity", height }}
+              frame={{ width: size, height: size }}
             />
           )}
         </ZStack>
       ))}
+      <Spacer />
     </HStack>
   )
 }
 
 // ═════════════════════════════════════════════════════════════════
-// 5. 小型组件 4 套精细化卡片 (WorkBuddy / DeepSeek / Codex / Antigravity)
+// 5. 小型组件 4 套像素级精细化卡片 (WorkBuddy / DeepSeek / Codex / Antigravity)
+// 严格 1:1 对齐参考设计图 (88290ba2-4e0f-4de1-8db1-04c40bd29d51.jpg)
 // ═════════════════════════════════════════════════════════════════
 
 export function WorkBuddySmallCard({ data }: { data: MetricBalanceData }) {
@@ -1376,98 +1382,94 @@ export function WorkBuddySmallCard({ data }: { data: MetricBalanceData }) {
     <VStack
       alignment="leading"
       spacing={0}
-      padding={{ top: 14, bottom: 12, leading: 14, trailing: 14 }}
-      widgetBackground={THEME.bg}
+      padding={{ top: 13, bottom: 12, leading: 14, trailing: 14 }}
+      widgetBackground={{ light: "#FFFFFF", dark: "#161719" }}
     >
       {/* 顶部 Header: Logo + WORKBUDDY. */}
-      <HStack spacing={6} alignment="center" frame={{ height: 20 }}>
-        {data.wordmarkImage ? (
-          <Image
-            image={data.wordmarkImage}
-            resizable={true}
-            frame={{ width: Math.round(16 * (248 / 57)), height: 16 }}
-          />
-        ) : (
-          <BrandHeaderIcon
-            iconPath={{ light: "assets/workbuddy.png", dark: "assets/workbuddy-dark.png" }}
-            size={18}
-          />
-        )}
-        <Text font={13} fontWeight="heavy" foregroundStyle={THEME.text}>
+      <HStack spacing={7} alignment="center" frame={{ height: 20 }}>
+        <BrandHeaderIcon
+          iconPath={{ light: "assets/workbuddy-icon-light.png", dark: "assets/workbuddy-icon-dark.png" }}
+          size={19}
+        />
+        <Text font={14} fontWeight="heavy" foregroundStyle={THEME.text}>
           WORKBUDDY.
         </Text>
         <Spacer />
-        <RefreshButton />
       </HStack>
 
-      <Spacer minLength={8} />
+      <Spacer minLength={10} />
 
       {/* 第 1 行双列：左【积分剩余 12,164】、右【已用 7,796】 */}
-      <HStack alignment="top">
-        <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
-          <HStack spacing={3} alignment="center">
+      <HStack alignment="top" spacing={10}>
+        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
+          <HStack spacing={4} alignment="center">
             <Image
               systemName="circle.grid.3x3.fill"
-              font={{ name: "system", size: 9 }}
+              font={{ name: "system", size: 10 }}
               foregroundStyle={{ light: "#6366F1", dark: "#818CF8" }}
             />
-            <Text font={10.5} foregroundStyle={THEME.dim}>积分剩余</Text>
+            <Text font={11} foregroundStyle={THEME.dim}>积分剩余</Text>
           </HStack>
-          <Text font={17} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit>
+          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
             {data.mainValue || "12,164"}
           </Text>
         </VStack>
-        <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
-          <HStack spacing={3} alignment="center">
+        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
+          <HStack spacing={4} alignment="center">
             <Image
               systemName="doc.plaintext"
-              font={{ name: "system", size: 9 }}
+              font={{ name: "system", size: 10 }}
               foregroundStyle={{ light: "#6366F1", dark: "#818CF8" }}
             />
-            <Text font={10.5} foregroundStyle={THEME.dim}>已用</Text>
+            <Text font={11} foregroundStyle={THEME.dim}>已用</Text>
           </HStack>
-          <Text font={17} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit>
+          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
             {data.subValue2 || "7,796"}
-          </Text>
-        </VStack>
-      </HStack>
-
-      <Spacer minLength={8} />
-
-      {/* 第 2 行双列：左【已签 0/4】、右【有效期 51天】 */}
-      <HStack alignment="top">
-        <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
-          <HStack spacing={3} alignment="center">
-            <Image
-              systemName="checkmark.circle"
-              font={{ name: "system", size: 9 }}
-              foregroundStyle={{ light: "#6366F1", dark: "#818CF8" }}
-            />
-            <Text font={10.5} foregroundStyle={THEME.dim}>已签</Text>
-          </HStack>
-          <Text font={17} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit>
-            {data.subValue1 || "0/4"}
-          </Text>
-        </VStack>
-        <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
-          <HStack spacing={3} alignment="center">
-            <Image
-              systemName="calendar"
-              font={{ name: "system", size: 9 }}
-              foregroundStyle={{ light: "#6366F1", dark: "#818CF8" }}
-            />
-            <Text font={10.5} foregroundStyle={THEME.dim}>有效期</Text>
-          </HStack>
-          <Text font={17} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit>
-            {data.footerLeft || "51 天"}
           </Text>
         </VStack>
       </HStack>
 
       <Spacer minLength={10} />
 
-      {/* 底部：10 段独立圆角小方块进度条（随额度使用变色） */}
-      <SegmentedSquareBar total={10} pct={data.progressPct || 65} height={8} />
+      {/* 第 2 行双列：左【已签 0/4】、右【有效期 51天】 */}
+      <HStack alignment="top" spacing={10}>
+        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
+          <HStack spacing={4} alignment="center">
+            <Image
+              systemName="checkmark.circle"
+              font={{ name: "system", size: 10 }}
+              foregroundStyle={{ light: "#6366F1", dark: "#818CF8" }}
+            />
+            <Text font={11} foregroundStyle={THEME.dim}>已签</Text>
+          </HStack>
+          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
+            {data.subValue1 || "0/4"}
+          </Text>
+        </VStack>
+        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
+          <HStack spacing={4} alignment="center">
+            <Image
+              systemName="calendar"
+              font={{ name: "system", size: 10 }}
+              foregroundStyle={{ light: "#6366F1", dark: "#818CF8" }}
+            />
+            <Text font={11} foregroundStyle={THEME.dim}>有效期</Text>
+          </HStack>
+          <HStack alignment="lastTextBaseline" spacing={2}>
+            <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
+              {(data.footerLeft || "51 天").replace(/[^0-9]/g, "") || "51"}
+            </Text>
+            <Text font={13} fontWeight="bold" foregroundStyle={THEME.text}>
+              天
+            </Text>
+          </HStack>
+        </VStack>
+      </HStack>
+
+      <Spacer minLength={10} />
+
+      {/* 底部：10 个独立小正方形，随额度使用平滑变色 */}
+      <SegmentedSquareBar total={10} pct={data.progressPct || 65} size={10} />
     </VStack>
   )
 }
@@ -1477,78 +1479,82 @@ export function DeepSeekSmallCard({ data }: { data: MetricBalanceData }) {
     <VStack
       alignment="leading"
       spacing={0}
-      padding={{ top: 14, bottom: 12, leading: 14, trailing: 14 }}
-      widgetBackground={THEME.bg}
+      padding={{ top: 13, bottom: 12, leading: 14, trailing: 14 }}
+      widgetBackground={{ light: "#FFFFFF", dark: "#161719" }}
     >
       {/* 顶部 Header: Logo + deepseek */}
-      <HStack spacing={6} alignment="center" frame={{ height: 20 }}>
+      <HStack spacing={7} alignment="center" frame={{ height: 20 }}>
         <SVG
           code={DEEPSEEK_WHALE_SVG}
           resizable={true}
-          frame={{ width: 19, height: 19 }}
+          frame={{ width: 20, height: 20 }}
         />
-        <Text font={14} fontWeight="heavy" foregroundStyle={THEME.text}>
+        <Text font={15} fontWeight="heavy" foregroundStyle={THEME.text}>
           deepseek
         </Text>
         <Spacer />
-        <RefreshButton />
       </HStack>
 
       <Spacer minLength={8} />
 
       {/* 中部大字：标签【账户余额】+ 超大数值【¥ 1.86】 */}
-      <HStack spacing={3} alignment="center">
+      <HStack spacing={4} alignment="center">
         <Image
           systemName="circle.grid.3x3.fill"
-          font={{ name: "system", size: 9 }}
+          font={{ name: "system", size: 10 }}
           foregroundStyle={{ light: "#1E60FF", dark: "#3B82F6" }}
         />
         <Text font={11} foregroundStyle={THEME.dim}>账户余额</Text>
       </HStack>
       <Spacer minLength={2} />
-      <Text font={26} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit>
-        {`¥ ${data.mainValue || "1.86"}`}
-      </Text>
+      <HStack alignment="lastTextBaseline" spacing={3}>
+        <Text font={19} fontWeight="heavy" foregroundStyle={THEME.text}>
+          ¥
+        </Text>
+        <Text font={30} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
+          {data.mainValue || "1.86"}
+        </Text>
+      </HStack>
 
       <Spacer minLength={8} />
 
       {/* 第 2 行双列：左【状态 / 正常(绿色)】、右【近7日消费 / ¥ 5.39】 */}
-      <HStack alignment="top">
-        <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
-          <HStack spacing={3} alignment="center">
+      <HStack alignment="top" spacing={10}>
+        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
+          <HStack spacing={4} alignment="center">
             <Image
               systemName="doc.text"
-              font={{ name: "system", size: 9 }}
+              font={{ name: "system", size: 10 }}
               foregroundStyle={{ light: "#1E60FF", dark: "#3B82F6" }}
             />
-            <Text font={10.5} foregroundStyle={THEME.dim}>状态</Text>
+            <Text font={11} foregroundStyle={THEME.dim}>状态</Text>
           </HStack>
-          <Text font={15} fontWeight="heavy" foregroundStyle={THEME.green}>
+          <Text font={17} fontWeight="heavy" foregroundStyle={THEME.green}>
             {data.statusText || "正常"}
           </Text>
         </VStack>
-        <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
-          <HStack spacing={3} alignment="center">
+        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
+          <HStack spacing={4} alignment="center">
             <Image
               systemName="chart.line.uptrend.xyaxis"
-              font={{ name: "system", size: 9 }}
+              font={{ name: "system", size: 10 }}
               foregroundStyle={{ light: "#1E60FF", dark: "#3B82F6" }}
             />
-            <Text font={10.5} foregroundStyle={THEME.dim}>近7日消费</Text>
+            <Text font={11} foregroundStyle={THEME.dim}>近7日消费</Text>
           </HStack>
-          <Text font={15} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit>
-            {data.subValue2 || "¥ 5.39"}
+          <Text font={17} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
+            {data.subValue2?.startsWith("¥") ? data.subValue2 : ("¥ " + (data.subValue2 || "5.39"))}
           </Text>
         </VStack>
       </HStack>
 
       <Spacer minLength={10} />
 
-      {/* 底部：左侧【官方直连】、右侧【更新于 12:31】（无进度条，高呼吸感） */}
+      {/* 底部：左侧【官方直连】、右侧【更新于 12:31】（高呼吸感） */}
       <HStack alignment="center">
-        <Text font={10} foregroundStyle={THEME.dim}>官方直连</Text>
+        <Text font={10.5} foregroundStyle={THEME.dim}>官方直连</Text>
         <Spacer />
-        <Text font={10} foregroundStyle={THEME.dim} monospacedDigit>
+        <Text font={10.5} foregroundStyle={THEME.dim} monospacedDigit>
           {`更新于 ${formatTime(data.updatedAt)}`}
         </Text>
       </HStack>
@@ -1561,94 +1567,97 @@ export function CodexSmallCard({ data }: { data: DualQuotaData }) {
     <VStack
       alignment="leading"
       spacing={0}
-      padding={{ top: 14, bottom: 12, leading: 14, trailing: 14 }}
-      widgetBackground={THEME.bg}
+      padding={{ top: 13, bottom: 12, leading: 14, trailing: 14 }}
+      widgetBackground={{ light: "#FFFFFF", dark: "#161719" }}
     >
       {/* 顶部 Header: Logo + Codex */}
-      <HStack spacing={6} alignment="center" frame={{ height: 20 }}>
+      <HStack spacing={7} alignment="center" frame={{ height: 20 }}>
         <BrandHeaderIcon
-          iconImage={data.iconImage}
           iconPath={{ light: "assets/codex-light.png", dark: "assets/codex-dark.png" }}
-          size={18}
+          size={19}
         />
-        <Text font={14} fontWeight="heavy" foregroundStyle={THEME.text}>Codex</Text>
+        <Text font={15} fontWeight="heavy" foregroundStyle={THEME.text}>Codex</Text>
         <Spacer />
-        <RefreshButton />
       </HStack>
 
-      <Spacer minLength={8} />
+      <Spacer minLength={10} />
 
       {/* 第 1 行双列：左【5小时额度 83%】、右【周额度 0%】 */}
-      <HStack alignment="top">
-        <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
-          <HStack spacing={3} alignment="center">
+      <HStack alignment="top" spacing={10}>
+        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
+          <HStack spacing={4} alignment="center">
             <Image
               systemName="clock"
-              font={{ name: "system", size: 9 }}
+              font={{ name: "system", size: 10 }}
               foregroundStyle={{ light: "#6366F1", dark: "#818CF8" }}
             />
-            <Text font={10.5} foregroundStyle={THEME.dim}>5小时额度</Text>
+            <Text font={11} foregroundStyle={THEME.dim}>5小时额度</Text>
           </HStack>
-          <Text font={17} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit>
+          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
             {`${Math.round(data.item1?.pct ?? 83)}%`}
           </Text>
         </VStack>
-        <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
-          <HStack spacing={3} alignment="center">
+        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
+          <HStack spacing={4} alignment="center">
             <Image
               systemName="clock"
-              font={{ name: "system", size: 9 }}
+              font={{ name: "system", size: 10 }}
               foregroundStyle={{ light: "#6366F1", dark: "#818CF8" }}
             />
-            <Text font={10.5} foregroundStyle={THEME.dim}>周额度</Text>
+            <Text font={11} foregroundStyle={THEME.dim}>周额度</Text>
           </HStack>
-          <Text font={17} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit>
+          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
             {`${Math.round(data.item2?.pct ?? 0)}%`}
           </Text>
         </VStack>
       </HStack>
 
-      <Spacer minLength={8} />
+      <Spacer minLength={10} />
 
       {/* 第 2 行双列：左【可重置次数 0次】、右【剩余 83%】 */}
-      <HStack alignment="top">
-        <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
-          <HStack spacing={3} alignment="center">
+      <HStack alignment="top" spacing={10}>
+        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
+          <HStack spacing={4} alignment="center">
             <Image
               systemName="arrow.clockwise"
-              font={{ name: "system", size: 9 }}
+              font={{ name: "system", size: 10 }}
               foregroundStyle={{ light: "#6366F1", dark: "#818CF8" }}
             />
-            <Text font={10.5} foregroundStyle={THEME.dim}>可重置次数</Text>
+            <Text font={11} foregroundStyle={THEME.dim}>可重置次数</Text>
           </HStack>
-          <Text font={17} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit>
-            {data.stat1?.value || "0 次"}
-          </Text>
+          <HStack alignment="lastTextBaseline" spacing={2}>
+            <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
+              {(data.stat1?.value || "0 次").replace(/[^0-9]/g, "") || "0"}
+            </Text>
+            <Text font={13} fontWeight="bold" foregroundStyle={THEME.text}>
+              次
+            </Text>
+          </HStack>
         </VStack>
-        <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
-          <HStack spacing={3} alignment="center">
+        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
+          <HStack spacing={4} alignment="center">
             <Image
               systemName="chart.bar.fill"
-              font={{ name: "system", size: 9 }}
+              font={{ name: "system", size: 10 }}
               foregroundStyle={{ light: "#6366F1", dark: "#818CF8" }}
             />
-            <Text font={10.5} foregroundStyle={THEME.dim}>剩余</Text>
+            <Text font={11} foregroundStyle={THEME.dim}>剩余</Text>
           </HStack>
-          <Text font={17} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit>
+          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
             {data.stat2?.value || "83%"}
           </Text>
         </VStack>
       </HStack>
 
-      <Spacer minLength={8} />
+      <Spacer minLength={10} />
 
-      {/* 底部：10 段独立圆角小方块进度条（随额度使用变色） + 状态行 */}
-      <SegmentedSquareBar total={10} pct={data.item1?.pct ?? 83} height={7} />
-      <Spacer minLength={5} />
+      {/* 底部：10 个独立小正方形（随额度变色） + 状态行 */}
+      <SegmentedSquareBar total={10} pct={data.item1?.pct ?? 83} size={10} />
+      <Spacer minLength={6} />
       <HStack alignment="center">
-        <Text font={9.5} foregroundStyle={THEME.dim} monospacedDigit>{`更新于 ${formatTime(data.updatedAt)}`}</Text>
+        <Text font={10} foregroundStyle={THEME.dim} monospacedDigit>{`更新于 ${formatTime(data.updatedAt)}`}</Text>
         <Spacer />
-        <Text font={9.5} foregroundStyle={THEME.green}>服务在线 ●</Text>
+        <Text font={10} foregroundStyle={THEME.green}>服务在线 ●</Text>
       </HStack>
     </VStack>
   )
@@ -1659,121 +1668,125 @@ export function AntigravitySmallCard({ data }: { data: DualQuotaData }) {
     <VStack
       alignment="leading"
       spacing={0}
-      padding={{ top: 14, bottom: 12, leading: 14, trailing: 14 }}
-      widgetBackground={THEME.bg}
+      padding={{ top: 13, bottom: 12, leading: 14, trailing: 14 }}
+      widgetBackground={{ light: "#FFFFFF", dark: "#161719" }}
     >
       {/* 顶部 Header: Logo + Antigravity */}
-      <HStack spacing={6} alignment="center" frame={{ height: 20 }}>
+      <HStack spacing={7} alignment="center" frame={{ height: 20 }}>
         <BrandHeaderIcon
-          iconImage={data.iconImage}
           iconPath={{ light: "assets/antigravity-light.png", dark: "assets/antigravity-dark.png" }}
-          size={18}
+          size={19}
         />
-        <Text font={14} fontWeight="heavy" foregroundStyle={THEME.text}>Antigravity</Text>
+        <Text font={15} fontWeight="heavy" foregroundStyle={THEME.text}>Antigravity</Text>
         <Spacer />
-        <RefreshButton />
       </HStack>
 
-      <Spacer minLength={8} />
+      <Spacer minLength={10} />
 
       {/* 第 1 行双列：左【Gemini 12m】、右【Claude/GPT 4h59m】 */}
-      <HStack alignment="top">
-        <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
-          <HStack spacing={3} alignment="center">
+      <HStack alignment="top" spacing={10}>
+        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
+          <HStack spacing={4} alignment="center">
             <Image
               systemName="sparkle"
-              font={{ name: "system", size: 9 }}
+              font={{ name: "system", size: 10 }}
               foregroundStyle={{ light: "#6366F1", dark: "#818CF8" }}
             />
-            <Text font={10.5} foregroundStyle={THEME.dim}>Gemini</Text>
+            <Text font={11} foregroundStyle={THEME.dim}>Gemini</Text>
           </HStack>
-          <Text font={17} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit>
+          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
             {data.item1?.timer || "12m"}
           </Text>
         </VStack>
-        <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
-          <HStack spacing={3} alignment="center">
+        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
+          <HStack spacing={4} alignment="center">
             <Image
               systemName="bolt.shield"
-              font={{ name: "system", size: 9 }}
+              font={{ name: "system", size: 10 }}
               foregroundStyle={{ light: "#6366F1", dark: "#818CF8" }}
             />
-            <Text font={10.5} foregroundStyle={THEME.dim}>Claude/GPT</Text>
+            <Text font={11} foregroundStyle={THEME.dim}>Claude/GPT</Text>
           </HStack>
-          <Text font={17} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit>
+          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
             {data.item2?.timer || "4h59m"}
-          </Text>
-        </VStack>
-      </HStack>
-
-      <Spacer minLength={8} />
-
-      {/* 第 2 行双列：左【Gem周 82%】、右【C/G周 100%】 */}
-      <HStack alignment="top">
-        <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
-          <HStack spacing={3} alignment="center">
-            <Image
-              systemName="globe"
-              font={{ name: "system", size: 9 }}
-              foregroundStyle={{ light: "#6366F1", dark: "#818CF8" }}
-            />
-            <Text font={10.5} foregroundStyle={THEME.dim}>Gem周</Text>
-          </HStack>
-          <Text font={17} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit>
-            {`${Math.round(data.item1?.pct ?? 82)}%`}
-          </Text>
-        </VStack>
-        <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
-          <HStack spacing={3} alignment="center">
-            <Image
-              systemName="link"
-              font={{ name: "system", size: 9 }}
-              foregroundStyle={{ light: "#6366F1", dark: "#818CF8" }}
-            />
-            <Text font={10.5} foregroundStyle={THEME.dim}>C/G周</Text>
-          </HStack>
-          <Text font={17} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit>
-            {`${Math.round(data.item2?.pct ?? 100)}%`}
           </Text>
         </VStack>
       </HStack>
 
       <Spacer minLength={10} />
 
+      {/* 第 2 行双列：左【Gem周 82%】、右【C/G周 100%】 */}
+      <HStack alignment="top" spacing={10}>
+        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
+          <HStack spacing={4} alignment="center">
+            <Image
+              systemName="globe"
+              font={{ name: "system", size: 10 }}
+              foregroundStyle={{ light: "#6366F1", dark: "#818CF8" }}
+            />
+            <Text font={11} foregroundStyle={THEME.dim}>Gem周</Text>
+          </HStack>
+          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
+            {`${Math.round(data.item1?.pct ?? 82)}%`}
+          </Text>
+        </VStack>
+        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
+          <HStack spacing={4} alignment="center">
+            <Image
+              systemName="link"
+              font={{ name: "system", size: 10 }}
+              foregroundStyle={{ light: "#6366F1", dark: "#818CF8" }}
+            />
+            <Text font={11} foregroundStyle={THEME.dim}>C/G周</Text>
+          </HStack>
+          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
+            {`${Math.round(data.item2?.pct ?? 100)}%`}
+          </Text>
+        </VStack>
+      </HStack>
+
+      <Spacer minLength={12} />
+
       {/* 底部：左侧【最新 39%(绿色)】、右侧【更新于 12:31】 */}
       <HStack alignment="center">
-        <HStack spacing={3} alignment="center">
+        <HStack spacing={4} alignment="center">
           <Image
             systemName="doc.plaintext"
-            font={{ name: "system", size: 9 }}
+            font={{ name: "system", size: 10 }}
             foregroundStyle={{ light: "#6366F1", dark: "#818CF8" }}
           />
-          <Text font={10.5} foregroundStyle={THEME.dim}>最新 </Text>
-          <Text font={11.5} fontWeight="heavy" foregroundStyle={THEME.green}>39%</Text>
+          <Text font={11} foregroundStyle={THEME.dim}>最新 </Text>
+          <Text font={12} fontWeight="heavy" foregroundStyle={THEME.green}>39%</Text>
         </HStack>
         <Spacer />
-        <Text font={10} foregroundStyle={THEME.dim} monospacedDigit>{`更新于 ${formatTime(data.updatedAt)}`}</Text>
+        <Text font={10.5} foregroundStyle={THEME.dim} monospacedDigit>{`更新于 ${formatTime(data.updatedAt)}`}</Text>
       </HStack>
     </VStack>
   )
 }
 
 // ═════════════════════════════════════════════════════════════════
-// 6. 中型组件：平滑贝塞尔波形图看板 (通栏原版架构)
+// 6. 中型组件：1:1 复刻 xubai2001 DeepSeek 原版平滑波形图看板架构
+// 左侧 112pt 紧凑主数值与明细标签 + 右侧 80pt 通栏平滑贝塞尔面积折线图
 // ═════════════════════════════════════════════════════════════════
 
 export interface WaveformMediumCardProps {
   title: string
-  iconName: string
-  iconColor: any
+  logoHeader?: any
+  iconPath?: { light: string; dark: string } | string
+  svgCode?: string
+  iconName?: string
+  iconColor?: any
   mainLabel: string
   mainValue: string
-  subTag: string
+  symbol?: string
+  subTag1: string
+  subTag2: string
   chartTitle: string
   peakText: string
   trendData: { label: string; value: number }[]
-  lineColor: string
-  gradient: [string, string]
+  lineColor: any
+  gradient: [any, any]
   updatedAt: string
 }
 
@@ -1783,98 +1796,147 @@ export function WaveformDashboardMediumCard({ props }: { props: WaveformMediumCa
     { label: "5天前", value: 0.8 },
     { label: "3天前", value: 1.5 },
     { label: "前天", value: 0.9 },
-    { label: "昨日", value: 1.8 },
-    { label: "今日", value: 0.4 },
+    { label: "昨日", value: 1.86 },
+    { label: "今日", value: 0.42 },
   ]
   const n = marks.length
-  const axisIndexes = [0, Math.floor((n - 1) / 2), n - 1]
+  const axisValues = [
+    marks[0]?.label || "7天前",
+    marks[Math.floor((n - 1) / 2)]?.label || "3天前",
+    marks[n - 1]?.label || "今日",
+  ]
 
   return (
-    <VStack
-      alignment="leading"
-      spacing={0}
-      padding={{ top: 12, bottom: 10, leading: 14, trailing: 14 }}
-      widgetBackground={THEME.bg}
+    <HStack
+      padding={12}
+      spacing={12}
+      alignment="top"
+      widgetBackground={{ light: "#FFFFFF", dark: "#161719" }}
     >
-      {/* 1. 统一顶栏：Logo + 标题 + 在线徽章 + 右侧更新时间 */}
-      <HStack spacing={6} alignment="center" frame={{ height: 18 }}>
-        <Image systemName={props.iconName} font={{ name: "system", size: 14 }} foregroundStyle={props.iconColor} />
-        <Text font={13} fontWeight="heavy" foregroundStyle={THEME.text}>{props.title}</Text>
-        <HStack
-          spacing={3}
-          alignment="center"
-          padding={{ top: 1, bottom: 1, leading: 5, trailing: 5 }}
-          widgetBackground={{ light: "rgba(16,185,129,0.12)", dark: "rgba(16,185,129,0.2)" }}
-        >
-          <Text font={9} fontWeight="bold" foregroundStyle={THEME.green}>● 在线</Text>
+      {/* ── 左侧固定栏 (112pt) ─────────────────────────────────── */}
+      <VStack spacing={4} alignment="leading" frame={{ width: 112 }}>
+        {/* 左上角品牌 Logo */}
+        {props.logoHeader ? (
+          props.logoHeader
+        ) : props.svgCode ? (
+          <SVG
+            code={props.svgCode}
+            scaleToFit
+            resizable
+            frame={{ height: 22 }}
+          />
+        ) : (
+          <HStack spacing={5} alignment="center" frame={{ height: 22 }}>
+            <BrandHeaderIcon
+              iconPath={props.iconPath}
+              iconName={props.iconName}
+              iconColor={props.iconColor}
+              size={17}
+            />
+            <Text font={13} fontWeight="heavy" foregroundStyle={THEME.text}>
+              {props.title}
+            </Text>
+          </HStack>
+        )}
+
+        {/* 核心指标标题 */}
+        <Text font={11} fontWeight="semibold" foregroundStyle={THEME.dim}>
+          {props.mainLabel}
+        </Text>
+
+        {/* 大号数值：符号 + 34pt 等宽大数字 */}
+        <HStack spacing={2} alignment="lastTextBaseline">
+          {props.symbol && (
+            <Text font={18} fontWeight="semibold" foregroundStyle={THEME.text}>
+              {props.symbol}
+            </Text>
+          )}
+          <Text
+            font={34}
+            fontWeight="bold"
+            foregroundStyle={THEME.text}
+            monospacedDigit
+            lineLimit={1}
+            minScaleFactor={0.6}
+          >
+            {props.mainValue.replace(/^[¥￥]\s*/, "")}
+          </Text>
+        </HStack>
+
+        {/* 次级明细信息 1 */}
+        <Text font={10} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.7}>
+          {props.subTag1}
+        </Text>
+
+        {/* 次级明细信息 2 */}
+        <Text font={10} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.7}>
+          {props.subTag2}
+        </Text>
+
+        {/* 底部更新时间 */}
+        <Text font={9.5} foregroundStyle={THEME.dim} monospacedDigit>
+          {`更新于 ${formatTime(props.updatedAt)}`}
+        </Text>
+      </VStack>
+
+      {/* ── 右侧 7 日平滑贝塞尔波形图走势栏 (80pt) ──────────────── */}
+      <VStack spacing={3} alignment="leading">
+        <Spacer />
+        {/* 走势栏顶标 */}
+        <HStack alignment="center">
+          <Text
+            font={10}
+            fontWeight="semibold"
+            foregroundStyle={THEME.dim}
+            frame={{ maxWidth: "infinity", alignment: "leading" }}
+          >
+            {props.chartTitle}
+          </Text>
+          <Text font={9.5} fontWeight="bold" foregroundStyle={props.lineColor}>
+            {props.peakText}
+          </Text>
         </HStack>
         <Spacer />
-        <RefreshButton />
-        <Spacer minLength={4} />
-        <Text font={10} foregroundStyle={THEME.dim} monospacedDigit>{`更新于 ${formatTime(props.updatedAt)}`}</Text>
-      </HStack>
 
-      <Spacer minLength={6} />
-
-      {/* 2. 核心主内容区：左侧超大主数值 + 右侧贝塞尔走势图 */}
-      <HStack alignment="center" spacing={12}>
-        {/* 左侧主数值区 */}
-        <VStack alignment="leading" spacing={2} frame={{ width: 116 }}>
-          <Text font={10.5} foregroundStyle={THEME.dim}>{props.mainLabel}</Text>
-          <Text font={26} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
-            {props.mainValue}
-          </Text>
-          <Spacer minLength={3} />
-          <Text font={9.5} foregroundStyle={THEME.dim} lineLimit={1}>
-            {props.subTag}
-          </Text>
-        </VStack>
-
-        {/* 右侧 7 日波形走势区 */}
-        <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
-          <HStack alignment="center">
-            <Text font={9.5} foregroundStyle={THEME.dim}>{props.chartTitle}</Text>
-            <Spacer />
-            <Text font={9.5} fontWeight="bold" foregroundStyle={props.iconColor}>{props.peakText}</Text>
-          </HStack>
-
-          {/* 原生贝塞尔曲线 + 渐变阴影图表 */}
-          <Chart
-            frame={{ height: 60 }}
-            chartXAxis={{
-              position: "bottom",
-              tick: false,
-              gridLine: false,
-              values: { type: "values", values: axisIndexes.map(i => marks[i].label) },
-              valueLabel: { multiLabelAlignment: "center" },
-            }}
-          >
-            <AreaChart
-              marks={marks.map(m => ({
-                ...m,
-                interpolationMethod: "catmullRom",
-                foregroundStyle: props.gradient,
-              }))}
-            />
-            <LineChart
-              marks={marks.map(m => ({
-                ...m,
-                interpolationMethod: "catmullRom",
-                foregroundStyle: props.lineColor,
-                lineStyle: { lineWidth: 2.2, lineCap: "round", lineJoin: "round" },
-              }))}
-            />
-            <ChartPlotStyle>{(plot: any) => plot.clipShape("rect")}</ChartPlotStyle>
-          </Chart>
-        </VStack>
-      </HStack>
-    </VStack>
+        {/* 平滑贝塞尔曲线 (CatmullRom) + 实色向下渐隐面积图 */}
+        <Chart
+          frame={{ height: 80 }}
+          chartXAxis={{
+            position: "bottom",
+            tick: false,
+            gridLine: false,
+            values: {
+              type: "values",
+              values: axisValues,
+            },
+            valueLabel: {
+              multiLabelAlignment: "center",
+            },
+          }}
+        >
+          <AreaChart
+            marks={marks.map((m) => ({
+              ...m,
+              interpolationMethod: "catmullRom",
+              foregroundStyle: props.gradient,
+            }))}
+          />
+          <LineChart
+            marks={marks.map((m) => ({
+              ...m,
+              interpolationMethod: "catmullRom",
+              foregroundStyle: props.lineColor,
+              lineStyle: { lineWidth: 2, lineCap: "round", lineJoin: "round" },
+            }))}
+          />
+          <ChartPlotStyle>
+            {(plot: any) => plot.clipShape("rect")}
+          </ChartPlotStyle>
+        </Chart>
+      </VStack>
+    </HStack>
   )
 }
-
-// ═════════════════════════════════════════════════════════════════
-// 7. 大型组件：2x2 Bento 模块化弹性微应用栅格
-// ═════════════════════════════════════════════════════════════════
 
 function BentoCard({
   iconName,

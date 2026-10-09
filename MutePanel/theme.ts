@@ -9,10 +9,10 @@ export const THEME = {
   dim: { light: "#8A96A9", dark: "#647189" } as any,
   accent: { light: "#1A13ED", dark: "#7B77FF" } as any,
   blue: { light: "#2563EB", dark: "#60A5FA" } as any,
-  green: { light: "#18A875", dark: "#42D39A" } as any,
-  orange: { light: "#D98212", dark: "#F6A83B" } as any,
-  yellow: { light: "#E5A101", dark: "#FFD23F" } as any,
-  red: { light: "#DC2626", dark: "#F87171" } as any,
+  green: { light: "#10B981", dark: "#42D39A" } as any,
+  orange: { light: "#F97316", dark: "#F6A83B" } as any,
+  yellow: { light: "#F59E0B", dark: "#FFD23F" } as any,
+  red: { light: "#EF4444", dark: "#F87171" } as any,
   purple: { light: "#7C3AED", dark: "#A78BFA" } as any,
   track: { light: "#E2E8F0", dark: "#272F3D" } as any,
   border: { light: "rgba(23,32,51,0.08)", dark: "rgba(255,255,255,0.10)" } as any,
@@ -53,11 +53,11 @@ export function lerpHex(a: string, b: string, t: number): string {
 }
 
 const REMAIN_STOPS: [number, string][] = [
-  [0, "#DC2626"],
-  [25, "#D98212"],
-  [45, "#E5A101"],
-  [70, "#18A875"],
-  [100, "#18A875"],
+  [0, "#EF4444"],
+  [25, "#F97316"],
+  [45, "#F59E0B"],
+  [70, "#10B981"],
+  [100, "#10B981"],
 ]
 
 export function remainColor(pct: number): any {

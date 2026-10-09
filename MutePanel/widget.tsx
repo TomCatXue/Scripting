@@ -1,3 +1,4 @@
+import { DEEPSEEK_LOGO_SVG } from "./types"
 import { Widget } from "scripting"
 import {
   AntigravitySmallCard,
@@ -118,11 +119,11 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
         <WaveformDashboardMediumCard
           props={{
             title: "WorkBuddy",
-            iconName: "sparkles.square.filled.on.square",
-            iconColor: { light: "#4F46E5", dark: "#818CF8" },
+            iconPath: { light: "assets/workbuddy-icon-light.png", dark: "assets/workbuddy-icon-dark.png" },
             mainLabel: "积分剩余总量",
             mainValue: d.mainValue || "12,164",
-            subTag: `已用 ${d.subValue2 || "7,796"} • 已签 ${d.subValue1 || "0/4"}`,
+            subTag1: `已用 ${d.subValue2 || "7,796"}`,
+            subTag2: `已签 ${d.subValue1 || "0/4"} · 有效期 ${d.footerLeft || "51天"}`,
             chartTitle: "近7日消耗趋势",
             peakText: "峰值 1,300",
             trendData: [
@@ -145,11 +146,11 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
         <WaveformDashboardMediumCard
           props={{
             title: "Codex",
-            iconName: "network",
-            iconColor: { light: "#10A37F", dark: "#34D399" },
+            iconPath: { light: "assets/codex-light.png", dark: "assets/codex-dark.png" },
             mainLabel: "5小时可用额度",
             mainValue: `${Math.round(d.item1?.pct ?? 83)}%`,
-            subTag: `周额度 ${Math.round(d.item2?.pct ?? 0)}% • 重置 ${d.stat1?.value || "0次"}`,
+            subTag1: `周额度 ${Math.round(d.item2?.pct ?? 0)}%`,
+            subTag2: `可重置 ${d.stat1?.value || "0次"} · 剩余 ${d.stat2?.value || "83%"}`,
             chartTitle: "近7日配额占用",
             peakText: "峰值 90%",
             trendData: [
@@ -172,11 +173,11 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
         <WaveformDashboardMediumCard
           props={{
             title: "Antigravity",
-            iconName: "triangle.fill",
-            iconColor: { light: "#0091FF", dark: "#38BDF8" },
+            iconPath: { light: "assets/antigravity-light.png", dark: "assets/antigravity-dark.png" },
             mainLabel: "Gemini 冷却倒计时",
             mainValue: d.item1?.timer || "12m",
-            subTag: `Claude/GPT ${d.item2?.timer || "4h59m"} • 最新 39%`,
+            subTag1: `Claude/GPT ${d.item2?.timer || "4h59m"}`,
+            subTag2: `Gem周 ${Math.round(d.item1?.pct ?? 82)}% · 最新 39%`,
             chartTitle: "近7日调用走势",
             peakText: "峰值 75%",
             trendData: [
@@ -200,29 +201,30 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
     } else if (mService === "gold") {
       return <GoldPriceCard data={getGoldData()} family={family} />
     } else {
-      // 默认展示 DeepSeek 原版平滑贝塞尔波形图看板
+      // 默认展示 DeepSeek 1:1 原版平滑贝塞尔波形图看板
       const d = getDeepSeekData()
       return (
         <WaveformDashboardMediumCard
           props={{
-            title: "DeepSeek",
-            iconName: "water.waves.and.arrow.up",
-            iconColor: { light: "#1E60FF", dark: "#3B82F6" },
-            mainLabel: "账户可用余额",
-            mainValue: `¥ ${d.mainValue || "1.86"}`,
-            subTag: `今日消耗 ¥0.42 • ${d.footerLeft || "官方直连"}`,
-            chartTitle: "近7日消费走势",
-            peakText: "峰值 ¥1.86",
+            title: "deepseek",
+            svgCode: DEEPSEEK_LOGO_SVG,
+            mainLabel: "账户余额",
+            symbol: "¥",
+            mainValue: d.mainValue || "1.86",
+            subTag1: `累计消费 ${d.subValue2 || "¥ 5.39"}`,
+            subTag2: `7天消耗 ¥ 0.42 · 正常`,
+            chartTitle: "近7天余额",
+            peakText: "峰值 ¥ 1.86",
             trendData: [
-              { label: "7天前", value: 0.65 },
-              { label: "5天前", value: 1.20 },
-              { label: "3天前", value: 1.45 },
-              { label: "前天", value: 0.90 },
+              { label: "7天前", value: 1.20 },
+              { label: "5天前", value: 1.45 },
+              { label: "3天前", value: 0.90 },
+              { label: "前天", value: 1.60 },
               { label: "昨日", value: 1.86 },
-              { label: "今日", value: 0.42 },
+              { label: "今日", value: 1.86 },
             ],
-            lineColor: "#1E60FF",
-            gradient: ["#93C5FD", "rgba(147,197,253,0)"],
+            lineColor: "#2563EB",
+            gradient: ["#8AB4FF", "rgba(138,180,255,0)"],
             updatedAt: d.updatedAt,
           }}
         />
