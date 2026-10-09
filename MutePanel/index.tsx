@@ -18,6 +18,9 @@ import {
 } from "scripting"
 import { BrandHeaderIcon } from "./cards"
 import {
+  GOLD_SOURCE_KEY,
+  getGoldData,
+  refreshGoldData,
   ANTIGRAVITY_CACHE_KEY,
   ANTIGRAVITY_EXPIRES_KEY,
   ANTIGRAVITY_PROJECT_KEY,
@@ -777,6 +780,31 @@ async function triggerVpnDetection() {
   }
 }
 
+/** 配置黄金行情关注源与机构牌价 */
+async function configureGoldSettings() {
+  const goldSources = [
+    { label: "上海黄金交易所 Au9999", key: "sge_au9999" },
+    { label: "上海黄金交易所 Au(T+D)", key: "sge_autd" },
+    { label: "招商银行积存金 (买入价)", key: "cmb" },
+    { label: "浙商银行积存金 (京东金融)", key: "zs" },
+  ]
+  const currentSource = Storage.get<string>(GOLD_SOURCE_KEY, { shared: true }) || "sge_au9999"
+  const chosen = await gActionSheet("请选择首选关注黄金行情源", [
+    ...goldSources.map((g) => (g.key === currentSource ? `${g.label} (当前)` : g.label)),
+    "取消",
+  ])
+  if (!chosen || chosen === "取消") return
+
+  const clean = chosen.replace(" (当前)", "").trim()
+  const target = goldSources.find((g) => g.label === clean)
+  if (target) {
+    Storage.set(GOLD_SOURCE_KEY, target.key, { shared: true })
+    Storage.set(GOLD_SOURCE_KEY, target.key)
+    await refreshGoldData()
+    Widget.reloadAll()
+  }
+}
+
 /** 配置今日油价监测省份与主力关注油品 */
 async function configureFuelSettings() {
   const currentProv =
@@ -1072,6 +1100,23 @@ export default function ConfigView() {
             <Image
               systemName="circle.fill"
               font={{ name: "system", size: 8 }}
+              foregroundStyle="#F59E0B"
+            />
+            <Text font={14} fontWeight="medium">黄金行情 (关注源/机构)</Text>
+            <Spacer />
+            <Button
+              title="切换金价源"
+              buttonStyle="bordered"
+              controlSize="mini"
+              action={async () => {
+                await configureGoldSettings()
+              }}
+            />
+          </HStack>
+          <HStack spacing={10} alignment="center">
+            <Image
+              systemName="circle.fill"
+              font={{ name: "system", size: 8 }}
               foregroundStyle="#10B981"
             />
             <Text font={14} fontWeight="medium">今日油价 (省份/油品)</Text>
@@ -1219,6 +1264,15 @@ export default function ConfigView() {
 
                   let previewFamily = opt.defaultFamily as any
                   if (opt.id === "deepseek" || opt.id === "workbuddy" || opt.id === "codex" || opt.id === "antigravity") {
+                    const chosen = await gActionSheet("请选择预览尺寸", [
+                      "小号组件",
+                      "中号组件",
+                      "取消",
+                    ])
+                    if (!chosen || chosen === "取消") return
+                    previewFamily = chosen.includes("中号") ? "systemMedium" : "systemSmall"
+                  }
+                  if (opt.id === "gold") {
                     const chosen = await gActionSheet("请选择预览尺寸", [
                       "小号组件",
                       "中号组件",

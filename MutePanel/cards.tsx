@@ -1031,6 +1031,298 @@ export function FuelPriceCard({ data, family }: { data: FuelCardData; family?: s
 }
 
 // ═════════════════════════════════════════════════════════════════
+// 3.5 黄金行情卡片：参考油价排版设计 + 上金所真实日K折线图
+// ═════════════════════════════════════════════════════════════════
+
+/** 小号黄金组件：参考油价 Shell 贝壳高光排版，背景金色徽标水印，右上刷新与更新时间，右侧超大金价数值与涨跌，底部上金所平滑面积折线图 */
+export function GoldPriceSmallCard({ data }: { data: GoldMarketData }) {
+  const marks = data.history30d?.length > 0 ? data.history30d : [
+    { label: "10-01", value: 895 },
+    { label: "10-05", value: 898 },
+    { label: "10-08", value: 892 },
+    { label: "10-09", value: 904.48 },
+  ]
+  const minY = data.minPrice || Math.min(...marks.map(m => m.value))
+  const maxY = data.maxPrice || Math.max(...marks.map(m => m.value))
+  const color = data.isUp ? THEME.red : THEME.green
+
+  return (
+    <ZStack
+      alignment="topLeading"
+      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+      widgetBackground={{
+        light: "#FFFFFF",
+        dark: "#161719",
+      }}
+    >
+      {/* 底层左上角金色徽标水印：参考油价贝壳高光质感 */}
+      <HStack alignment="top">
+        <Image
+          systemName="centsign.circle.fill"
+          font={90}
+          opacity={0.08}
+          foregroundStyle="#F59E0B"
+          offset={{ x: -25, y: -20 }}
+        />
+        <Spacer />
+      </HStack>
+
+      {/* 前景层 */}
+      <VStack
+        alignment="leading"
+        spacing={0}
+        padding={{ top: 12, bottom: 10, leading: 13, trailing: 13 }}
+        frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+      >
+        {/* 顶部 Header：左侧数据源标签 + 右侧刷新按钮与时间 */}
+        <HStack alignment="center" frame={{ height: 18 }}>
+          <HStack spacing={4} alignment="center">
+            <Image
+              systemName="sparkles"
+              font={{ name: "system", size: 12 }}
+              foregroundStyle="#F59E0B"
+            />
+            <Text font={12.5} fontWeight="bold" foregroundStyle={THEME.text}>
+              {data.sourceName || "上金所金价"}
+            </Text>
+          </HStack>
+          <Spacer />
+          <RefreshButton />
+        </HStack>
+
+        <Spacer minLength={4} />
+
+        {/* 主数值与涨跌区：参考油价右对齐大字 */}
+        <HStack alignment="lastTextBaseline">
+          <VStack alignment="leading" spacing={1}>
+            <Text font={9.5} foregroundStyle={THEME.dim}>
+              {data.subTitle || "实时基准价"}
+            </Text>
+            <HStack spacing={3} alignment="center">
+              <Text font={11} fontWeight="bold" foregroundStyle={color}>
+                {data.changeValue}
+              </Text>
+              <Text font={11} fontWeight="bold" foregroundStyle={color}>
+                ({data.changeRate})
+              </Text>
+            </HStack>
+          </VStack>
+          <Spacer />
+          <HStack alignment="lastTextBaseline" spacing={2}>
+            <Text font={16} fontWeight="heavy" foregroundStyle="#F59E0B">
+              ¥
+            </Text>
+            <Text
+              font={28}
+              fontWeight="heavy"
+              foregroundStyle={THEME.text}
+              monospacedDigit
+              lineLimit={1}
+            >
+              {data.focusPrice || "904.48"}
+            </Text>
+          </HStack>
+        </HStack>
+
+        <Spacer minLength={4} />
+
+        {/* 底部折线走势图：真实上金所 30 日走势折线图 */}
+        <VStack spacing={0} frame={{ maxWidth: "infinity", height: 42 }}>
+          <Chart chartXAxis="hidden" chartYAxis="hidden" frame={{ height: 42 }}>
+            <AreaChart
+              marks={marks.map((m) => ({
+                label: m.label,
+                value: m.value - minY + (minY * 0.05),
+                interpolationMethod: "catmullRom",
+                foregroundStyle: [color, "rgba(0, 0, 0, 0)"],
+                opacity: 0.35,
+              }))}
+            />
+            <LineChart
+              marks={marks.map((m) => ({
+                label: m.label,
+                value: m.value - minY + (minY * 0.05),
+                interpolationMethod: "catmullRom",
+                foregroundStyle: color,
+                lineStyle: { lineWidth: 2, lineCap: "round", lineJoin: "round" },
+              }))}
+            />
+            <RuleLineForValueChart
+              marks={[
+                {
+                  value: (maxY + minY) / 2 - minY + (minY * 0.05),
+                  lineStyle: { dash: [3, 2] },
+                  foregroundStyle: color,
+                  opacity: 0.35,
+                },
+              ]}
+            />
+          </Chart>
+        </VStack>
+      </VStack>
+    </ZStack>
+  )
+}
+
+/** 中号黄金组件：参考今日油价 4 联卡片设计（Au9999 / 黄金T+D / 周大福 / 招行/浙商金价） + 底部上金所折线图 */
+export function GoldPriceMediumCard({ data }: { data: GoldMarketData }) {
+  const cardItems = [
+    {
+      name: "Au9999",
+      price: data.prices?.au9999 || "904.48",
+      textColor: "#E5933A",
+      tagBg: "rgba(229, 147, 58, 0.18)",
+    },
+    {
+      name: "黄金T+D",
+      price: data.prices?.autd || "904.20",
+      textColor: "#E6674E",
+      tagBg: "rgba(230, 103, 78, 0.18)",
+    },
+    {
+      name: "周大福",
+      price: data.prices?.chowTaiFook || "1045",
+      textColor: "#E05268",
+      tagBg: "rgba(224, 82, 104, 0.18)",
+    },
+    {
+      name: "招行/浙商",
+      price: data.prices?.cmbBuy || data.prices?.zsPrice || "905.97",
+      textColor: "#34C759",
+      tagBg: "rgba(52, 199, 89, 0.18)",
+    },
+  ]
+
+  const marks = data.history30d?.length > 0 ? data.history30d : [
+    { label: "10-01", value: 895 },
+    { label: "10-05", value: 898 },
+    { label: "10-08", value: 892 },
+    { label: "10-09", value: 904.48 },
+  ]
+  const minY = data.minPrice || Math.min(...marks.map(m => m.value))
+  const maxY = data.maxPrice || Math.max(...marks.map(m => m.value))
+  const color = data.isUp ? THEME.red : THEME.green
+
+  return (
+    <VStack
+      alignment="leading"
+      padding={{ top: 12, bottom: 10, leading: 10, trailing: 10 }}
+      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+      widgetBackground={{
+        light: "#FFFFFF",
+        dark: "#161719",
+      }}
+    >
+      {/* 顶部 Header：左侧数据源标签 + 右侧涨跌与时间 */}
+      <HStack alignment="center" padding={{ leading: 4, trailing: 4 }}>
+        <HStack alignment="center" spacing={4}>
+          <Image
+            systemName="centsign.circle.fill"
+            font={{ name: "system", size: 14 }}
+            foregroundStyle="#F59E0B"
+          />
+          <Text font={14} fontWeight="bold" foregroundStyle={THEME.text}>
+            {data.sourceName || "上海黄金交易所"}
+          </Text>
+          <HStack
+            padding={{ top: 1, bottom: 1, leading: 5, trailing: 5 }}
+            widgetBackground={data.isUp ? "rgba(239,68,68,0.12)" : "rgba(16,185,129,0.12)"}
+          >
+            <Text font={9.5} fontWeight="bold" foregroundStyle={color}>
+              {`${data.changeValue} (${data.changeRate})`}
+            </Text>
+          </HStack>
+        </HStack>
+        <Spacer />
+        <RefreshButton />
+        <Spacer minLength={4} />
+        <Text font={10} foregroundStyle={THEME.dim} monospacedDigit>
+          {`更新于 ${formatTime(data.updatedAt)}`}
+        </Text>
+      </HStack>
+
+      <Spacer minLength={6} />
+
+      {/* 4 联卡片设计：完全复刻油价中号卡片结构 */}
+      <HStack spacing={6}>
+        {cardItems.map((item, idx) => (
+          <VStack
+            key={idx}
+            alignment="leading"
+            spacing={2}
+            padding={{ top: 6, bottom: 6, leading: 8, trailing: 8 }}
+            frame={{ maxWidth: "infinity" }}
+            widgetBackground={{
+              light: "#F8FAFC",
+              dark: "#1E222B",
+            }}
+          >
+            <HStack alignment="center">
+              <Text
+                font={10}
+                fontWeight="bold"
+                foregroundStyle={item.textColor}
+                padding={{ top: 1, bottom: 1, leading: 4, trailing: 4 }}
+                widgetBackground={item.tagBg}
+              >
+                {item.name}
+              </Text>
+              <Spacer />
+            </HStack>
+            <HStack alignment="lastTextBaseline" spacing={1}>
+              <Text font={9} fontWeight="bold" foregroundStyle={item.textColor}>
+                ¥
+              </Text>
+              <Text
+                font={15}
+                fontWeight="heavy"
+                foregroundStyle={THEME.text}
+                monospacedDigit
+                lineLimit={1}
+              >
+                {item.price}
+              </Text>
+            </HStack>
+          </VStack>
+        ))}
+      </HStack>
+
+      <Spacer minLength={5} />
+
+      {/* 底部折线图：真实上金所 30 日走势平滑面积折线图 */}
+      <VStack spacing={0} frame={{ maxWidth: "infinity", height: 40 }} padding={{ leading: 4, trailing: 4 }}>
+        <Chart chartXAxis="hidden" chartYAxis="hidden" frame={{ height: 40 }}>
+          <AreaChart
+            marks={marks.map((m) => ({
+              label: m.label,
+              value: m.value - minY + (minY * 0.05),
+              interpolationMethod: "catmullRom",
+              foregroundStyle: [color, "rgba(0, 0, 0, 0)"],
+              opacity: 0.25,
+            }))}
+          />
+          <LineChart
+            marks={marks.map((m) => ({
+              label: m.label,
+              value: m.value - minY + (minY * 0.05),
+              interpolationMethod: "catmullRom",
+              foregroundStyle: color,
+              lineStyle: { lineWidth: 1.8, lineCap: "round", lineJoin: "round" },
+            }))}
+          />
+        </Chart>
+      </VStack>
+    </VStack>
+  )
+}
+
+export function GoldPriceCard({ data, family }: { data: GoldMarketData; family?: string }) {
+  if (family === "systemMedium" || family === "systemLarge") {
+    return <GoldPriceMediumCard data={data} />
+  }
+  return <GoldPriceSmallCard data={data} />
+}
+// ═════════════════════════════════════════════════════════════════
 // 4. 10 段独立圆角药丸分段胶囊进度条 (Segmented Pill Bar)
 // ═════════════════════════════════════════════════════════════════
 export function SegmentedSquareBar({
@@ -1744,3 +2036,6 @@ export function BentoLargeGridCard({
   )
 }
 
+import {
+  RuleLineForValueChart,
+} from "scripting"

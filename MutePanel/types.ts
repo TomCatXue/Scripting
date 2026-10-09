@@ -249,36 +249,57 @@ export const WIDGET_OPTIONS = [
 ]
 
 // ── Au9999 + 品牌金行情数据模型 ─────────────────────────
+export type GoldSourceType = "sge_au9999" | "sge_autd" | "cmb" | "zs"
+
 export interface GoldMarketData {
   serviceId: "gold"
-  auPrice: string          // 上海金交所 Au9999 实时基准价
-  auChange: string         // 涨跌额
-  auChangeRate: string     // 涨跌幅
-  isUp: boolean            // 是否上涨 (红涨绿跌)
-  chowTaiFook: string      // 周大福品牌零售参考价
-  laoFengXiang: string     // 老凤祥品牌零售参考价
-  history7d: { label: string; value: number }[] // 7 日价格走势
-  peakPrice: string        // 7 日峰值
+  sourceId: GoldSourceType
+  sourceName: string
+  subTitle: string
+  focusPrice: string       // 主大数值 (如 904.48)
+  changeValue: string      // 涨跌额 (+12.48)
+  changeRate: string       // 涨跌幅 (+1.40%)
+  isUp: boolean            // 红涨绿跌
+  prices: {
+    au9999: string         // 上金所 Au9999 (904.48)
+    autd: string           // 黄金 T+D (904.20)
+    chowTaiFook: string    // 周大福零售金价 (~1044)
+    laoFengXiang: string   // 老凤祥零售金价 (~1041)
+    cmbBuy?: string        // 招行积存金买入价
+    zsPrice?: string       // 浙商积存金买入价
+  }
+  history30d: { label: string; value: number }[] // 30 日走势折线数据
+  minPrice: number
+  maxPrice: number
   updatedAt: string
 }
 
 export const DEFAULT_GOLD: GoldMarketData = {
   serviceId: "gold",
-  auPrice: "702.50",
-  auChange: "+4.20",
-  auChangeRate: "+0.60%",
+  sourceId: "sge_au9999",
+  sourceName: "上金所 Au9999",
+  subTitle: "上海黄金交易所官方基准",
+  focusPrice: "904.48",
+  changeValue: "+12.48",
+  changeRate: "+1.40%",
   isUp: true,
-  chowTaiFook: "812",
-  laoFengXiang: "810",
-  history7d: [
-    { label: "7天前", value: 688.2 },
-    { label: "5天前", value: 691.0 },
-    { label: "3天前", value: 694.5 },
-    { label: "前天", value: 692.0 },
-    { label: "昨日", value: 698.1 },
-    { label: "今日", value: 702.5 },
+  prices: {
+    au9999: "904.48",
+    autd: "904.20",
+    chowTaiFook: "1045",
+    laoFengXiang: "1042",
+    cmbBuy: "905.97",
+    zsPrice: "903.22",
+  },
+  history30d: [
+    { label: "09-28", value: 900.89 },
+    { label: "09-29", value: 897.53 },
+    { label: "09-30", value: 907.32 },
+    { label: "10-08", value: 892.00 },
+    { label: "10-09", value: 904.48 },
   ],
-  peakPrice: "702.50",
+  minPrice: 888.0,
+  maxPrice: 918.0,
   updatedAt: new Date().toISOString(),
 }
 

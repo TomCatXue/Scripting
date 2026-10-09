@@ -6,6 +6,7 @@ import {
   DeepSeekSmallCard,
   DualQuotaCard,
   FuelPriceCard,
+  GoldPriceCard,
   MediaNexusCard,
   MetricBalanceCard,
   VpnNodeCard,
@@ -196,6 +197,8 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
       return <MediaNexusCard data={getMediaNexusData()} />
     } else if (mService === "fuel") {
       return <FuelPriceCard data={getFuelData()} family={family} />
+    } else if (mService === "gold") {
+      return <GoldPriceCard data={getGoldData()} family={family} />
     } else {
       // 默认展示 DeepSeek 原版平滑贝塞尔波形图看板
       const d = getDeepSeekData()
@@ -241,6 +244,8 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
     return <VpnNodeCard data={getVpnData()} />
   } else if (sService === "fuel") {
     return <FuelPriceCard data={getFuelData()} family={family} />
+  } else if (sService === "gold") {
+    return <GoldPriceCard data={getGoldData()} family={family} />
   } else {
     // 默认展示 DeepSeek 小型模板
     return <DeepSeekSmallCard data={getDeepSeekData()} />
