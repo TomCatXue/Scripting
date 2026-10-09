@@ -1494,7 +1494,7 @@ export function WorkBuddySmallCard({ data }: { data: MetricBalanceData }) {
           size={19}
         />
         <Text font={14} fontWeight="heavy" foregroundStyle={THEME.text} lineLimit={1} minScaleFactor={0.7}>
-          WORKBUDDY.
+          WORKBUDDY
         </Text>
         <Spacer />
       </HStack>
