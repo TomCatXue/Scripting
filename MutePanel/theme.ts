@@ -1,35 +1,48 @@
 // @ts-nocheck
 // ============================================================
-// DashBoard-Kit 设计主题与常量
-// 统一复刻经典卡片式 iOS 数据看板视觉规范
+// 哑巴面板设计主题与色彩系统
+// 严格遵循 Apple HIG 规范与动态浅色/深色模式高对比度要求
 // ============================================================
 
 export const THEME = {
-  text: { light: "#172033", dark: "#F4F7FC" } as any,
-  muted: { light: "#68758A", dark: "#9AA8BE" } as any,
-  dim: { light: "#8A96A9", dark: "#647189" } as any,
-  accent: { light: "#1A13ED", dark: "#7B77FF" } as any,
+  // 文字体系：浅色深灰黑 #1C1C1E，深色纯白高对比度 #FFFFFF
+  text: { light: "#1C1C1E", dark: "#FFFFFF" } as any,
+  // 二级文字：浅色中灰 #48484A，深色淡灰 #EBEBF5
+  muted: { light: "#48484A", dark: "#EBEBF5" } as any,
+  // 辅助说明与标签：浅色 #8E8E93，深色 #A1A1A6
+  dim: { light: "#8E8E93", dark: "#A1A1A6" } as any,
+  
+  // 核心色彩
+  accent: { light: "#2563EB", dark: "#60A5FA" } as any,
   blue: { light: "#2563EB", dark: "#60A5FA" } as any,
-  green: { light: "#10B981", dark: "#42D39A" } as any,
-  orange: { light: "#F97316", dark: "#F6A83B" } as any,
-  yellow: { light: "#F59E0B", dark: "#FFD23F" } as any,
+  green: { light: "#10B981", dark: "#34D399" } as any,
+  orange: { light: "#F97316", dark: "#FB923C" } as any,
+  yellow: { light: "#F59E0B", dark: "#FBBF24" } as any,
   red: { light: "#EF4444", dark: "#F87171" } as any,
-  purple: { light: "#7C3AED", dark: "#A78BFA" } as any,
-  track: { light: "#E2E8F0", dark: "#272F3D" } as any,
-  border: { light: "rgba(23,32,51,0.08)", dark: "rgba(255,255,255,0.10)" } as any,
+  purple: { light: "#6366F1", dark: "#818CF8" } as any,
+
+  // 专属黄金主题色：浅色 #D4AF37，深色 #FFD700
+  gold: { light: "#D4AF37", dark: "#FFD700" } as any,
+
+  // 轨道槽底色与边框
+  track: { light: "#E5E5EA", dark: "#2C2C2E" } as any,
+  border: { light: "rgba(0,0,0,0.06)", dark: "rgba(255,255,255,0.12)" } as any,
+
+  // 卡片背景与整体面板背景
+  cardBg: { light: "#F2F2F7", dark: "#1C1C1E" } as any,
   bg: {
     light: {
       gradient: [
         { color: "#FFFFFF", location: 0 },
-        { color: "#F4F7FB", location: 1 },
+        { color: "#F8F9FA", location: 1 },
       ],
       startPoint: { x: 0.5, y: 0 },
       endPoint: { x: 0.5, y: 1 },
     },
     dark: {
       gradient: [
-        { color: "#161D2B", location: 0 },
-        { color: "#0B1019", location: 1 },
+        { color: "#161719", location: 0 },
+        { color: "#111214", location: 1 },
       ],
       startPoint: { x: 0.5, y: 0 },
       endPoint: { x: 0.5, y: 1 },
@@ -37,7 +50,7 @@ export const THEME = {
   } as any,
 }
 
-// 线性插���颜色（随数值平滑变色）
+// 线性插值颜色（随数值平滑变色）
 export function lerpHex(a: string, b: string, t: number): string {
   const px = (h: string) => [
     parseInt(h.slice(1, 3), 16),

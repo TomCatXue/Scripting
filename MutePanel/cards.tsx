@@ -190,7 +190,7 @@ export function MediaNexusCard({ data }: { data: MediaNexusData }) {
         {/* 左半区：近7日入库（靠左贴齐标题） + 今日入库 */}
         <HStack alignment="center" spacing={18}>
           <VStack alignment="center" spacing={3}>
-            <Text font={21} fontWeight="bold" foregroundStyle={cGreen} monospacedDigit lineLimit={1}>
+            <Text font={21} fontWeight="bold" foregroundStyle={cGreen} monospacedDigit lineLimit={1} minScaleFactor={0.7}>
               {`+${data.recent7Days}`}
             </Text>
             <Text font={10.5} fontWeight="regular" foregroundStyle={cLabel} lineLimit={1}>
@@ -198,7 +198,7 @@ export function MediaNexusCard({ data }: { data: MediaNexusData }) {
             </Text>
           </VStack>
           <VStack alignment="center" spacing={3}>
-            <Text font={21} fontWeight="bold" foregroundStyle={cGreen} monospacedDigit lineLimit={1}>
+            <Text font={21} fontWeight="bold" foregroundStyle={cGreen} monospacedDigit lineLimit={1} minScaleFactor={0.7}>
               {`+${data.todayAdded}`}
             </Text>
             <Text font={10.5} fontWeight="regular" foregroundStyle={cLabel} lineLimit={1}>
@@ -221,7 +221,7 @@ export function MediaNexusCard({ data }: { data: MediaNexusData }) {
         {/* 右半区：电影 / 剧集 / 分集 往中间聚合，两边留有适度边距 */}
         <HStack alignment="center" spacing={0} frame={{ maxWidth: "infinity" }} padding={{ leading: 8, trailing: 8 }}>
           <VStack alignment="center" spacing={3}>
-            <Text font={20} fontWeight="bold" foregroundStyle={cBlue} monospacedDigit lineLimit={1}>
+            <Text font={20} fontWeight="bold" foregroundStyle={cBlue} monospacedDigit lineLimit={1} minScaleFactor={0.7}>
               {data.movies.toLocaleString("en-US")}
             </Text>
             <Text font={10.5} fontWeight="regular" foregroundStyle={cLabel} lineLimit={1}>
@@ -230,7 +230,7 @@ export function MediaNexusCard({ data }: { data: MediaNexusData }) {
           </VStack>
           <Spacer />
           <VStack alignment="center" spacing={3}>
-            <Text font={20} fontWeight="bold" foregroundStyle={cBlue} monospacedDigit lineLimit={1}>
+            <Text font={20} fontWeight="bold" foregroundStyle={cBlue} monospacedDigit lineLimit={1} minScaleFactor={0.7}>
               {data.shows.toLocaleString("en-US")}
             </Text>
             <Text font={10.5} fontWeight="regular" foregroundStyle={cLabel} lineLimit={1}>
@@ -239,7 +239,7 @@ export function MediaNexusCard({ data }: { data: MediaNexusData }) {
           </VStack>
           <Spacer />
           <VStack alignment="center" spacing={3}>
-            <Text font={20} fontWeight="bold" foregroundStyle={cBlue} monospacedDigit lineLimit={1}>
+            <Text font={20} fontWeight="bold" foregroundStyle={cBlue} monospacedDigit lineLimit={1} minScaleFactor={0.7}>
               {data.episodes.toLocaleString("en-US")}
             </Text>
             <Text font={10.5} fontWeight="regular" foregroundStyle={cLabel} lineLimit={1}>
@@ -371,6 +371,7 @@ export function MetricBalanceCard({ data }: { data: MetricBalanceData }) {
           foregroundStyle={mainNumColor}
           monospacedDigit
           lineLimit={1}
+          minScaleFactor={0.6}
         >
           {data.mainValue}
         </Text>
@@ -743,7 +744,7 @@ export function FuelPriceSmallCard({ data }: { data: FuelCardData }) {
       <HStack alignment="top">
         {hasLogoFile ? (
           <Image
-            filePath={logoPath}
+            filePath={activeLogoPath}
             resizable={true}
             scaleToFit={true}
             opacity={0.18}
@@ -1066,10 +1067,10 @@ export function GoldPriceSmallCard({ data }: { data: GoldMarketData }) {
       {/* 底层左上角金色徽标水印：参考油价贝壳高光质感 */}
       <HStack alignment="top">
         <Image
-          systemName="centsign.circle.fill"
+          systemName="banknote.fill"
           font={90}
           opacity={0.08}
-          foregroundStyle="#F59E0B"
+          foregroundStyle={THEME.gold}
           offset={{ x: -25, y: -20 }}
         />
         <Spacer />
@@ -1086,9 +1087,9 @@ export function GoldPriceSmallCard({ data }: { data: GoldMarketData }) {
         <HStack alignment="center" frame={{ height: 18 }}>
           <HStack spacing={4} alignment="center">
             <Image
-              systemName="sparkles"
-              font={{ name: "system", size: 12 }}
-              foregroundStyle="#F59E0B"
+              systemName="banknote.fill"
+              font={{ name: "system", size: 12.5 }}
+              foregroundStyle={THEME.gold}
             />
             <Text font={12.5} fontWeight="bold" foregroundStyle={THEME.text}>
               {data.sourceName || "上金所金价"}
@@ -1117,15 +1118,16 @@ export function GoldPriceSmallCard({ data }: { data: GoldMarketData }) {
           </VStack>
           <Spacer />
           <HStack alignment="lastTextBaseline" spacing={2}>
-            <Text font={16} fontWeight="heavy" foregroundStyle="#F59E0B">
+            <Text font={16} fontWeight="heavy" foregroundStyle={THEME.gold}>
               ¥
             </Text>
             <Text
-              font={28}
+              font={26}
               fontWeight="heavy"
               foregroundStyle={THEME.text}
               monospacedDigit
               lineLimit={1}
+              minScaleFactor={0.6}
             >
               {data.focusPrice || "904.48"}
             </Text>
@@ -1225,9 +1227,9 @@ export function GoldPriceMediumCard({ data }: { data: GoldMarketData }) {
       <HStack alignment="center" padding={{ leading: 4, trailing: 4 }}>
         <HStack alignment="center" spacing={4}>
           <Image
-            systemName="centsign.circle.fill"
+            systemName="banknote.fill"
             font={{ name: "system", size: 14 }}
-            foregroundStyle="#F59E0B"
+            foregroundStyle={THEME.gold}
           />
           <Text font={14} fontWeight="bold" foregroundStyle={THEME.text}>
             {data.sourceName || "上海黄金交易所"}
@@ -1287,6 +1289,7 @@ export function GoldPriceMediumCard({ data }: { data: GoldMarketData }) {
                 foregroundStyle={THEME.text}
                 monospacedDigit
                 lineLimit={1}
+                minScaleFactor={0.7}
               >
                 {item.price}
               </Text>
@@ -1385,7 +1388,8 @@ export function WorkBuddySmallCard({ data }: { data: MetricBalanceData }) {
     <VStack
       alignment="leading"
       spacing={0}
-      padding={{ top: 13, bottom: 12, leading: 14, trailing: 14 }}
+      padding={14}
+      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
       widgetBackground={{ light: "#FFFFFF", dark: "#161719" }}
     >
       {/* 顶部 Header: Logo + WORKBUDDY. */}
@@ -1403,7 +1407,7 @@ export function WorkBuddySmallCard({ data }: { data: MetricBalanceData }) {
       <Spacer minLength={10} />
 
       {/* 第 1 行双列：左【积分剩余 12,164】、右【已用 7,796】 */}
-      <HStack alignment="top" spacing={10}>
+      <HStack alignment="top" spacing={8}>
         <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
           <HStack spacing={4} alignment="center">
             <Image
@@ -1413,7 +1417,7 @@ export function WorkBuddySmallCard({ data }: { data: MetricBalanceData }) {
             />
             <Text font={11} foregroundStyle={THEME.dim}>积分剩余</Text>
           </HStack>
-          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
+          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1} minScaleFactor={0.6}>
             {data.mainValue || "12,164"}
           </Text>
         </VStack>
@@ -1426,7 +1430,7 @@ export function WorkBuddySmallCard({ data }: { data: MetricBalanceData }) {
             />
             <Text font={11} foregroundStyle={THEME.dim}>已用</Text>
           </HStack>
-          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
+          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1} minScaleFactor={0.6}>
             {data.subValue2 || "7,796"}
           </Text>
         </VStack>
@@ -1435,7 +1439,7 @@ export function WorkBuddySmallCard({ data }: { data: MetricBalanceData }) {
       <Spacer minLength={10} />
 
       {/* 第 2 行双列：左【已签 0/4】、右【有效期 51天】 */}
-      <HStack alignment="top" spacing={10}>
+      <HStack alignment="top" spacing={8}>
         <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
           <HStack spacing={4} alignment="center">
             <Image
@@ -1445,7 +1449,7 @@ export function WorkBuddySmallCard({ data }: { data: MetricBalanceData }) {
             />
             <Text font={11} foregroundStyle={THEME.dim}>已签</Text>
           </HStack>
-          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
+          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1} minScaleFactor={0.6}>
             {data.subValue1 || "0/4"}
           </Text>
         </VStack>
@@ -1459,7 +1463,7 @@ export function WorkBuddySmallCard({ data }: { data: MetricBalanceData }) {
             <Text font={11} foregroundStyle={THEME.dim}>有效期</Text>
           </HStack>
           <HStack alignment="lastTextBaseline" spacing={2}>
-            <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
+            <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1} minScaleFactor={0.6}>
               {(data.footerLeft || "51 天").replace(/[^0-9]/g, "") || "51"}
             </Text>
             <Text font={13} fontWeight="bold" foregroundStyle={THEME.text}>
@@ -1482,47 +1486,64 @@ export function DeepSeekSmallCard({ data }: { data: MetricBalanceData }) {
     <VStack
       alignment="leading"
       spacing={0}
-      padding={{ top: 13, bottom: 12, leading: 14, trailing: 14 }}
+      padding={14}
+      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
       widgetBackground={{ light: "#FFFFFF", dark: "#161719" }}
     >
-      {/* 顶部 Header: Logo + deepseek */}
-      <HStack spacing={7} alignment="center" frame={{ height: 20 }}>
-        <SVG
-          code={DEEPSEEK_WHALE_SVG}
-          resizable={true}
-          frame={{ width: 20, height: 20 }}
-        />
-        <Text font={15} fontWeight="heavy" foregroundStyle={THEME.text}>
-          deepseek
-        </Text>
+      {/* 顶部 Header: 左侧 DeepSeek Logo 与标题垂直居中，右侧状态点与更新时间，左右两端对齐 (Space-Between) */}
+      <HStack alignment="center" frame={{ height: 20 }}>
+        <HStack spacing={7} alignment="center">
+          <SVG
+            code={DEEPSEEK_WHALE_SVG}
+            resizable={true}
+            frame={{ width: 20, height: 20 }}
+          />
+          <Text font={15} fontWeight="heavy" foregroundStyle={THEME.text}>
+            deepseek
+          </Text>
+        </HStack>
         <Spacer />
+        <HStack spacing={4} alignment="center">
+          <Circle fill={THEME.green} frame={{ width: 6, height: 6 }} />
+          <Text font={10.5} foregroundStyle={THEME.dim} monospacedDigit>
+            {formatTime(data.updatedAt)}
+          </Text>
+        </HStack>
       </HStack>
+
+      <Spacer minLength={6} />
+
+      {/* 中部大字：账户余额标签 + ¥ 符号与大数字（26pt，间距 4pt，弹性自适应缩放无截断） */}
+      <VStack alignment="leading" spacing={4}>
+        <HStack spacing={4} alignment="center">
+          <Image
+            systemName="circle.grid.3x3.fill"
+            font={{ name: "system", size: 10 }}
+            foregroundStyle={{ light: "#1E60FF", dark: "#3B82F6" }}
+          />
+          <Text font={11} foregroundStyle={THEME.dim}>账户余额</Text>
+        </HStack>
+        <HStack alignment="lastTextBaseline" spacing={3}>
+          <Text font={18} fontWeight="heavy" foregroundStyle={THEME.text}>
+            ¥
+          </Text>
+          <Text
+            font={26}
+            fontWeight="heavy"
+            foregroundStyle={THEME.text}
+            monospacedDigit
+            lineLimit={1}
+            minScaleFactor={0.6}
+          >
+            {data.mainValue || "1.86"}
+          </Text>
+        </HStack>
+      </VStack>
 
       <Spacer minLength={8} />
 
-      {/* 中部大字：标签【账户余额】+ 超大数值【¥ 1.86】 */}
-      <HStack spacing={4} alignment="center">
-        <Image
-          systemName="circle.grid.3x3.fill"
-          font={{ name: "system", size: 10 }}
-          foregroundStyle={{ light: "#1E60FF", dark: "#3B82F6" }}
-        />
-        <Text font={11} foregroundStyle={THEME.dim}>账户余额</Text>
-      </HStack>
-      <Spacer minLength={2} />
-      <HStack alignment="lastTextBaseline" spacing={3}>
-        <Text font={19} fontWeight="heavy" foregroundStyle={THEME.text}>
-          ¥
-        </Text>
-        <Text font={30} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
-          {data.mainValue || "1.86"}
-        </Text>
-      </HStack>
-
-      <Spacer minLength={8} />
-
-      {/* 第 2 行双列：左【状态 / 正常(绿色)】、右【近7日消费 / ¥ 5.39】 */}
-      <HStack alignment="top" spacing={10}>
+      {/* 第 2 行双列：左【状态 / 正常(绿色)】、右【近7日消费 / ¥ 5.39】，子项间距固定 8pt 精确对齐 */}
+      <HStack alignment="top" spacing={8}>
         <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
           <HStack spacing={4} alignment="center">
             <Image
@@ -1532,7 +1553,7 @@ export function DeepSeekSmallCard({ data }: { data: MetricBalanceData }) {
             />
             <Text font={11} foregroundStyle={THEME.dim}>状态</Text>
           </HStack>
-          <Text font={17} fontWeight="heavy" foregroundStyle={THEME.green}>
+          <Text font={18} fontWeight="heavy" foregroundStyle={THEME.green} lineLimit={1} minScaleFactor={0.7}>
             {data.statusText || "正常"}
           </Text>
         </VStack>
@@ -1545,13 +1566,20 @@ export function DeepSeekSmallCard({ data }: { data: MetricBalanceData }) {
             />
             <Text font={11} foregroundStyle={THEME.dim}>近7日消费</Text>
           </HStack>
-          <Text font={17} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
+          <Text
+            font={18}
+            fontWeight="heavy"
+            foregroundStyle={THEME.text}
+            monospacedDigit
+            lineLimit={1}
+            minScaleFactor={0.6}
+          >
             {data.subValue2?.startsWith("¥") ? data.subValue2 : ("¥ " + (data.subValue2 || "5.39"))}
           </Text>
         </VStack>
       </HStack>
 
-      <Spacer minLength={10} />
+      <Spacer minLength={8} />
 
       {/* 底部：左侧【官方直连】、右侧【更新于 12:31】（高呼吸感） */}
       <HStack alignment="center">
@@ -1570,7 +1598,8 @@ export function CodexSmallCard({ data }: { data: DualQuotaData }) {
     <VStack
       alignment="leading"
       spacing={0}
-      padding={{ top: 13, bottom: 12, leading: 14, trailing: 14 }}
+      padding={14}
+      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
       widgetBackground={{ light: "#FFFFFF", dark: "#161719" }}
     >
       {/* 顶部 Header: Logo + Codex */}
@@ -1586,7 +1615,7 @@ export function CodexSmallCard({ data }: { data: DualQuotaData }) {
       <Spacer minLength={10} />
 
       {/* 第 1 行双列：左【5小时额度 83%】、右【周额度 0%】 */}
-      <HStack alignment="top" spacing={10}>
+      <HStack alignment="top" spacing={8}>
         <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
           <HStack spacing={4} alignment="center">
             <Image
@@ -1596,7 +1625,7 @@ export function CodexSmallCard({ data }: { data: DualQuotaData }) {
             />
             <Text font={11} foregroundStyle={THEME.dim}>5小时额度</Text>
           </HStack>
-          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
+          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1} minScaleFactor={0.6}>
             {`${Math.round(data.item1?.pct ?? 83)}%`}
           </Text>
         </VStack>
@@ -1609,7 +1638,7 @@ export function CodexSmallCard({ data }: { data: DualQuotaData }) {
             />
             <Text font={11} foregroundStyle={THEME.dim}>周额度</Text>
           </HStack>
-          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
+          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1} minScaleFactor={0.6}>
             {`${Math.round(data.item2?.pct ?? 0)}%`}
           </Text>
         </VStack>
@@ -1618,7 +1647,7 @@ export function CodexSmallCard({ data }: { data: DualQuotaData }) {
       <Spacer minLength={10} />
 
       {/* 第 2 行双列：左【可重置次数 0次】、右【剩余 83%】 */}
-      <HStack alignment="top" spacing={10}>
+      <HStack alignment="top" spacing={8}>
         <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
           <HStack spacing={4} alignment="center">
             <Image
@@ -1629,7 +1658,7 @@ export function CodexSmallCard({ data }: { data: DualQuotaData }) {
             <Text font={11} foregroundStyle={THEME.dim}>可重置次数</Text>
           </HStack>
           <HStack alignment="lastTextBaseline" spacing={2}>
-            <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
+            <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1} minScaleFactor={0.6}>
               {(data.stat1?.value || "0 次").replace(/[^0-9]/g, "") || "0"}
             </Text>
             <Text font={13} fontWeight="bold" foregroundStyle={THEME.text}>
@@ -1646,7 +1675,7 @@ export function CodexSmallCard({ data }: { data: DualQuotaData }) {
             />
             <Text font={11} foregroundStyle={THEME.dim}>剩余</Text>
           </HStack>
-          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
+          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1} minScaleFactor={0.6}>
             {data.stat2?.value || "83%"}
           </Text>
         </VStack>
@@ -1671,7 +1700,8 @@ export function AntigravitySmallCard({ data }: { data: DualQuotaData }) {
     <VStack
       alignment="leading"
       spacing={0}
-      padding={{ top: 13, bottom: 12, leading: 14, trailing: 14 }}
+      padding={14}
+      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
       widgetBackground={{ light: "#FFFFFF", dark: "#161719" }}
     >
       {/* 顶部 Header: Logo + Antigravity */}
@@ -1687,7 +1717,7 @@ export function AntigravitySmallCard({ data }: { data: DualQuotaData }) {
       <Spacer minLength={10} />
 
       {/* 第 1 行双列：左【Gemini 12m】、右【Claude/GPT 4h59m】 */}
-      <HStack alignment="top" spacing={10}>
+      <HStack alignment="top" spacing={8}>
         <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
           <HStack spacing={4} alignment="center">
             <Image
@@ -1697,7 +1727,7 @@ export function AntigravitySmallCard({ data }: { data: DualQuotaData }) {
             />
             <Text font={11} foregroundStyle={THEME.dim}>Gemini</Text>
           </HStack>
-          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
+          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1} minScaleFactor={0.6}>
             {data.item1?.timer || "12m"}
           </Text>
         </VStack>
@@ -1710,7 +1740,7 @@ export function AntigravitySmallCard({ data }: { data: DualQuotaData }) {
             />
             <Text font={11} foregroundStyle={THEME.dim}>Claude/GPT</Text>
           </HStack>
-          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
+          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1} minScaleFactor={0.6}>
             {data.item2?.timer || "4h59m"}
           </Text>
         </VStack>
@@ -1719,7 +1749,7 @@ export function AntigravitySmallCard({ data }: { data: DualQuotaData }) {
       <Spacer minLength={10} />
 
       {/* 第 2 行双列：左【Gem周 82%】、右【C/G周 100%】 */}
-      <HStack alignment="top" spacing={10}>
+      <HStack alignment="top" spacing={8}>
         <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
           <HStack spacing={4} alignment="center">
             <Image
@@ -1729,7 +1759,7 @@ export function AntigravitySmallCard({ data }: { data: DualQuotaData }) {
             />
             <Text font={11} foregroundStyle={THEME.dim}>Gem周</Text>
           </HStack>
-          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
+          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1} minScaleFactor={0.6}>
             {`${Math.round(data.item1?.pct ?? 82)}%`}
           </Text>
         </VStack>
@@ -1742,7 +1772,7 @@ export function AntigravitySmallCard({ data }: { data: DualQuotaData }) {
             />
             <Text font={11} foregroundStyle={THEME.dim}>C/G周</Text>
           </HStack>
-          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
+          <Text font={21} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1} minScaleFactor={0.6}>
             {`${Math.round(data.item2?.pct ?? 100)}%`}
           </Text>
         </VStack>
@@ -1973,7 +2003,7 @@ function BentoCard({
     >
       {/* 顶部标题行 */}
       <HStack spacing={4} alignment="center">
-        <Image systemName={iconName} font={{ name: "system", size: 12 }} foregroundStyle={iconColor} />
+        <Image systemName={iconName} font={{ name: "system", size: 15 }} foregroundStyle={iconColor} />
         <Text font={11} fontWeight="bold" foregroundStyle={THEME.text}>{title}</Text>
         <Spacer />
         {tagText && (
@@ -1986,7 +2016,7 @@ function BentoCard({
       <Spacer minLength={4} />
 
       {/* 主大字 */}
-      <Text font={18} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit>
+      <Text font={18} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1} minScaleFactor={0.65}>
         {mainValue}
       </Text>
 
@@ -2040,7 +2070,7 @@ export function BentoLargeGridCard({
       {/* 主控顶部状态栏 */}
       <HStack spacing={6} alignment="center" frame={{ height: 20 }}>
         <Image systemName="square.grid.2x2.fill" font={{ name: "system", size: 14 }} foregroundStyle={THEME.blue} />
-        <Text font={13.5} fontWeight="heavy" foregroundStyle={THEME.text}>DashBoard Pro 看板</Text>
+        <Text font={13.5} fontWeight="heavy" foregroundStyle={THEME.text}>哑巴面板监控总览</Text>
         <Spacer />
         <RefreshButton />
         <Spacer minLength={4} />
@@ -2052,8 +2082,8 @@ export function BentoLargeGridCard({
       {/* 2x2 Bento 栅格网格 */}
       <HStack spacing={10}>
         <BentoCard
-          iconName="centsign.circle.fill"
-          iconColor={{ light: "#F59E0B", dark: "#FBBF24" }}
+          iconName="banknote.fill"
+          iconColor={THEME.gold}
           title="Au9999 金价"
           mainValue={`¥${gold.auPrice}`}
           subLabel={`周大福 ¥${gold.chowTaiFook}`}
@@ -2062,7 +2092,7 @@ export function BentoLargeGridCard({
           progress={0.75}
         />
         <BentoCard
-          iconName="sparkles"
+          iconName="circle.grid.3x3.fill"
           iconColor={{ light: "#1E60FF", dark: "#3B82F6" }}
           title="DeepSeek 余额"
           mainValue={`¥${deepseek.mainValue || "1.86"}`}
