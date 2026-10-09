@@ -1999,19 +1999,19 @@ export async function refreshGoldData(): Promise<GoldMarketData | null> {
     // 根据当前选定数据源决定主展示数值
     let focusPrice = au9999Price.toFixed(2)
     let sourceName = "上金所 Au9999"
-    let subTitle = "上海黄金交易所官方基准"
+    let subTitle = "Au9999 实时价"
     if (currentSource === "cmb") {
       focusPrice = cmbBuy
       sourceName = "招商银行金价"
-      subTitle = "招行积存金官方买入实时牌价"
+      subTitle = "积存金买入价"
     } else if (currentSource === "zs") {
       focusPrice = zsPrice
       sourceName = "浙商银行金价"
-      subTitle = "浙商银行积存金实时价"
+      subTitle = "积存金实时价"
     } else if (currentSource === "sge_autd") {
       focusPrice = autdPrice.toFixed(2)
       sourceName = "黄金延期 Au(T+D)"
-      subTitle = "上海黄金交易所连续现货合约"
+      subTitle = "连续现货合约"
     }
 
     const payload: GoldMarketData = {

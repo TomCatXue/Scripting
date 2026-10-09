@@ -31,7 +31,6 @@ import {
   MetricBalanceData,
   VpnNodeData,
   DEEPSEEK_WHALE_SVG,
-  DEEPSEEK_LOGO_SVG,
 } from "./types"
 
 // ── 品牌图标渲染（支持 SVG、UIImage、本地图片、SF Symbol）──
@@ -1143,6 +1142,9 @@ export function GoldPriceSmallCard({ data }: { data: GoldMarketData }) {
   const minY = data.minPrice || Math.min(...marks.map(m => m.value))
   const maxY = data.maxPrice || Math.max(...marks.map(m => m.value))
   const color = data.isUp ? THEME.red : THEME.green
+  // 振幅兜底：区间为 0（横盘）时给一个最小跨度，否则曲线会贴边不可见
+  const span = Math.max(maxY - minY, Math.abs(maxY) * 0.004, 0.01)
+  const yScale = { from: minY - span * 0.35, to: maxY + span * 0.15 }
 
   return (
     <ZStack
@@ -1190,71 +1192,65 @@ export function GoldPriceSmallCard({ data }: { data: GoldMarketData }) {
 
         <Spacer minLength={4} />
 
-        {/* 主数值与涨跌区：参考油价右对齐大字 */}
-        <HStack alignment="lastTextBaseline">
-          <VStack alignment="leading" spacing={1}>
-            <Text font={9.5} foregroundStyle={THEME.dim}>
-              {data.subTitle || "实时基准价"}
-            </Text>
-            <HStack spacing={3} alignment="center">
-              <Text font={11} fontWeight="bold" foregroundStyle={color}>
-                {data.changeValue}
-              </Text>
-              <Text font={11} fontWeight="bold" foregroundStyle={color}>
-                ({data.changeRate})
-              </Text>
-            </HStack>
-          </VStack>
+        {/* 明细行：副标题与涨跌（窄，独立成行不抢占金价空间） */}
+        <HStack spacing={5} alignment="center">
+          <Text font={9.5} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.7}>
+            {data.subTitle || "实时基准价"}
+          </Text>
+          <Text font={11} fontWeight="bold" foregroundStyle={color} lineLimit={1}>
+            {data.changeValue}
+          </Text>
+          <Text font={11} fontWeight="bold" foregroundStyle={color} lineLimit={1}>
+            ({data.changeRate})
+          </Text>
           <Spacer />
-          <HStack alignment="lastTextBaseline" spacing={2}>
-            <Text font={16} fontWeight="heavy" foregroundStyle="#F59E0B">
-              ¥
-            </Text>
-            <Text
-              font={28}
-              fontWeight="heavy"
-              foregroundStyle={THEME.text}
-              monospacedDigit
-              lineLimit={1}
-              minScaleFactor={0.6}
-            >
-              {data.focusPrice || "904.48"}
-            </Text>
-          </HStack>
         </HStack>
 
-        <Spacer minLength={4} />
+        {/* 金价独占整行，右对齐，永不与左侧文字争抢宽度 */}
+        <HStack alignment="lastTextBaseline" spacing={2} frame={{ maxWidth: "infinity", alignment: "trailing" }}>
+          <Text font={16} fontWeight="heavy" foregroundStyle="#F59E0B" lineLimit={1}>
+            ¥
+          </Text>
+          <Text
+            font={30}
+            fontWeight="heavy"
+            foregroundStyle={THEME.text}
+            monospacedDigit
+            lineLimit={1}
+            allowsTightening={true}
+            minScaleFactor={0.6}
+          >
+            {data.focusPrice || "904.48"}
+          </Text>
+        </HStack>
 
-        {/* 底部折线走势图：真实上金所 30 日走势折线图 */}
-        <VStack spacing={0} frame={{ maxWidth: "infinity", height: 42 }}>
-          <Chart chartXAxis="hidden" chartYAxis="hidden" frame={{ height: 42 }}>
+        <Spacer minLength={3} />
+
+        {/* 底部走势图：按当日涨跌着色，放大振幅让波动清晰可辨 */}
+        <VStack spacing={0} frame={{ maxWidth: "infinity", height: 46 }}>
+          <Chart
+            chartXAxis="hidden"
+            chartYAxis="hidden"
+            chartYScale={yScale}
+            frame={{ height: 46 }}
+          >
             <AreaChart
               marks={marks.map((m) => ({
                 label: m.label,
-                value: m.value - minY + (minY * 0.05),
+                value: m.value,
                 interpolationMethod: "catmullRom",
                 foregroundStyle: [color, "rgba(0, 0, 0, 0)"],
-                opacity: 0.35,
+                opacity: 0.55,
               }))}
             />
             <LineChart
               marks={marks.map((m) => ({
                 label: m.label,
-                value: m.value - minY + (minY * 0.05),
+                value: m.value,
                 interpolationMethod: "catmullRom",
                 foregroundStyle: color,
-                lineStyle: { lineWidth: 2, lineCap: "round", lineJoin: "round" },
+                lineStyle: { lineWidth: 2.4, lineCap: "round", lineJoin: "round" },
               }))}
-            />
-            <RuleLineForValueChart
-              marks={[
-                {
-                  value: (maxY + minY) / 2 - minY + (minY * 0.05),
-                  lineStyle: { dash: [3, 2] },
-                  foregroundStyle: color,
-                  opacity: 0.35,
-                },
-              ]}
             />
           </Chart>
         </VStack>
@@ -1301,6 +1297,9 @@ export function GoldPriceMediumCard({ data }: { data: GoldMarketData }) {
   const minY = data.minPrice || Math.min(...marks.map(m => m.value))
   const maxY = data.maxPrice || Math.max(...marks.map(m => m.value))
   const color = data.isUp ? THEME.red : THEME.green
+  // 振幅兜底：横盘时给最小跨度，保证曲线仍清晰可见
+  const span = Math.max(maxY - minY, Math.abs(maxY) * 0.004, 0.01)
+  const yScale = { from: minY - span * 0.35, to: maxY + span * 0.15 }
 
   return (
     <VStack
@@ -1342,46 +1341,57 @@ export function GoldPriceMediumCard({ data }: { data: GoldMarketData }) {
 
       <Spacer minLength={6} />
 
-      {/* 4 联卡片设计：完全复刻油价中号卡片结构 */}
-      <HStack spacing={6}>
+      {/* 4 联卡片设计：等宽等高的 4 张卡片，与油价中号保持一致 */}
+      <HStack spacing={6} frame={{ maxWidth: "infinity" }}>
         {cardItems.map((item, idx) => (
           <VStack
             key={idx}
-            alignment="leading"
-            spacing={2}
-            padding={{ top: 6, bottom: 6, leading: 8, trailing: 8 }}
+            alignment="center"
+            spacing={6}
             frame={{ maxWidth: "infinity" }}
-            widgetBackground={{
-              light: "#F8FAFC",
-              dark: "#1E222B",
-            }}
           >
-            <HStack alignment="center">
+            {/* 上层：品类色块 */}
+            <HStack
+              alignment="center"
+              padding={{ top: 2.5, bottom: 2.5, leading: 7, trailing: 7 }}
+              background={item.tagBg}
+              clipShape={{ type: "rect", cornerRadius: 5 }}
+            >
               <Text
-                font={10}
+                font="caption2"
                 fontWeight="bold"
-                foregroundStyle={item.textColor}
-                padding={{ top: 1, bottom: 1, leading: 4, trailing: 4 }}
-                widgetBackground={item.tagBg}
+                foregroundStyle={item.textColor as any}
+                lineLimit={1}
+                allowsTightening={true}
               >
                 {item.name}
               </Text>
-              <Spacer />
             </HStack>
-            <HStack alignment="lastTextBaseline" spacing={1}>
-              <Text font={9} fontWeight="bold" foregroundStyle={item.textColor}>
-                ¥
-              </Text>
+
+            {/* 下层：价格底块（固定高度，四列严格等高） */}
+            <HStack
+              alignment="center"
+              padding={{ top: 6, bottom: 6, leading: 4, trailing: 4 }}
+              background={{
+                light: "rgba(0, 0, 0, 0.05)",
+                dark: "rgba(255, 255, 255, 0.09)",
+              }}
+              clipShape={{ type: "rect", cornerRadius: 8 }}
+              frame={{ maxWidth: "infinity", height: 30 }}
+            >
+              <Spacer />
               <Text
-                font={15}
-                fontWeight="heavy"
+                font="headline"
+                fontWeight="bold"
                 foregroundStyle={THEME.text}
                 monospacedDigit
                 lineLimit={1}
+                allowsTightening={true}
                 minScaleFactor={0.7}
               >
                 {item.price}
               </Text>
+              <Spacer />
             </HStack>
           </VStack>
         ))}
@@ -1389,25 +1399,30 @@ export function GoldPriceMediumCard({ data }: { data: GoldMarketData }) {
 
       <Spacer minLength={5} />
 
-      {/* 底部折线图：真实上金所 30 日走势平滑面积折线图 */}
-      <VStack spacing={0} frame={{ maxWidth: "infinity", height: 40 }} padding={{ leading: 4, trailing: 4 }}>
-        <Chart chartXAxis="hidden" chartYAxis="hidden" frame={{ height: 40 }}>
+      {/* 底部折线图：真实上金所 30 日走势，放大振幅让波动可见 */}
+      <VStack spacing={0} frame={{ maxWidth: "infinity", height: 42 }} padding={{ leading: 4, trailing: 4 }}>
+        <Chart
+          chartXAxis="hidden"
+          chartYAxis="hidden"
+          chartYScale={yScale}
+          frame={{ height: 42 }}
+        >
           <AreaChart
             marks={marks.map((m) => ({
               label: m.label,
-              value: m.value - minY + (minY * 0.05),
+              value: m.value,
               interpolationMethod: "catmullRom",
               foregroundStyle: [color, "rgba(0, 0, 0, 0)"],
-              opacity: 0.25,
+              opacity: 0.45,
             }))}
           />
           <LineChart
             marks={marks.map((m) => ({
               label: m.label,
-              value: m.value - minY + (minY * 0.05),
+              value: m.value,
               interpolationMethod: "catmullRom",
               foregroundStyle: color,
-              lineStyle: { lineWidth: 1.8, lineCap: "round", lineJoin: "round" },
+              lineStyle: { lineWidth: 2.2, lineCap: "round", lineJoin: "round" },
             }))}
           />
         </Chart>
@@ -1781,6 +1796,8 @@ export interface WaveformMediumCardProps {
   iconPath?: { light: string; dark: string } | string
   iconImage?: any
   svgCode?: string
+  /** 品牌标题颜色（DeepSeek 等品牌需要专属色） */
+  titleColor?: any
   iconName?: string
   iconColor?: any
   mainLabel: string
@@ -1825,12 +1842,23 @@ export function WaveformDashboardMediumCard({ props }: { props: WaveformMediumCa
         {props.logoHeader ? (
           props.logoHeader
         ) : props.svgCode ? (
-          <SVG
-            code={props.svgCode}
-            scaleToFit
-            resizable
-            frame={{ height: 22 }}
-          />
+          <HStack spacing={5} alignment="center" frame={{ height: 22 }}>
+            <SVG
+              code={props.svgCode}
+              scaleToFit
+              resizable
+              frame={{ width: 22, height: 22 }}
+            />
+            <Text
+              font={13}
+              fontWeight="heavy"
+              foregroundStyle={props.titleColor || THEME.text}
+              lineLimit={1}
+              minScaleFactor={0.7}
+            >
+              {props.title}
+            </Text>
+          </HStack>
         ) : (
           <HStack spacing={5} alignment="center" frame={{ height: 22 }}>
             <BrandHeaderIcon
@@ -1840,7 +1868,13 @@ export function WaveformDashboardMediumCard({ props }: { props: WaveformMediumCa
               iconColor={props.iconColor}
               size={17}
             />
-            <Text font={13} fontWeight="heavy" foregroundStyle={THEME.text}>
+            <Text
+              font={13}
+              fontWeight="heavy"
+              foregroundStyle={props.titleColor || THEME.text}
+              lineLimit={1}
+              minScaleFactor={0.7}
+            >
               {props.title}
             </Text>
           </HStack>

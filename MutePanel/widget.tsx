@@ -1,7 +1,7 @@
 // @ts-nocheck
 /// <reference path="./global.d.ts" />
 import { Widget } from "scripting"
-import { DEEPSEEK_LOGO_SVG } from "./types"
+import { DEEPSEEK_WHALE_SVG } from "./types"
 import { brandIcon } from "./icons"
 import {
   AntigravitySmallCard,
@@ -27,6 +27,12 @@ import {
   getMediaNexusData,
   getVpnData,
   getWorkBuddyData,
+  hasAntigravityConfigured,
+  hasCodexConfigured,
+  hasCpampConfigured,
+  hasDeepSeekConfigured,
+  hasMediaConfigured,
+  hasWbConfigured,
   refreshAntigravityData,
   refreshCodexData,
   refreshCpampData,
@@ -40,9 +46,32 @@ import {
 
 /** 全局小组件配置与偏好 */
 export const CONFIG = {
-  smallStyle: "deepseek",  // "workbuddy" | "deepseek" | "codex" | "antigravity"
-  mediumStyle: "deepseek", // "deepseek" | "workbuddy" | "codex" | "antigravity"
+  // 留空表示自动选择：优先展示已配置凭证的服务，全部未配置时回落 DeepSeek 演示数据
+  // 也可手动指定："workbuddy" | "deepseek" | "codex" | "antigravity"
+  smallStyle: "",
+  mediumStyle: "",
   largeModules: ["gold", "deepseek", "fx", "oil"],
+}
+
+/**
+ * 未显式指定参数时的默认服务。
+ * 优先选中用户已配置（有凭证/端点）的服务，避免一律回落到 DeepSeek。
+ * 全部未配置时再回落到 DeepSeek 演示数据。
+ */
+function pickDefaultService(): string {
+  try {
+    const configured: [string, boolean][] = [
+      ["deepseek", hasDeepSeekConfigured()],
+      ["workbuddy", hasWbConfigured()],
+      ["codex", hasCodexConfigured()],
+      ["antigravity", hasAntigravityConfigured()],
+      ["cpamp", hasCpampConfigured()],
+      ["media", hasMediaConfigured()],
+    ]
+    const hit = configured.find(([, ok]) => ok)
+    if (hit) return hit[0]
+  } catch {}
+  return "deepseek"
 }
 
 /**
@@ -115,7 +144,7 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
 
   // 2. 中型组件 (Medium Widget): 全部 4 大核心服务均支持原版通栏平滑贝塞尔波形图
   if (family === "systemMedium") {
-    const mService = param || CONFIG.mediumStyle
+    const mService = param || CONFIG.mediumStyle || pickDefaultService()
     if (mService === "workbuddy") {
       const d = getWorkBuddyData()
       return (
@@ -203,14 +232,21 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
       return <FuelPriceCard data={getFuelData()} family={family} />
     } else if (mService === "gold") {
       return <GoldPriceCard data={getGoldData()} family={family} />
-    } else {
-      // 默认展示 DeepSeek 1:1 原版平滑贝塞尔波形图看板
-      const d = getDeepSeekData()
+      } else if (mService === "cpamp") {
+        // CPAMP / VPN 暂无专属中号波形图版式，展示各自的紧凑卡片，
+        // 避免回落到 DeepSeek 造成「数据对不上」的误导。
+        return <MetricBalanceCard data={getCpampData()} />
+      } else if (mService === "vpn") {
+        return <VpnNodeCard data={getVpnData()} />
+      } else {
+        // 未匹配到任何已知服务时，才回落到 DeepSeek 波形看板
+        const d = getDeepSeekData()
       return (
         <WaveformDashboardMediumCard
           props={{
             title: "deepseek",
-            svgCode: DEEPSEEK_LOGO_SVG,
+            svgCode: DEEPSEEK_WHALE_SVG,
+            titleColor: { light: "#4D6BFE", dark: "#7C93FF" },
             mainLabel: "账户余额",
             symbol: "¥",
             mainValue: d.mainValue || "1.86",
@@ -236,7 +272,7 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
   }
 
   // 3. 小型组件 (Small Widget): 4 套精细化像素级模板
-  const sService = param || CONFIG.smallStyle
+  const sService = param || CONFIG.smallStyle || pickDefaultService()
   if (sService === "workbuddy") {
     return <WorkBuddySmallCard data={getWorkBuddyData()} />
   } else if (sService === "codex") {
