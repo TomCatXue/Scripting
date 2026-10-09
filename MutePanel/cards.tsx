@@ -25,6 +25,7 @@ import {
   MediaNexusData,
   MetricBalanceData,
   VpnNodeData,
+  DEEPSEEK_WHALE_SVG,
 } from "./types"
 
 // ── 品牌图标渲染（支持 SVG、UIImage、本地图片、SF Symbol）──
@@ -1032,32 +1033,39 @@ export function FuelPriceCard({ data, family }: { data: FuelCardData; family?: s
 // ═════════════════════════════════════════════════════════════════
 // 4. 10 段独立圆角药丸分段胶囊进度条 (Segmented Pill Bar)
 // ═════════════════════════════════════════════════════════════════
-export function SegmentedPillBar({
+export function SegmentedSquareBar({
   total = 10,
   filled = 8,
-  activeColor = { light: "#6366F1", dark: "#818CF8" },
-  height = 7,
+  pct,
+  activeColor,
+  height = 8,
 }: {
   total?: number
   filled?: number
+  pct?: number
   activeColor?: any
   height?: number
 }) {
-  const inactiveBorder = { light: "rgba(99,102,241,0.25)", dark: "rgba(129,140,248,0.2)" }
+  // 计算当前使用或剩余百分比并支持平滑变色（绿 -> 黄 -> 橙 -> 红）
+  const currentPct = pct !== undefined ? pct : Math.round((filled / total) * 100)
+  const squareColor = activeColor || remainColor(currentPct)
+  const effectiveFilled = pct !== undefined ? Math.max(0, Math.min(total, Math.round((pct / 100) * total))) : filled
+  const inactiveBorder = { light: "rgba(0,0,0,0.08)", dark: "rgba(255,255,255,0.12)" }
+
   return (
-    <HStack spacing={3.5} alignment="center" frame={{ maxWidth: "infinity", height }}>
+    <HStack spacing={3} alignment="center" frame={{ maxWidth: "infinity", height }}>
       {Array.from({ length: total }).map((_, i) => (
         <ZStack key={i} frame={{ maxWidth: "infinity", height }}>
-          {i < filled ? (
+          {i < effectiveFilled ? (
             <RoundedRectangle
-              fill={activeColor}
-              cornerRadius={height / 2}
+              fill={squareColor}
+              cornerRadius={2}
               frame={{ maxWidth: "infinity", height }}
             />
           ) : (
             <RoundedRectangle
               fill={inactiveBorder}
-              cornerRadius={height / 2}
+              cornerRadius={2}
               frame={{ maxWidth: "infinity", height }}
             />
           )}
@@ -1071,7 +1079,6 @@ export function SegmentedPillBar({
 // 5. 小型组件 4 套精细化卡片 (WorkBuddy / DeepSeek / Codex / Antigravity)
 // ═════════════════════════════════════════════════════════════════
 
-/** 模板 1: WorkBuddy 积分看板 */
 export function WorkBuddySmallCard({ data }: { data: MetricBalanceData }) {
   return (
     <VStack
@@ -1082,11 +1089,18 @@ export function WorkBuddySmallCard({ data }: { data: MetricBalanceData }) {
     >
       {/* 顶部 Header: Logo + WORKBUDDY. */}
       <HStack spacing={6} alignment="center" frame={{ height: 20 }}>
-        <Image
-          systemName="sparkles.square.filled.on.square"
-          font={{ name: "system", size: 16 }}
-          foregroundStyle={{ light: "#4F46E5", dark: "#818CF8" }}
-        />
+        {data.wordmarkImage ? (
+          <Image
+            image={data.wordmarkImage}
+            resizable={true}
+            frame={{ width: Math.round(16 * (248 / 57)), height: 16 }}
+          />
+        ) : (
+          <BrandHeaderIcon
+            iconPath={{ light: "assets/workbuddy.png", dark: "assets/workbuddy-dark.png" }}
+            size={18}
+          />
+        )}
         <Text font={13} fontWeight="heavy" foregroundStyle={THEME.text}>
           WORKBUDDY.
         </Text>
@@ -1160,13 +1174,12 @@ export function WorkBuddySmallCard({ data }: { data: MetricBalanceData }) {
 
       <Spacer minLength={10} />
 
-      {/* 底部：10 段独立圆角药丸胶囊进度条 */}
-      <SegmentedPillBar total={10} filled={8} activeColor={{ light: "#6366F1", dark: "#818CF8" }} height={7} />
+      {/* 底部：10 段独立圆角小方块进度条（随额度使用变色） */}
+      <SegmentedSquareBar total={10} pct={data.progressPct || 65} height={8} />
     </VStack>
   )
 }
 
-/** 模板 2: DeepSeek 用量看板 */
 export function DeepSeekSmallCard({ data }: { data: MetricBalanceData }) {
   return (
     <VStack
@@ -1177,10 +1190,10 @@ export function DeepSeekSmallCard({ data }: { data: MetricBalanceData }) {
     >
       {/* 顶部 Header: Logo + deepseek */}
       <HStack spacing={6} alignment="center" frame={{ height: 20 }}>
-        <Image
-          systemName="water.waves.and.arrow.up"
-          font={{ name: "system", size: 16 }}
-          foregroundStyle={{ light: "#1E60FF", dark: "#3B82F6" }}
+        <SVG
+          code={DEEPSEEK_WHALE_SVG}
+          resizable={true}
+          frame={{ width: 19, height: 19 }}
         />
         <Text font={14} fontWeight="heavy" foregroundStyle={THEME.text}>
           deepseek
@@ -1251,7 +1264,6 @@ export function DeepSeekSmallCard({ data }: { data: MetricBalanceData }) {
   )
 }
 
-/** 模板 3: Codex 配额看板 */
 export function CodexSmallCard({ data }: { data: DualQuotaData }) {
   return (
     <VStack
@@ -1262,7 +1274,11 @@ export function CodexSmallCard({ data }: { data: DualQuotaData }) {
     >
       {/* 顶部 Header: Logo + Codex */}
       <HStack spacing={6} alignment="center" frame={{ height: 20 }}>
-        <Image systemName="network" font={{ name: "system", size: 16 }} foregroundStyle={THEME.text} />
+        <BrandHeaderIcon
+          iconImage={data.iconImage}
+          iconPath={{ light: "assets/codex-light.png", dark: "assets/codex-dark.png" }}
+          size={18}
+        />
         <Text font={14} fontWeight="heavy" foregroundStyle={THEME.text}>Codex</Text>
         <Spacer />
         <RefreshButton />
@@ -1334,8 +1350,8 @@ export function CodexSmallCard({ data }: { data: DualQuotaData }) {
 
       <Spacer minLength={8} />
 
-      {/* 底部：10 段胶囊进度条 + 状态行 */}
-      <SegmentedPillBar total={10} filled={8} activeColor={{ light: "#6366F1", dark: "#818CF8" }} height={6} />
+      {/* 底部：10 段独立圆角小方块进度条（随额度使用变色） + 状态行 */}
+      <SegmentedSquareBar total={10} pct={data.item1?.pct ?? 83} height={7} />
       <Spacer minLength={5} />
       <HStack alignment="center">
         <Text font={9.5} foregroundStyle={THEME.dim} monospacedDigit>{`更新于 ${formatTime(data.updatedAt)}`}</Text>
@@ -1346,7 +1362,6 @@ export function CodexSmallCard({ data }: { data: DualQuotaData }) {
   )
 }
 
-/** 模板 4: Antigravity 冷却看板 */
 export function AntigravitySmallCard({ data }: { data: DualQuotaData }) {
   return (
     <VStack
@@ -1357,10 +1372,10 @@ export function AntigravitySmallCard({ data }: { data: DualQuotaData }) {
     >
       {/* 顶部 Header: Logo + Antigravity */}
       <HStack spacing={6} alignment="center" frame={{ height: 20 }}>
-        <Image
-          systemName="triangle.fill"
-          font={{ name: "system", size: 15 }}
-          foregroundStyle={{ light: "#0091FF", dark: "#38BDF8" }}
+        <BrandHeaderIcon
+          iconImage={data.iconImage}
+          iconPath={{ light: "assets/antigravity-light.png", dark: "assets/antigravity-dark.png" }}
+          size={18}
         />
         <Text font={14} fontWeight="heavy" foregroundStyle={THEME.text}>Antigravity</Text>
         <Spacer />
@@ -1690,7 +1705,7 @@ export function BentoLargeGridCard({
           progress={0.75}
         />
         <BentoCard
-          iconName="water.waves.and.arrow.up"
+          iconName="sparkles"
           iconColor={{ light: "#1E60FF", dark: "#3B82F6" }}
           title="DeepSeek 余额"
           mainValue={`¥${deepseek.mainValue || "1.86"}`}

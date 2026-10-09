@@ -102,32 +102,8 @@ const C_SECTION_HEADER = { light: "#4B5563", dark: "#9CA3AF" } as any
 
 const PROMO_DISMISSED_KEY = "dashboard_kit_promo_dismissed"
 
-export async function triggerPromo(force = false) {
-  try {
-    if (!force) {
-      const dismissed = Storage.get<boolean>(PROMO_DISMISSED_KEY)
-      if (dismissed) return
-    }
-
-    const res = await Dialog.actionSheet({
-      title: "欢迎使用 DashBoard-Kit 👋",
-      message:
-        "感谢使用 DashBoard-Kit！\n如果这个项目对你有帮助，欢迎前往 GitHub 点点关注、点个 Star ⭐️ 支持一下作者！",
-      actions: [
-        { label: "⭐️ 前往 GitHub 支持作者" },
-        { label: "不再提醒", destructive: true },
-      ],
-      cancelButton: true,
-    })
-
-    if (res === 0) {
-      try {
-        await Safari.openURL("https://github.com/SylvanRoe")
-      } catch {}
-    } else if (res === 1) {
-      Storage.set(PROMO_DISMISSED_KEY, true)
-    }
-  } catch {}
+export async function triggerPromo(_force = false) {
+  // 已彻底移除弹窗与支持作者提示
 }
 
 function OptionBrandIcon({ id }: { id: string }) {
@@ -879,7 +855,7 @@ export default function ConfigView() {
   useEffect(() => {
     // 首次进入设置面板后 500ms 轻量触发
     const timer = setTimeout(() => {
-      triggerPromo(false).catch(() => {})
+      // 已彻底移除欢迎弹窗
     }, 500)
     return () => clearTimeout(timer)
   }, [])
@@ -891,7 +867,7 @@ export default function ConfigView() {
   return (
     <NavigationStack>
       <List
-        navigationTitle="DashBoard-Kit"
+        navigationTitle="哑巴面板"
         navigationBarTitleDisplayMode="large"
         toolbar={{
           confirmationAction: (
@@ -1154,7 +1130,7 @@ export default function ConfigView() {
               如何在桌面添加不同组件？
             </Text>
             <Text font={12} foregroundStyle={C_SUBTITLE}>
-              1. 在手机桌面长按空白处 → 点击左上角「+」→ 找到「DashBoard-Kit」小组件。
+              1. 在手机桌面长按空白处 → 点击左上角「+」→ 找到「哑巴面板」小组件。
             </Text>
             <Text font={12} foregroundStyle={C_SUBTITLE}>
               2. 长按已添加的小组件，点击「编辑小组件」。
@@ -1243,18 +1219,18 @@ export default function ConfigView() {
 
                   let previewFamily = opt.defaultFamily as any
                   if (opt.id === "deepseek" || opt.id === "workbuddy" || opt.id === "codex" || opt.id === "antigravity") {
-                    const chosen = await gActionSheet(`请选择 ${opt.name} 预览尺寸`, [
-                      "小号组件 (参考图 1:1 像素级模板)",
-                      "中号组件 (通栏三次贝塞尔平滑波形图)",
+                    const chosen = await gActionSheet("请选择预览尺寸", [
+                      "小号组件",
+                      "中号组件",
                       "取消",
                     ])
                     if (!chosen || chosen === "取消") return
                     previewFamily = chosen.includes("中号") ? "systemMedium" : "systemSmall"
                   }
                   if (opt.id === "fuel") {
-                    const chosen = await gActionSheet("请选择油价小组件预览尺寸", [
-                      "小号组件 (Shell 贝壳高光)",
-                      "中号组件 (4联卡片极简行情)",
+                    const chosen = await gActionSheet("请选择预览尺寸", [
+                      "小号组件",
+                      "中号组件",
                       "取消",
                     ])
                     if (!chosen || chosen === "取消") return
@@ -1274,31 +1250,6 @@ export default function ConfigView() {
           ))}
         </Section>
 
-        {/* 开源与作者信息 */}
-        <Section>
-          <HStack spacing={10} alignment="center">
-            <Image
-              systemName="star.fill"
-              font={{ name: "system", size: 14 }}
-              foregroundStyle="#F59E0B"
-            />
-            <VStack alignment="leading" spacing={2}>
-              <Text font={14} fontWeight="medium">开源主页 · GitHub</Text>
-              <Text font={11} foregroundStyle={C_SUBTITLE}>关注作者 & 给项目点个 Star ⭐️</Text>
-            </VStack>
-            <Spacer />
-            <Button
-              title="去支持"
-              buttonStyle="borderedProminent"
-              controlSize="mini"
-              action={async () => {
-                try {
-                  await Safari.openURL("https://github.com/SylvanRoe")
-                } catch {}
-              }}
-            />
-          </HStack>
-        </Section>
       </List>
     </NavigationStack>
   )
