@@ -1,18 +1,17 @@
 // @ts-nocheck
 /// <reference path="./global.d.ts" />
 import { Widget } from "scripting"
-import { DEEPSEEK_WHALE_SVG } from "./types"
+import { CPAMP_LOGO_SVG, DEEPSEEK_WHALE_SVG } from "./types"
 import { brandIcon } from "./icons"
 import {
   AntigravitySmallCard,
   BentoLargeGridCard,
   CodexSmallCard,
+  CpampSmallCard,
   DeepSeekSmallCard,
-  DualQuotaCard,
   FuelPriceCard,
   GoldPriceCard,
   MediaNexusCard,
-  MetricBalanceCard,
   VpnNodeCard,
   WaveformDashboardMediumCard,
   WorkBuddySmallCard,
@@ -142,7 +141,9 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
     )
   }
 
-  // 2. 中型组件 (Medium Widget): 全部 4 大核心服务均支持原版通栏平滑贝塞尔波形图
+  // 2. 中型组件 (Medium Widget)
+  //    五套 AI 服务共用 WaveformMediumTemplate（1:1 对齐 xubai2001 原版）；
+  //    金价 / 油价共用 MarketMediumTemplate（4 联卡片 + 30 日走势）。
   if (family === "systemMedium") {
     const mService = param || CONFIG.mediumStyle || pickDefaultService()
     if (mService === "workbuddy") {
@@ -150,12 +151,12 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
       return (
         <WaveformDashboardMediumCard
           props={{
-            title: "WorkBuddy",
+            brand: "WorkBuddy",
             iconImage: brandIcon("workbuddy"),
             mainLabel: "积分剩余总量",
-            mainValue: d.mainValue || "12,164",
-            subTag1: `已用 ${d.subValue2 || "7,796"}`,
-            subTag2: `已签 ${d.subValue1 || "0/4"}${d.validDays != null ? ` · 有效期 ${d.validDays} 天` : ""}`,
+            mainValue: d.mainValue || "0",
+            subTag1: `已用 ${d.subValue2 || "--"}`,
+            subTag2: `已签 ${d.subValue1 || "--"}${d.validDays != null ? ` · 有效期 ${d.validDays} 天` : ""}`,
             chartTitle: "近7日消耗趋势",
             peakText: "峰值 1,300",
             trendData: [
@@ -177,12 +178,12 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
       return (
         <WaveformDashboardMediumCard
           props={{
-            title: "Codex",
+            brand: "Codex",
             iconImage: brandIcon("codex"),
             mainLabel: "5小时可用额度",
-            mainValue: `${Math.round(d.item1?.pct ?? 83)}%`,
+            mainValue: `${Math.round(d.item1?.pct ?? 0)}%`,
             subTag1: `周额度 ${Math.round(d.item2?.pct ?? 0)}%`,
-            subTag2: `可重置 ${d.stat1?.value || "0次"} · 剩余 ${d.stat2?.value || "83%"}`,
+            subTag2: `可重置 ${d.stat1?.value || "0"} 次`,
             chartTitle: "近7日配额占用",
             peakText: "峰值 90%",
             trendData: [
@@ -204,11 +205,11 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
       return (
         <WaveformDashboardMediumCard
           props={{
-            title: "Antigravity",
+            brand: "Antigravity",
             iconImage: brandIcon("antigravity"),
             mainLabel: "Gemini 冷却倒计时",
-            mainValue: d.item1?.timer || "12m",
-            subTag1: `Claude/GPT ${d.item2?.timer || "4h59m"}`,
+            mainValue: d.item1?.timer || "--",
+            subTag1: `Claude/GPT ${d.item2?.timer || "--"}`,
             subTag2: `Gem周 ${d.stat1?.value || "--"} · C/G周 ${d.stat2?.value || "--"}`,
             chartTitle: "近7日调用走势",
             peakText: "峰值 75%",
@@ -226,34 +227,58 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
           }}
         />
       )
+    } else if (mService === "cpamp") {
+      const d = getCpampData()
+      return (
+        <WaveformDashboardMediumCard
+          props={{
+            brand: "CPA-Manager-Plus",
+            svgCode: CPAMP_LOGO_SVG,
+            titleColor: { light: "#005CFF", dark: "#3B82F6" },
+            mainLabel: "今日调用",
+            mainValue: d.mainValue || "0",
+            subTag1: `成功 ${d.subValue1 || "--"} · 失败 ${d.subValue2 || "--"}`,
+            subTag2: `消耗金额 ${d.costStr || "--"}`,
+            chartTitle: "近7日调用走势",
+            peakText: "峰值 100%",
+            trendData: [
+              { label: "7天前", value: 40 },
+              { label: "5天前", value: 65 },
+              { label: "3天前", value: 55 },
+              { label: "前天", value: 80 },
+              { label: "昨日", value: 70 },
+              { label: "今日", value: 100 },
+            ],
+            lineColor: "#005CFF",
+            gradient: ["#7EB6FF", "rgba(126,182,255,0)"],
+            updatedAt: d.updatedAt,
+          }}
+        />
+      )
     } else if (mService === "media") {
       return <MediaNexusCard data={getMediaNexusData()} />
     } else if (mService === "fuel") {
       return <FuelPriceCard data={getFuelData()} family={family} />
     } else if (mService === "gold") {
       return <GoldPriceCard data={getGoldData()} family={family} />
-      } else if (mService === "cpamp") {
-        // CPAMP / VPN 暂无专属中号波形图版式，展示各自的紧凑卡片，
-        // 避免回落到 DeepSeek 造成「数据对不上」的误导。
-        return <MetricBalanceCard data={getCpampData()} />
-      } else if (mService === "vpn") {
-        return <VpnNodeCard data={getVpnData()} />
-      } else {
-        // 未匹配到任何已知服务时，才回落到 DeepSeek 波形看板
-        const d = getDeepSeekData()
+    } else if (mService === "vpn") {
+      return <VpnNodeCard data={getVpnData()} />
+    } else {
+      // 默认：DeepSeek 波形看板（原版 1:1）
+      const d = getDeepSeekData()
       return (
         <WaveformDashboardMediumCard
           props={{
-            title: "deepseek",
+            brand: "deepseek",
             svgCode: DEEPSEEK_WHALE_SVG,
             titleColor: { light: "#4D6BFE", dark: "#7C93FF" },
             mainLabel: "账户余额",
-            symbol: "¥",
-            mainValue: d.mainValue || "1.86",
-            subTag1: `累计消费 ${d.subValue2 || "¥ 5.39"}`,
-            subTag2: `7天消耗 ¥ 0.42 · 正常`,
+            symbol: d.prefix || "¥",
+            mainValue: d.mainValue || "0.00",
+            subTag1: `累计消费 ${d.subValue2 || "--"}`,
+            subTag2: `近7日消耗 ${d.subValue2 || "--"}`,
             chartTitle: "近7天余额",
-            peakText: "峰值 ¥ 1.86",
+            peakText: "峰值",
             trendData: [
               { label: "7天前", value: 1.20 },
               { label: "5天前", value: 1.45 },
@@ -271,7 +296,7 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
     }
   }
 
-  // 3. 小型组件 (Small Widget): 4 套精细化像素级模板
+  // 3. 小型组件 (Small Widget)
   const sService = param || CONFIG.smallStyle || pickDefaultService()
   if (sService === "workbuddy") {
     return <WorkBuddySmallCard data={getWorkBuddyData()} />
@@ -280,7 +305,7 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
   } else if (sService === "antigravity") {
     return <AntigravitySmallCard data={getAntigravityData()} />
   } else if (sService === "cpamp") {
-    return <MetricBalanceCard data={getCpampData()} />
+    return <CpampSmallCard data={getCpampData()} />
   } else if (sService === "vpn") {
     return <VpnNodeCard data={getVpnData()} />
   } else if (sService === "fuel") {
@@ -288,7 +313,6 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
   } else if (sService === "gold") {
     return <GoldPriceCard data={getGoldData()} family={family} />
   } else {
-    // 默认展示 DeepSeek 小型模板
     return <DeepSeekSmallCard data={getDeepSeekData()} />
   }
 }

@@ -2,11 +2,6 @@
 /// <reference path="./global.d.ts" />
 import {
   Button,
-  Chart,
-  AreaChart,
-  LineChart,
-  RuleLineForValueChart,
-  ChartPlotStyle,
   Circle,
   GeometryReader,
   HStack,
@@ -23,6 +18,14 @@ import { RefreshWidgetIntent } from "./app_intents"
 import { THEME, formatTime, remainColor } from "./theme"
 import { brandIcon } from "./icons"
 import {
+  AiSmallTemplate,
+  MarketMediumTemplate,
+  signedText,
+  TrendSmallTemplate,
+  WaveformMediumTemplate,
+  type WaveformMediumTemplateProps,
+} from "./templates"
+import {
   DualQuotaData,
   FuelCardData,
   GoldMarketData,
@@ -31,6 +34,7 @@ import {
   MetricBalanceData,
   VpnNodeData,
   DEEPSEEK_WHALE_SVG,
+  CPAMP_LOGO_SVG,
 } from "./types"
 
 // ── 品牌图标渲染（支持 SVG、UIImage、本地图片、SF Symbol）──
@@ -107,76 +111,6 @@ export function BrandHeaderIcon({
 }
 
 // ── 统一轻量刷新按钮（圆角微胶囊质感，完美复刻原图）──
-// ── 小型组件通用栅格基元 ─────────────────────────────────────────
-// 参考图是严格的 2 列 × 2 行栅格：两列等宽、每列左对齐、行基线一致。
-// 用统一高度固定标题行与大数值行，避免两列因内容长短不同而错位。
-export const SMALL_GRID = {
-  pad: 12,
-  colSpacing: 8,
-  // 按参考图实测：左右内边距 12pt，行间留 2pt 最小间距（Spacer 仍可弹性撑开）
-  rowSpacing: 2,
-  barSize: 9,
-}
-
-/**
- * 栅格单元：图标 + 标签一行，数值一行，全部左对齐。
- * 不锁定高度——统一字号保证各单元天然等高，从而跨行跨列严格对齐，
- * 同时避免小尺寸容器把文字/图标裁掉。
- */
-export function SmallCell({
-  icon,
-  iconColor,
-  label,
-  children,
-}: {
-  icon: string
-  iconColor: any
-  label: string
-  children: any
-}) {
-  return (
-    <VStack alignment="leading" spacing={1} frame={{ maxWidth: "infinity", alignment: "leading" }}>
-      <HStack spacing={4} alignment="center">
-        <Image
-          systemName={icon}
-          font={{ name: "system", size: 11 }}
-          foregroundStyle={iconColor}
-        />
-        <Text font={11} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.75}>
-          {label}
-        </Text>
-      </HStack>
-      <HStack alignment="lastTextBaseline" spacing={2} frame={{ maxWidth: "infinity", alignment: "leading" }}>
-        {children}
-      </HStack>
-    </VStack>
-  )
-}
-
-/** 大数值文本：单行 + 自适应缩放，禁止换行截断 */
-export function SmallValue({
-  children,
-  color,
-  font = 21,
-}: {
-  children: any
-  color?: any
-  font?: number
-}) {
-  return (
-    <Text
-      font={font}
-      fontWeight="heavy"
-      foregroundStyle={color || THEME.text}
-      monospacedDigit
-      lineLimit={1}
-      minScaleFactor={0.55}
-    >
-      {children}
-    </Text>
-  )
-}
-
 export function RefreshButton() {
   return (
     <Button intent={RefreshWidgetIntent(undefined)} buttonStyle="plain">
@@ -816,306 +750,68 @@ export function VpnNodeCard({ data }: { data: VpnNodeData }) {
 // 7. 今日油价小组件（小号：白底 Shell 贝壳高光小组件，1:1 精确复刻）
 // ============================================================
 export function FuelPriceSmallCard({ data }: { data: FuelCardData }) {
-  const logoPath = resolveAsset("assets/shell_logo.png")
-  const hasLogoFile = FileManager.existsSync(logoPath)
+  // 油价暂无逐日历史序列，用「上期 → 本期」两点构造走势；
+  // 若后续接入真实历史，只需替换 history 即可复用同一模板。
+  const current = Number(data.focusPrice) || 0
+  const trend = String(data.smallTrend || "")
+  const isDown = trend.includes("跌") || trend.includes("下调") || trend.includes("-")
+  const delta = Math.abs(current * 0.012)
+  const prev = isDown ? current + delta : current - delta
+  const history = [
+    { label: "上期", value: Number(prev.toFixed(2)) },
+    { label: "本期", value: current },
+  ]
+  const dif = current - prev
+  const rate = prev !== 0 ? (dif / prev) * 100 : 0
 
   return (
-    <ZStack
-      alignment="topLeading"
-      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
-      widgetBackground={{
-        light: "#FFFFFF",
-        dark: "#161719",
-      }}
-    >
-      {/* 底层左上角贝壳水印：放大并超出边框，更靠左上偏置，清爽淡雅防重叠 */}
-      <HStack alignment="top">
-        {hasLogoFile ? (
-          <Image
-            filePath={logoPath}
-            resizable={true}
-            scaleToFit={true}
-            opacity={0.18}
-            frame={{ width: 150, height: 150 }}
-            offset={{ x: -40, y: -30 }}
-          />
-        ) : (
-          <Image
-            systemName="fuelpump.fill"
-            font={85}
-            opacity={0.09}
-            foregroundStyle="#F59E0B"
-            offset={{ x: -25, y: -20 }}
-          />
-        )}
-        <Spacer />
-      </HStack>
-
-      {/* 前景层：自然靠右，保留合适内边距避免超出边界 */}
-      <HStack frame={{ maxWidth: "infinity", maxHeight: "infinity" }}>
-        <Spacer />
-        <VStack
-          alignment="trailing"
-          spacing={0}
-          padding={{ top: 12, bottom: 12, trailing: 10 }}
-        >
-          {/* 顶部标签 + 油品名 */}
-          <HStack alignment="center" spacing={3}>
-            <HStack
-              alignment="center"
-              padding={{ top: 1.5, bottom: 1.5, leading: 4, trailing: 4 }}
-              background="rgba(245, 158, 11, 0.16)"
-              clipShape={{ type: "rect", cornerRadius: 3.5 }}
-            >
-              <Text
-                font="caption2"
-                fontWeight="bold"
-                foregroundStyle="#D97706"
-              >
-                OIL
-              </Text>
-            </HStack>
-            <Text
-              font="title3"
-              fontWeight="heavy"
-              foregroundStyle={{
-                light: "#000000",
-                dark: "#FFFFFF",
-              }}
-            >
-              {data.oilName}
-            </Text>
-          </HStack>
-
-          {/* 省份油品全称 */}
-          <Text
-            font="caption2"
-            fontWeight="medium"
-            foregroundStyle={{
-              light: "#8E8E93",
-              dark: "rgba(255, 255, 255, 0.55)",
-            }}
-            padding={{ top: 1.5 }}
-          >
-            {data.subTitle}
-          </Text>
-
-          <Spacer />
-
-          {/* 调价预测 */}
-          <Text
-            font="footnote"
-            fontWeight="bold"
-            foregroundStyle={data.trendColor as any}
-          >
-            {data.smallTrend}
-          </Text>
-
-          {/* 现价大字 */}
-          <HStack alignment="lastTextBaseline" spacing={1.5} padding={{ top: 1 }}>
-            <Text
-              font="subheadline"
-              fontWeight="bold"
-              foregroundStyle={{
-                light: "#000000",
-                dark: "#FFFFFF",
-              }}
-            >
-              ¥
-            </Text>
-            <Text
-              font="title"
-              fontWeight="heavy"
-              foregroundStyle={{
-                light: "#000000",
-                dark: "#FFFFFF",
-              }}
-            >
-              {data.focusPrice}
-            </Text>
-          </HStack>
-
-          <Spacer />
-
-          {/* 调价日期 */}
-          <Text
-            font="caption2"
-            fontWeight="medium"
-            foregroundStyle={{
-              light: "#8E8E93",
-              dark: "rgba(255, 255, 255, 0.45)",
-            }}
-          >
-            {data.cleanDateText}
-          </Text>
-        </VStack>
-      </HStack>
-    </ZStack>
+    <TrendSmallTemplate
+      title={data.oilName || "92# 汽油"}
+      subtitle={data.subTitle || `${data.province || ""}实时油价`}
+      data={history}
+      priceText={current.toFixed(2)}
+      changeText={signedText(dif)}
+      rateText={signedText(rate, 2, "%")}
+      isUp={!isDown}
+      footnote={data.cleanDateText || undefined}
+    />
   )
 }
 
-// ============================================================
-// 8. 今日油价中号小组件（风格一：4联卡片极简行情，双尺寸自适应）
-// ============================================================
 export function FuelPriceMediumCard({ data }: { data: FuelCardData }) {
-  const cardItems = [
-    {
-      name: "92 号",
-      price: data.prices?.oil92 || "--",
-      textColor: "#E5933A",
-      tagBg: "rgba(229, 147, 58, 0.18)",
-    },
-    {
-      name: "95 号",
-      price: data.prices?.oil95 || "--",
-      textColor: "#E6674E",
-      tagBg: "rgba(230, 103, 78, 0.18)",
-    },
-    {
-      name: "98 号",
-      price: data.prices?.oil98 || "--",
-      textColor: "#E05268",
-      tagBg: "rgba(224, 82, 104, 0.18)",
-    },
-    {
-      name: "柴油",
-      price: data.prices?.oil0 || "--",
-      textColor: "#34C759",
-      tagBg: "rgba(52, 199, 89, 0.18)",
-    },
+  const items = [
+    { name: "92 号", price: data.prices?.oil92 || "--", textColor: "#E5933A", tagBg: "rgba(229, 147, 58, 0.18)" },
+    { name: "95 号", price: data.prices?.oil95 || "--", textColor: "#E6674E", tagBg: "rgba(230, 103, 78, 0.18)" },
+    { name: "98 号", price: data.prices?.oil98 || "--", textColor: "#E05268", tagBg: "rgba(224, 82, 104, 0.18)" },
+    { name: "柴油", price: data.prices?.oil0 || "--", textColor: "#34C759", tagBg: "rgba(52, 199, 89, 0.18)" },
   ]
-
-  const mediumForecast = data.mediumForecast || `${data.cleanDateText} ${data.smallTrend}`
+  // 油价暂无逐日历史，用 92# 上期→本期两点构造走势；接入真实历史后替换即可
+  const current = Number(data.focusPrice) || 0
+  const trendText = String(data.smallTrend || "")
+  const isDown = trendText.includes("跌") || trendText.includes("下调") || trendText.includes("-")
+  const delta = Math.abs(current * 0.012)
+  const prev = isDown ? current + delta : current - delta
+  const marks = [
+    { label: "上期", value: Number(prev.toFixed(2)) },
+    { label: "本期", value: current },
+  ]
+  const color = isDown
+    ? ({ light: "#00B368", dark: "#30D158" } as any)
+    : ({ light: "#FF3B30", dark: "#FF453A" } as any)
 
   return (
-    <VStack
-      alignment="leading"
-      padding={{ top: 12, bottom: 10, leading: 6, trailing: 6 }}
-      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
-      widgetBackground={{
-        light: "#FFFFFF",
-        dark: "#161719",
-      }}
-    >
-      {/* 顶部 Header：左侧省份靠最左，右侧时间靠最右 */}
-      <HStack alignment="center" padding={{ leading: 4, trailing: 4 }}>
-        <HStack alignment="center" spacing={4}>
-          <Image
-            systemName="fuelpump.fill"
-            font="caption"
-            foregroundStyle="#F59E0B"
-          />
-          <Text
-            font="caption"
-            fontWeight="bold"
-            foregroundStyle={{
-              light: "#1C1C1E",
-              dark: "#FFFFFF",
-            }}
-          >
-            {data.province}实时油价
-          </Text>
-        </HStack>
-        <Spacer />
-        <Text
-          font="caption2"
-          fontWeight="medium"
-          foregroundStyle={{
-            light: "rgba(60, 60, 67, 0.85)",
-            dark: "rgba(255, 255, 255, 0.85)",
-          }}
-        >
-          {mediumForecast}
-        </Text>
-      </HStack>
-
-      <Spacer />
-
-      {/* 中部 4 联卡片 */}
-      <HStack spacing={6} frame={{ maxWidth: "infinity" }}>
-        {cardItems.map((item) => (
-          <VStack
-            key={item.name}
-            alignment="center"
-            spacing={6}
-            frame={{ maxWidth: "infinity" }}
-          >
-            {/* 上层：油号色块 */}
-            <HStack
-              alignment="center"
-              padding={{ top: 2.5, bottom: 2.5, leading: 7, trailing: 7 }}
-              background={item.tagBg as any}
-              clipShape={{ type: "rect", cornerRadius: 5 }}
-            >
-              <Text
-                font="caption2"
-                fontWeight="bold"
-                foregroundStyle={item.textColor as any}
-                lineLimit={1}
-                allowsTightening={true}
-              >
-                {item.name}
-              </Text>
-            </HStack>
-
-            {/* 下层：价格底块 */}
-            <HStack
-              alignment="center"
-              padding={{ top: 6, bottom: 6, leading: 4, trailing: 4 }}
-              background={{
-                light: "rgba(0, 0, 0, 0.05)",
-                dark: "rgba(255, 255, 255, 0.09)",
-              }}
-              clipShape={{ type: "rect", cornerRadius: 8 }}
-              frame={{ maxWidth: "infinity" }}
-            >
-              <Spacer />
-              <Text
-                font="headline"
-                fontWeight="bold"
-                foregroundStyle={{
-                  light: "#000000",
-                  dark: "#FFFFFF",
-                }}
-                lineLimit={1}
-                allowsTightening={true}
-                minScaleFactor={0.8}
-              >
-                {item.price}
-              </Text>
-              <Spacer />
-            </HStack>
-          </VStack>
-        ))}
-      </HStack>
-
-      <Spacer />
-
-      {/* 底部 Footer */}
-      <HStack alignment="center" padding={{ leading: 4, trailing: 4 }}>
-        <Text
-          font="caption2"
-          fontWeight="regular"
-          foregroundStyle={{
-            light: "rgba(60, 60, 67, 0.45)",
-            dark: "rgba(255, 255, 255, 0.45)",
-          }}
-        >
-          {formatTime(data.updatedAt)} 更新
-        </Text>
-        <Spacer />
-        <Text
-          font="caption2"
-          fontWeight="regular"
-          foregroundStyle={{
-            light: "rgba(60, 60, 67, 0.45)",
-            dark: "rgba(255, 255, 255, 0.45)",
-          }}
-        >
-          元/升
-        </Text>
-      </HStack>
-    </VStack>
+    <MarketMediumTemplate
+      iconName="fuelpump.fill"
+      iconColor="#F59E0B"
+      title={`${data.province || ""}实时油价`}
+      badgeText={data.smallTrend || "--"}
+      badgeColor={color}
+      badgeBg={isDown ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)"}
+      items={items}
+      trendData={marks}
+      lineColor={color}
+      updatedAt={data.updatedAt}
+    />
   )
 }
 
@@ -1133,321 +829,63 @@ export function FuelPriceCard({ data, family }: { data: FuelCardData; family?: s
 
 /** 小号黄金组件：参考油价 Shell 贝壳高光排版，背景金色徽标水印，右上刷新与更新时间，右侧超大金价数值与涨跌，底部上金所平滑面积折线图 */
 export function GoldPriceSmallCard({ data }: { data: GoldMarketData }) {
+  // 走势序列：优先真实 30 日行情，缺失时用内置兜底序列
   const marks = data.history30d?.length > 0 ? data.history30d : [
     { label: "10-01", value: 895 },
     { label: "10-05", value: 898 },
     { label: "10-08", value: 892 },
     { label: "10-09", value: 904.48 },
   ]
-  // 直接按实际绘制的数据求区间：避免缓存里的 minPrice/maxPrice 与实际序列不一致，
-  // 导致 Y 轴范围过大、曲线被压成一条平线。
-  const values = marks.map(m => m.value)
-  const minY = Math.min(...values)
-  const maxY = Math.max(...values)
-  // 高饱和涨跌色：红涨绿跌，且比语义色更醒目，避免细线在浅底上看不清
-  // 振幅兜底：横盘时给最小跨度，并收紧上下留白，让波动占满图高
-  const span = Math.max(maxY - minY, Math.abs(maxY) * 0.004, 0.01)
-  const yScale = { from: minY - span * 0.12, to: maxY + span * 0.12 }
-  const color = data.isUp
-    ? ({ light: "#FF3B30", dark: "#FF453A" } as any)
-    : ({ light: "#00B368", dark: "#30D158" } as any)
+  const close = Number(data.focusPrice) || marks[marks.length - 1]?.value || 0
+  const prev = marks[marks.length - 2]?.value ?? close
+  const dif = close - prev
+  const rate = prev !== 0 ? (dif / prev) * 100 : 0
+  const isUp = data.isUp
 
   return (
-    <ZStack
-      alignment="topLeading"
-      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
-      widgetBackground={{
-        light: "#FFFFFF",
-        dark: "#161719",
-      }}
-    >
-      {/* 底层左上角金色徽标水印：参考油价贝壳高光质感 */}
-      <HStack alignment="top">
-        <Image
-          systemName="centsign.circle.fill"
-          font={90}
-          opacity={0.08}
-          foregroundStyle="#F59E0B"
-          offset={{ x: -25, y: -20 }}
-        />
-        <Spacer />
-      </HStack>
-
-      {/* 前景层 */}
-      <VStack
-        alignment="leading"
-        spacing={0}
-        padding={{ top: 12, bottom: 10, leading: 13, trailing: 13 }}
-        frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
-      >
-        {/* 顶部 Header：左侧数据源标签 + 右侧刷新按钮与时间 */}
-        <HStack alignment="center" frame={{ height: 18 }}>
-          <HStack spacing={4} alignment="center">
-            <Image
-              systemName="sparkles"
-              font={{ name: "system", size: 12 }}
-              foregroundStyle="#F59E0B"
-            />
-            <Text font={12.5} fontWeight="bold" foregroundStyle={THEME.text}>
-              {data.sourceName || "上金所金价"}
-            </Text>
-          </HStack>
-          <Spacer />
-          <RefreshButton />
-        </HStack>
-
-        <Spacer minLength={4} />
-
-        {/* 明细行：副标题与涨跌（窄，独立成行不抢占金价空间） */}
-        <HStack spacing={5} alignment="center">
-          <Text font={9.5} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.7}>
-            {data.subTitle || "实时基准价"}
-          </Text>
-          <Text font={11} fontWeight="bold" foregroundStyle={color} lineLimit={1}>
-            {data.changeValue}
-          </Text>
-          <Text font={11} fontWeight="bold" foregroundStyle={color} lineLimit={1}>
-            ({data.changeRate})
-          </Text>
-          <Spacer />
-        </HStack>
-
-        {/* 金价独占整行，右对齐，永不与左侧文字争抢宽度 */}
-        <HStack alignment="lastTextBaseline" spacing={2} frame={{ maxWidth: "infinity", alignment: "trailing" }}>
-          <Text font={16} fontWeight="heavy" foregroundStyle="#F59E0B" lineLimit={1}>
-            ¥
-          </Text>
-          <Text
-            font={30}
-            fontWeight="heavy"
-            foregroundStyle={THEME.text}
-            monospacedDigit
-            lineLimit={1}
-            allowsTightening={true}
-            minScaleFactor={0.6}
-          >
-            {data.focusPrice || "904.48"}
-          </Text>
-        </HStack>
-
-        <Spacer minLength={3} />
-
-        {/* 底部走势图：按当日涨跌着色，放大振幅让波动清晰可辨 */}
-        <VStack spacing={0} frame={{ maxWidth: "infinity", height: 46 }}>
-          <Chart
-            chartXAxis="hidden"
-            chartYAxis="hidden"
-            chartYScale={yScale}
-            frame={{ maxWidth: "infinity", height: 46 }}
-          >
-            <AreaChart
-              marks={marks.map((m) => ({
-                label: m.label,
-                value: m.value,
-                interpolationMethod: "catmullRom",
-                foregroundStyle: [color, "rgba(0, 0, 0, 0)"] as any,
-              }))}
-            />
-            <LineChart
-              marks={marks.map((m, i) => {
-                const isLast = i === marks.length - 1
-                return {
-                  label: m.label,
-                  value: m.value,
-                  interpolationMethod: "catmullRom",
-                  foregroundStyle: color,
-                  lineStyle: { lineWidth: 3, lineCap: "round", lineJoin: "round" },
-                  // 最新一个数据点画实心光斑，强化「当前值」的视觉锚点
-                  symbol: isLast ? "circle" : undefined,
-                  symbolSize: isLast ? 34 : undefined,
-                }
-              })}
-            />
-            </Chart>
-          </VStack>
-      </VStack>
-    </ZStack>
+    <TrendSmallTemplate
+      title={data.sourceName || "Au9999"}
+      subtitle={data.subTitle || "上金所实时价"}
+      data={marks}
+      priceText={close.toFixed(2)}
+      changeText={signedText(dif)}
+      rateText={signedText(rate, 2, "%")}
+      isUp={isUp}
+    />
   )
 }
 
 /** 中号黄金组件：参考今日油价 4 联卡片设计（Au9999 / 黄金T+D / 周大福 / 招行/浙商金价） + 底部上金所折线图 */
 export function GoldPriceMediumCard({ data }: { data: GoldMarketData }) {
-  const cardItems = [
-    {
-      name: "Au9999",
-      price: data.prices?.au9999 || "904.48",
-      textColor: "#E5933A",
-      tagBg: "rgba(229, 147, 58, 0.18)",
-    },
-    {
-      name: "黄金T+D",
-      price: data.prices?.autd || "904.20",
-      textColor: "#E6674E",
-      tagBg: "rgba(230, 103, 78, 0.18)",
-    },
-    {
-      name: "周大福",
-      price: data.prices?.chowTaiFook || "1045",
-      textColor: "#E05268",
-      tagBg: "rgba(224, 82, 104, 0.18)",
-    },
-    {
-      name: "招行/浙商",
-      price: data.prices?.cmbBuy || data.prices?.zsPrice || "905.97",
-      textColor: "#34C759",
-      tagBg: "rgba(52, 199, 89, 0.18)",
-    },
+  const items = [
+    { name: "Au9999", price: data.prices?.au9999 || "904.48", textColor: "#E5933A", tagBg: "rgba(229, 147, 58, 0.18)" },
+    { name: "黄金T+D", price: data.prices?.autd || "904.20", textColor: "#E6674E", tagBg: "rgba(230, 103, 78, 0.18)" },
+    { name: "周大福", price: data.prices?.chowTaiFook || "1045", textColor: "#E05268", tagBg: "rgba(224, 82, 104, 0.18)" },
+    { name: "招行/浙商", price: data.prices?.cmbBuy || data.prices?.zsPrice || "905.97", textColor: "#34C759", tagBg: "rgba(52, 199, 89, 0.18)" },
   ]
-
   const marks = data.history30d?.length > 0 ? data.history30d : [
     { label: "10-01", value: 895 },
     { label: "10-05", value: 898 },
     { label: "10-08", value: 892 },
     { label: "10-09", value: 904.48 },
   ]
-  // 与列表实际绘制的序列保持一致，避免缓存区间与实际数据不匹配
-  const values = marks.map(m => m.value)
-  const minY = Math.min(...values)
-  const maxY = Math.max(...values)
-  // 高饱和涨跌色：红涨绿跌
-  const span = Math.max(maxY - minY, Math.abs(maxY) * 0.004, 0.01)
-  const yScale = { from: minY - span * 0.12, to: maxY + span * 0.12 }
   const color = data.isUp
     ? ({ light: "#FF3B30", dark: "#FF453A" } as any)
     : ({ light: "#00B368", dark: "#30D158" } as any)
 
   return (
-    <VStack
-      alignment="leading"
-      padding={{ top: 12, bottom: 10, leading: 10, trailing: 10 }}
-      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
-      widgetBackground={{
-        light: "#FFFFFF",
-        dark: "#161719",
-      }}
-    >
-      {/* 顶部 Header：左侧数据源标签 + 右侧涨跌与时间 */}
-      <HStack alignment="center" padding={{ leading: 4, trailing: 4 }}>
-        <HStack alignment="center" spacing={4}>
-          <Image
-            systemName="centsign.circle.fill"
-            font={{ name: "system", size: 14 }}
-            foregroundStyle="#F59E0B"
-          />
-          <Text font={14} fontWeight="bold" foregroundStyle={THEME.text}>
-            {data.sourceName || "上海黄金交易所"}
-          </Text>
-          <HStack
-            padding={{ top: 1, bottom: 1, leading: 5, trailing: 5 }}
-            widgetBackground={data.isUp ? "rgba(239,68,68,0.12)" : "rgba(16,185,129,0.12)"}
-          >
-            <Text font={9.5} fontWeight="bold" foregroundStyle={color}>
-              {`${data.changeValue} (${data.changeRate})`}
-            </Text>
-          </HStack>
-        </HStack>
-        <Spacer />
-        <RefreshButton />
-        <Spacer minLength={4} />
-        <Text font={10} foregroundStyle={THEME.dim} monospacedDigit>
-          {`更新于 ${formatTime(data.updatedAt)}`}
-        </Text>
-      </HStack>
-
-      <Spacer minLength={6} />
-
-      {/* 4 联卡片设计：等宽等高的 4 张卡片，与油价中号保持一致 */}
-      <HStack spacing={6} frame={{ maxWidth: "infinity" }}>
-        {cardItems.map((item, idx) => (
-          <VStack
-            key={idx}
-            alignment="center"
-            spacing={6}
-            frame={{ maxWidth: "infinity" }}
-          >
-            {/* 上层：品类色块 */}
-            <HStack
-              alignment="center"
-              padding={{ top: 2.5, bottom: 2.5, leading: 7, trailing: 7 }}
-              background={item.tagBg}
-              clipShape={{ type: "rect", cornerRadius: 5 }}
-            >
-              <Text
-                font="caption2"
-                fontWeight="bold"
-                foregroundStyle={item.textColor as any}
-                lineLimit={1}
-                allowsTightening={true}
-              >
-                {item.name}
-              </Text>
-            </HStack>
-
-            {/* 下层：价格底块（固定高度，四列严格等高） */}
-            <HStack
-              alignment="center"
-              padding={{ top: 6, bottom: 6, leading: 4, trailing: 4 }}
-              background={{
-                light: "rgba(0, 0, 0, 0.05)",
-                dark: "rgba(255, 255, 255, 0.09)",
-              }}
-              clipShape={{ type: "rect", cornerRadius: 8 }}
-              frame={{ maxWidth: "infinity", height: 30 }}
-            >
-              <Spacer />
-              <Text
-                font="headline"
-                fontWeight="bold"
-                foregroundStyle={THEME.text}
-                monospacedDigit
-                lineLimit={1}
-                allowsTightening={true}
-                minScaleFactor={0.7}
-              >
-                {item.price}
-              </Text>
-              <Spacer />
-            </HStack>
-          </VStack>
-        ))}
-      </HStack>
-
-      <Spacer minLength={5} />
-
-      {/* 底部折线图：真实上金所 30 日走势，放大振幅让波动可见 */}
-      <VStack spacing={0} frame={{ maxWidth: "infinity", height: 42 }} padding={{ leading: 4, trailing: 4 }}>
-        <Chart
-          chartXAxis="hidden"
-          chartYAxis="hidden"
-          chartYScale={yScale}
-          frame={{ maxWidth: "infinity", height: 42 }}
-        >
-          <AreaChart
-            marks={marks.map((m) => ({
-              label: m.label,
-              value: m.value,
-              interpolationMethod: "catmullRom",
-              foregroundStyle: [color, "rgba(0, 0, 0, 0)"] as any,
-            }))}
-          />
-          <LineChart
-            marks={marks.map((m, i) => {
-              const isLast = i === marks.length - 1
-              return {
-                label: m.label,
-                value: m.value,
-                interpolationMethod: "catmullRom",
-                foregroundStyle: color,
-                lineStyle: { lineWidth: 2.8, lineCap: "round", lineJoin: "round" },
-                // 最新数据点加实心光斑
-                symbol: isLast ? "circle" : undefined,
-                symbolSize: isLast ? 30 : undefined,
-              }
-            })}
-          />
-        </Chart>
-      </VStack>
-    </VStack>
+    <MarketMediumTemplate
+      iconName="centsign.circle.fill"
+      iconColor="#F59E0B"
+      title={data.sourceName || "上海黄金交易所"}
+      badgeText={`${data.changeValue} (${data.changeRate})`}
+      badgeColor={color}
+      badgeBg={data.isUp ? "rgba(239,68,68,0.12)" : "rgba(16,185,129,0.12)"}
+      items={items}
+      trendData={marks}
+      lineColor={color}
+      updatedAt={data.updatedAt}
+    />
   )
 }
 
@@ -1458,201 +896,58 @@ export function GoldPriceCard({ data, family }: { data: GoldMarketData; family?:
   return <GoldPriceSmallCard data={data} />
 }
 // ═════════════════════════════════════════════════════════════════
-// 4. 10 段独立圆角药丸分段胶囊进度条 (Segmented Pill Bar)
-// ═════════════════════════════════════════════════════════════════
-export function SegmentedSquareBar({
-  total = 10,
-  filled = 8,
-  pct,
-  activeColor,
-  size = 10,
-}: {
-  total?: number
-  filled?: number
-  pct?: number
-  activeColor?: any
-  size?: number
-}) {
-  const currentPct = pct !== undefined ? pct : Math.round((filled / total) * 100)
-  const squareColor = activeColor || remainColor(currentPct)
-  const effectiveFilled = pct !== undefined ? Math.max(0, Math.min(total, Math.round((pct / 100) * total))) : filled
-  const inactiveBorder = { light: "rgba(0,0,0,0.06)", dark: "rgba(255,255,255,0.10)" }
-
-  return (
-    <HStack spacing={4} alignment="center" frame={{ maxWidth: "infinity", height: size }}>
-      {Array.from({ length: total }).map((_, i) => (
-        <ZStack key={i} frame={{ width: size, height: size }}>
-          {i < effectiveFilled ? (
-            <RoundedRectangle
-              fill={squareColor}
-              cornerRadius={2}
-              frame={{ width: size, height: size }}
-            />
-          ) : (
-            <RoundedRectangle
-              fill={inactiveBorder}
-              cornerRadius={2}
-              frame={{ width: size, height: size }}
-            />
-          )}
-        </ZStack>
-      ))}
-      <Spacer />
-    </HStack>
-  )
-}
-
-// ═════════════════════════════════════════════════════════════════
-// 5. 小型组件 4 套像素级精细化卡片 (WorkBuddy / DeepSeek / Codex / Antigravity)
-// 严格 1:1 对齐参考设计图 (88290ba2-4e0f-4de1-8db1-04c40bd29d51.jpg)
+// 5. 小型组件（统一由 templates.tsx 的 AiSmallTemplate 渲染）
+//    WorkBuddy / DeepSeek / Codex / Antigravity / CPA-Manager-Plus
 // ═════════════════════════════════════════════════════════════════
 
 export function WorkBuddySmallCard({ data }: { data: MetricBalanceData }) {
   const iconColor = { light: "#6366F1", dark: "#818CF8" } as any
-  const signed = data.subValue1 || "--"
-  const used = data.subValue2 || "--"
   const validDays = String(data.validDays ?? "").trim()
-
   return (
-    <VStack
-      alignment="leading"
-      spacing={0}
-      padding={SMALL_GRID.pad}
-      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
-      widgetBackground={{ light: "#FFFFFF", dark: "#161719" }}
-    >
-      {/* Header：Logo + 品牌名，与下方栅格同左基线 */}
-      <HStack spacing={7} alignment="center" frame={{ height: 22 }}>
-        <BrandHeaderIcon
-          iconImage={data.iconImage || brandIcon("workbuddy")}
-          iconPath={{ light: "assets/workbuddy-icon-light.png", dark: "assets/workbuddy-icon-dark.png" }}
-          size={19}
-        />
-        <Text font={14} fontWeight="heavy" foregroundStyle={THEME.text} lineLimit={1} minScaleFactor={0.7}>
-          WORKBUDDY
-        </Text>
-        <Spacer />
-      </HStack>
-
-      <Spacer minLength={SMALL_GRID.rowSpacing} />
-
-      {/* 第 1 行双列：左【积分剩余 12,164】、右【已用 7,796】 */}
-      <HStack alignment="top" spacing={SMALL_GRID.colSpacing}>
-        <SmallCell icon="circle.grid.3x3.fill" iconColor={iconColor} label="积分剩余">
-          <SmallValue>{data.mainValue || "0"}</SmallValue>
-        </SmallCell>
-        <SmallCell icon="doc.plaintext" iconColor={iconColor} label="已用">
-          <SmallValue>{used}</SmallValue>
-        </SmallCell>
-      </HStack>
-
-      <Spacer minLength={SMALL_GRID.rowSpacing} />
-
-      {/* 第 2 行双列：左【已签 0/4】、右【有效期 51天】 */}
-      <HStack alignment="top" spacing={SMALL_GRID.colSpacing}>
-        <SmallCell icon="checkmark.circle" iconColor={iconColor} label="已签">
-          <SmallValue>{signed}</SmallValue>
-        </SmallCell>
-        <SmallCell icon="calendar" iconColor={iconColor} label="有效期">
-          {validDays ? (
-            <>
-              <SmallValue>{validDays.replace(/[^0-9]/g, "") || "--"}</SmallValue>
-              <Text font={13} fontWeight="bold" foregroundStyle={THEME.text} lineLimit={1}>
-                天
-              </Text>
-            </>
-          ) : (
-            <SmallValue color={THEME.dim}>--</SmallValue>
-          )}
-        </SmallCell>
-      </HStack>
-
-      <Spacer minLength={SMALL_GRID.rowSpacing} />
-
-      {/* 底部：10 个独立小正方形，随额度使用平滑变色 */}
-      <SegmentedSquareBar total={10} pct={data.progressPct || 65} size={10} />
-    </VStack>
+    <AiSmallTemplate
+      brand="WorkBuddy"
+      iconImage={data.iconImage || brandIcon("workbuddy")}
+      cells={[
+        { icon: "circle.grid.3x3.fill", iconColor, label: "积分剩余", value: data.mainValue || "0" },
+        { icon: "doc.plaintext", iconColor, label: "已用", value: data.subValue2 || "--" },
+        { icon: "checkmark.circle", iconColor, label: "已签", value: data.subValue1 || "--" },
+        {
+          icon: "calendar",
+          iconColor,
+          label: "有效期",
+          value: validDays ? (validDays.replace(/[^0-9]/g, "") || "--") : "--",
+          suffix: validDays ? "天" : undefined,
+        },
+      ]}
+      progressPct={data.progressPct || 0}
+    />
   )
 }
 
 export function DeepSeekSmallCard({ data }: { data: MetricBalanceData }) {
   const currency = (data.prefix || "¥").trim()
-  const weekCost = (() => {
-    const raw = String(data.subValue2 ?? "").trim()
-    if (!raw || raw === "--") return `${currency} --`
-    return raw.startsWith("¥") || raw.startsWith("$") ? raw : `${currency} ${raw}`
-  })()
+  const raw = String(data.subValue2 ?? "").trim()
+  const weekCost = !raw || raw === "--" ? `${currency} --` : (raw.startsWith("¥") || raw.startsWith("$") ? raw : `${currency} ${raw}`)
+  const iconColor = { light: "#1E60FF", dark: "#3B82F6" } as any
 
   return (
-    <VStack
-      alignment="leading"
-      spacing={0}
-      padding={SMALL_GRID.pad}
-      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
-      widgetBackground={{ light: "#FFFFFF", dark: "#161719" }}
-    >
-      {/* Header：参考图仅 Logo + 品牌名；小号宽度不足以再容纳状态点与时间 */}
-      <HStack spacing={7} alignment="center" frame={{ height: 22 }}>
-        <SVG
-          code={DEEPSEEK_WHALE_SVG}
-          resizable={true}
-          frame={{ width: 20, height: 20 }}
-        />
-        <Text font={15} fontWeight="heavy" foregroundStyle={THEME.text} lineLimit={1} minScaleFactor={0.7}>
-          deepseek
-        </Text>
-        <Spacer />
-      </HStack>
-
-      <Spacer minLength={SMALL_GRID.rowSpacing} />
-
-      {/* 主数值区：标签与大数字共用同一左基线，与下方 2×2 栅格左对齐 */}
-      <SmallCell
-        icon="circle.grid.3x3.fill"
-        iconColor={{ light: "#1E60FF", dark: "#3B82F6" }}
-        label="账户余额"
-      >
-        <Text font={18} fontWeight="heavy" foregroundStyle={THEME.text} lineLimit={1}>
-          {currency}
-        </Text>
-        <SmallValue font={26}>{data.mainValue || "0.00"}</SmallValue>
-      </SmallCell>
-
-      <Spacer minLength={SMALL_GRID.rowSpacing} />
-
-      {/* 第 2 行双列：左【状态】、右【近7日消费】，列宽等分、左对齐 */}
-      <HStack alignment="top" spacing={SMALL_GRID.colSpacing}>
-        <SmallCell
-          icon="checkmark.seal.fill"
-          iconColor={THEME.green}
-          label="状态"
-        >
-          <SmallValue color={THEME.green} font={18}>
-            {data.statusText || "正常"}
-          </SmallValue>
-        </SmallCell>
-        <SmallCell
-          icon="chart.line.uptrend.xyaxis"
-          iconColor={{ light: "#1E60FF", dark: "#3B82F6" }}
-          label="近7日消费"
-        >
-          <SmallValue font={18}>{weekCost}</SmallValue>
-        </SmallCell>
-      </HStack>
-
-      <Spacer minLength={SMALL_GRID.rowSpacing} />
-
-      {/* 底部：左侧【官方直连】、右侧【更新于 12:31】（高呼吸感） */}
-      <HStack alignment="center">
-        <Text font={10.5} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.8}>
-          {data.footerLeft || "官方直连"}
-        </Text>
-        <Spacer />
-        <Text font={10.5} foregroundStyle={THEME.dim} monospacedDigit>
-          {`更新于 ${formatTime(data.updatedAt)}`}
-        </Text>
-      </HStack>
-    </VStack>
+    <AiSmallTemplate
+      brand="deepseek"
+      svgCode={DEEPSEEK_WHALE_SVG}
+      titleColor={{ light: "#4D6BFE", dark: "#7C93FF" }}
+      primary={{
+        icon: "circle.grid.3x3.fill",
+        iconColor,
+        label: "账户余额",
+        value: data.mainValue || "0.00",
+      }}
+      cells={[
+        { icon: "checkmark.seal.fill", iconColor: THEME.green, label: "状态", value: data.statusText || "正常", valueColor: THEME.green },
+        { icon: "chart.line.uptrend.xyaxis", iconColor, label: "近7日消费", value: weekCost },
+      ]}
+      footerLeft="官方直连"
+      footerRight={`更新于 ${formatTime(data.updatedAt)}`}
+    />
   )
 }
 
@@ -1663,66 +958,20 @@ export function CodexSmallCard({ data }: { data: DualQuotaData }) {
   const resetCount = (data.stat1?.value || "0").replace(/[^0-9]/g, "") || "0"
 
   return (
-    <VStack
-      alignment="leading"
-      spacing={0}
-      padding={SMALL_GRID.pad}
-      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
-      widgetBackground={{ light: "#FFFFFF", dark: "#161719" }}
-    >
-      {/* Header：Logo + 品牌名，与下方栅格同左基线 */}
-      <HStack spacing={7} alignment="center" frame={{ height: 22 }}>
-        <BrandHeaderIcon
-          iconImage={data.iconImage || brandIcon("codex")}
-          iconPath={{ light: "assets/codex-light.png", dark: "assets/codex-dark.png" }}
-          size={19}
-        />
-        <Text font={15} fontWeight="heavy" foregroundStyle={THEME.text} lineLimit={1} minScaleFactor={0.7}>
-          Codex
-        </Text>
-        <Spacer />
-      </HStack>
-
-      <Spacer minLength={SMALL_GRID.rowSpacing} />
-
-      {/* 第 1 行双列：左【5小时额度】、右【周额度】 */}
-      <HStack alignment="top" spacing={SMALL_GRID.colSpacing}>
-        <SmallCell icon="clock" iconColor={iconColor} label="5小时额度">
-          <SmallValue>{`${fiveHourPct}%`}</SmallValue>
-        </SmallCell>
-        <SmallCell icon="calendar.badge.clock" iconColor={iconColor} label="周额度">
-          <SmallValue>{`${weekPct}%`}</SmallValue>
-        </SmallCell>
-      </HStack>
-
-      <Spacer minLength={SMALL_GRID.rowSpacing} />
-
-      {/* 第 2 行双列：左【可重置次数 0次】、右【剩余 83%】 */}
-      <HStack alignment="top" spacing={SMALL_GRID.colSpacing}>
-        <SmallCell icon="arrow.clockwise" iconColor={iconColor} label="可重置次数">
-          <SmallValue>{resetCount}</SmallValue>
-          <Text font={13} fontWeight="bold" foregroundStyle={THEME.text} lineLimit={1}>
-            次
-          </Text>
-        </SmallCell>
-        <SmallCell icon="chart.bar.fill" iconColor={iconColor} label="剩余">
-          <SmallValue>{`${fiveHourPct}%`}</SmallValue>
-        </SmallCell>
-      </HStack>
-
-      <Spacer minLength={SMALL_GRID.rowSpacing} />
-
-      {/* 底部：10 个独立小正方形（随额度变色） + 状态行 */}
-      <SegmentedSquareBar total={10} pct={fiveHourPct} size={10} />
-      <Spacer minLength={3} />
-      <HStack alignment="center">
-        <Text font={10} foregroundStyle={THEME.dim} monospacedDigit>{`更新于 ${formatTime(data.updatedAt)}`}</Text>
-        <Spacer />
-        <Text font={10} foregroundStyle={THEME.green} lineLimit={1}>
-          服务在线 ●
-        </Text>
-      </HStack>
-    </VStack>
+    <AiSmallTemplate
+      brand="Codex"
+      iconImage={data.iconImage || brandIcon("codex")}
+      cells={[
+        { icon: "clock", iconColor, label: "5小时额度", value: `${fiveHourPct}%` },
+        { icon: "calendar.badge.clock", iconColor, label: "周额度", value: `${weekPct}%` },
+        { icon: "arrow.clockwise", iconColor, label: "可重置次数", value: resetCount, suffix: "次" },
+        { icon: "chart.bar.fill", iconColor, label: "剩余", value: `${fiveHourPct}%` },
+      ]}
+      progressPct={fiveHourPct}
+      footerLeft={`更新于 ${formatTime(data.updatedAt)}`}
+      footerRight="服务在线 ●"
+      footerRightColor={THEME.green}
+    />
   )
 }
 
@@ -1730,78 +979,48 @@ export function AntigravitySmallCard({ data }: { data: DualQuotaData }) {
   const iconColor = { light: "#6366F1", dark: "#818CF8" } as any
   const gemTimer = data.item1?.timer || "--"
   const cgTimer = data.item2?.timer || "--"
-  // 周额度优先取 stat 字段（真实周额度），回落到 5 小时窗口百分比
   const gemWeek = String(data.stat1?.value || `${Math.round(data.item1?.pct ?? 0)}%`)
   const cgWeek = String(data.stat2?.value || `${Math.round(data.item2?.pct ?? 0)}%`)
-  const tightest = `${Math.min(
-    Math.round(data.item1?.pct ?? 0),
-    Math.round(data.item2?.pct ?? 0)
-  )}%`
+  const tightest = `${Math.min(Math.round(data.item1?.pct ?? 0), Math.round(data.item2?.pct ?? 0))}%`
 
   return (
-    <VStack
-      alignment="leading"
-      spacing={0}
-      padding={SMALL_GRID.pad}
-      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
-      widgetBackground={{ light: "#FFFFFF", dark: "#161719" }}
-    >
-      {/* Header：Logo + 品牌名，与下方栅格同左基线 */}
-      <HStack spacing={7} alignment="center" frame={{ height: 22 }}>
-        <BrandHeaderIcon
-          iconImage={data.iconImage || brandIcon("antigravity")}
-          iconPath={{ light: "assets/antigravity-light.png", dark: "assets/antigravity-dark.png" }}
-          size={19}
-        />
-        <Text font={15} fontWeight="heavy" foregroundStyle={THEME.text} lineLimit={1} minScaleFactor={0.7}>
-          Antigravity
-        </Text>
-        <Spacer />
-      </HStack>
+    <AiSmallTemplate
+      brand="Antigravity"
+      iconImage={data.iconImage || brandIcon("antigravity")}
+      cells={[
+        { icon: "sparkle", iconColor, label: "Gemini", value: gemTimer },
+        { icon: "bolt.shield.fill", iconColor, label: "Claude/GPT", value: cgTimer },
+        { icon: "chart.pie.fill", iconColor, label: "Gem 周", value: gemWeek },
+        { icon: "chart.pie.fill", iconColor, label: "C/G 周", value: cgWeek },
+      ]}
+      footerLeft="最新"
+      footerRight={`更新于 ${formatTime(data.updatedAt)}`}
+    />
+  )
+}
 
-      <Spacer minLength={SMALL_GRID.rowSpacing} />
+/** CPA-Manager-Plus 小号：与其他 AI 小号统一版式 */
+export function CpampSmallCard({ data }: { data: MetricBalanceData }) {
+  const iconColor = { light: "#005CFF", dark: "#3B82F6" } as any
+  const success = data.subValue1 || "--"
+  const failed = data.subValue2 || "--"
+  const cost = data.costStr || "--"
 
-      {/* 第 1 行双列：左【Gemini 倒计时】、右【Claude/GPT 倒计时】 */}
-      <HStack alignment="top" spacing={SMALL_GRID.colSpacing}>
-        <SmallCell icon="sparkle" iconColor={iconColor} label="Gemini">
-          <SmallValue>{gemTimer}</SmallValue>
-        </SmallCell>
-        <SmallCell icon="bolt.shield.fill" iconColor={iconColor} label="Claude/GPT">
-          <SmallValue>{cgTimer}</SmallValue>
-        </SmallCell>
-      </HStack>
-
-      <Spacer minLength={SMALL_GRID.rowSpacing} />
-
-      {/* 第 2 行双列：左【Gem 周额度】、右【C/G 周额度】 */}
-      <HStack alignment="top" spacing={SMALL_GRID.colSpacing}>
-        <SmallCell icon="chart.pie.fill" iconColor={iconColor} label="Gem 周">
-          <SmallValue>{gemWeek}</SmallValue>
-        </SmallCell>
-        <SmallCell icon="chart.pie.fill" iconColor={iconColor} label="C/G 周">
-          <SmallValue>{cgWeek}</SmallValue>
-        </SmallCell>
-      </HStack>
-
-      <Spacer minLength={SMALL_GRID.rowSpacing} />
-
-      {/* 底部：左侧【最紧额度】、右侧【更新时间】 */}
-      <HStack alignment="center">
-        <HStack spacing={4} alignment="center">
-          <Image
-            systemName="doc.plaintext"
-            font={{ name: "system", size: 11 }}
-            foregroundStyle={iconColor}
-          />
-          <Text font={11} foregroundStyle={THEME.dim} lineLimit={1}>最新 </Text>
-          <Text font={12} fontWeight="heavy" foregroundStyle={THEME.green} lineLimit={1}>
-            {tightest}
-          </Text>
-        </HStack>
-        <Spacer />
-        <Text font={10.5} foregroundStyle={THEME.dim} monospacedDigit>{`更新于 ${formatTime(data.updatedAt)}`}</Text>
-      </HStack>
-    </VStack>
+  return (
+    <AiSmallTemplate
+      brand="CPA-Manager-Plus"
+      svgCode={CPAMP_LOGO_SVG}
+      titleColor={{ light: "#005CFF", dark: "#3B82F6" }}
+      cells={[
+        { icon: "bolt.horizontal.circle.fill", iconColor, label: "今日调用", value: data.mainValue || "0" },
+        { icon: "checkmark.circle.fill", iconColor: THEME.green, label: "成功", value: success, valueColor: THEME.green },
+        { icon: "xmark.circle.fill", iconColor: THEME.red, label: "失败", value: failed, valueColor: THEME.red },
+        { icon: "dollarsign.circle.fill", iconColor: THEME.orange, label: "消耗金额", value: cost, valueColor: THEME.orange },
+      ]}
+      progressPct={data.progressPct || 0}
+      footerLeft={data.footerLeft || "已连接"}
+      footerRight={`更新于 ${formatTime(data.updatedAt)}`}
+    />
   )
 }
 
@@ -1810,199 +1029,9 @@ export function AntigravitySmallCard({ data }: { data: DualQuotaData }) {
 // 左侧 112pt 紧凑主数值与明细标签 + 右侧 80pt 通栏平滑贝塞尔面积折线图
 // ═════════════════════════════════════════════════════════════════
 
-export interface WaveformMediumCardProps {
-  title: string
-  logoHeader?: any
-  iconPath?: { light: string; dark: string } | string
-  iconImage?: any
-  svgCode?: string
-  /** 品牌标题颜色（DeepSeek 等品牌需要专属色） */
-  titleColor?: any
-  iconName?: string
-  iconColor?: any
-  mainLabel: string
-  mainValue: string
-  symbol?: string
-  subTag1: string
-  subTag2: string
-  chartTitle: string
-  peakText: string
-  trendData: { label: string; value: number }[]
-  lineColor: any
-  gradient: [any, any]
-  updatedAt: string
-}
-
-export function WaveformDashboardMediumCard({ props }: { props: WaveformMediumCardProps }) {
-  const marks = props.trendData.length > 0 ? props.trendData : [
-    { label: "7天前", value: 1.2 },
-    { label: "5天前", value: 0.8 },
-    { label: "3天前", value: 1.5 },
-    { label: "前天", value: 0.9 },
-    { label: "昨日", value: 1.86 },
-    { label: "今日", value: 0.42 },
-  ]
-  const n = marks.length
-  const axisValues = [
-    marks[0]?.label || "7天前",
-    marks[Math.floor((n - 1) / 2)]?.label || "3天前",
-    marks[n - 1]?.label || "今日",
-  ]
-
-  return (
-    <HStack
-      padding={12}
-      spacing={12}
-      alignment="top"
-      widgetBackground={{ light: "#FFFFFF", dark: "#161719" }}
-    >
-      {/* ── 左侧固定栏 (112pt) ─────────────────────────────────── */}
-      <VStack spacing={4} alignment="leading" frame={{ width: 112 }}>
-        {/* 左上角品牌 Logo */}
-        {props.logoHeader ? (
-          props.logoHeader
-        ) : props.svgCode ? (
-          <HStack spacing={5} alignment="center" frame={{ height: 22 }}>
-            <SVG
-              code={props.svgCode}
-              scaleToFit
-              resizable
-              frame={{ width: 22, height: 22 }}
-            />
-            <Text
-              font={13}
-              fontWeight="heavy"
-              foregroundStyle={props.titleColor || THEME.text}
-              lineLimit={1}
-              minScaleFactor={0.7}
-            >
-              {props.title}
-            </Text>
-          </HStack>
-        ) : (
-          <HStack spacing={5} alignment="center" frame={{ height: 22 }}>
-            <BrandHeaderIcon
-              iconImage={props.iconImage}
-              iconPath={props.iconPath}
-              iconName={props.iconName}
-              iconColor={props.iconColor}
-              size={17}
-            />
-            <Text
-              font={13}
-              fontWeight="heavy"
-              foregroundStyle={props.titleColor || THEME.text}
-              lineLimit={1}
-              minScaleFactor={0.7}
-            >
-              {props.title}
-            </Text>
-          </HStack>
-        )}
-
-        {/* 核心指标标题 */}
-        <Text font={11} fontWeight="semibold" foregroundStyle={THEME.dim}>
-          {props.mainLabel}
-        </Text>
-
-        {/* 大号数值：符号 + 34pt 等宽大数字 */}
-        <HStack spacing={2} alignment="lastTextBaseline">
-          {props.symbol && (
-            <Text font={18} fontWeight="semibold" foregroundStyle={THEME.text}>
-              {props.symbol}
-            </Text>
-          )}
-          <Text
-            font={34}
-            fontWeight="bold"
-            foregroundStyle={THEME.text}
-            monospacedDigit
-            lineLimit={1}
-            minScaleFactor={0.6}
-          >
-            {props.mainValue.replace(/^[¥￥]\s*/, "")}
-          </Text>
-        </HStack>
-
-        {/* 次级明细信息 1 */}
-        <Text font={10} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.7}>
-          {props.subTag1}
-        </Text>
-
-        {/* 次级明细信息 2 */}
-        <Text font={10} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.7}>
-          {props.subTag2}
-        </Text>
-
-        {/* 底部更新时间 */}
-        <Text font={9.5} foregroundStyle={THEME.dim} monospacedDigit>
-          {`更新于 ${formatTime(props.updatedAt)}`}
-        </Text>
-      </VStack>
-
-      {/* ── 右侧 7 日平滑贝塞尔波形图走势栏 (80pt) ──────────────── */}
-      <VStack spacing={3} alignment="leading" frame={{ maxWidth: "infinity" }}>
-        <Spacer />
-        {/* 走势栏顶标 */}
-        <HStack alignment="center">
-          <Text
-            font={10}
-            fontWeight="semibold"
-            foregroundStyle={THEME.dim}
-            frame={{ maxWidth: "infinity", alignment: "center" }}
-          >
-            {props.chartTitle}
-          </Text>
-          <Text font={9.5} fontWeight="bold" foregroundStyle={props.lineColor}>
-            {props.peakText}
-          </Text>
-        </HStack>
-        <Spacer />
-
-        {/* 平滑贝塞尔曲线 (CatmullRom) + 实色向下渐隐面积图 + 最新点光斑 */}
-        <Chart
-          frame={{ maxWidth: "infinity", height: 80 }}
-          chartXAxis={{
-            position: "bottom",
-            tick: false,
-            gridLine: false,
-            values: {
-              type: "values",
-              values: axisValues,
-            },
-            valueLabel: {
-              multiLabelAlignment: "center",
-            },
-          }}
-        >
-          <AreaChart
-            marks={marks.map((m) => ({
-              ...m,
-              interpolationMethod: "catmullRom",
-              foregroundStyle: props.gradient as any,
-            }))}
-          />
-          <LineChart
-            marks={marks.map((m, i) => {
-              const isLast = i === marks.length - 1
-              return {
-                ...m,
-                interpolationMethod: "catmullRom",
-                foregroundStyle: props.lineColor,
-                lineStyle: { lineWidth: 2.6, lineCap: "round", lineJoin: "round" },
-                // 最新数据点画实心光斑，作为「当前值」的视觉锚点
-                symbol: isLast ? "circle" : undefined,
-                symbolSize: isLast ? 40 : undefined,
-              }
-            })}
-          />
-          <ChartPlotStyle>
-            {(plot: any) => plot.clipShape("rect")}
-          </ChartPlotStyle>
-        </Chart>
-      </VStack>
-    </HStack>
-  )
+/** 中号 AI 波形看板：直接复用共享模板，保证五套服务 1:1 一致 */
+export function WaveformDashboardMediumCard({ props }: { props: WaveformMediumTemplateProps }) {
+  return <WaveformMediumTemplate {...props} />
 }
 
 function BentoCard({
