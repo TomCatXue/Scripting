@@ -60,6 +60,8 @@ export interface MetricBalanceData {
   mainValue: string
   prefix?: string
   costStr?: string
+  /** 账户累计消费（已格式化，含货币符号），用于中号卡片展示 */
+  totalCostText?: string
   progressPct: number
   subLabel1: string
   subValue1: string
@@ -222,6 +224,12 @@ export interface FuelCardData {
   trendType: "down" | "up" | "flat"
   trendColor: string
   rawForecast?: string
+  /**
+   * 价格历史序列（按调价周期累积，用于中号走势图）。
+   * 每次刷新若价格发生变化就追加一个采样点，最多保留 30 个。
+   * 无历史时为空数组，模板会自动降级为「暂无历史走势数据」。
+   */
+  priceHistory?: { label: string; value: number }[]
   updatedAt: string
 }
 
@@ -258,7 +266,7 @@ export const WIDGET_OPTIONS = [
   { id: "vpn", name: "VPN 节点", desc: "小号出口 IP 与风险检测看板", defaultFamily: "systemSmall" },
   { id: "fuel", name: "今日油价", desc: "自适应油价行情（小号 Shell 高光 / 中号 4联卡片）", defaultFamily: "systemSmall" },
   { id: "gold", name: "黄金行情", desc: "上海黄金交易所 Au9999 与品牌金参考价", defaultFamily: "systemMedium" },
-  { id: "bento", name: "2x2 Bento 大号看板", desc: "金价/DeepSeek/汇率/油价 聚合微应用大矩阵", defaultFamily: "systemLarge" },
+  { id: "bento", name: "BENTO大号看板", desc: "金价/DeepSeek/汇率/油价 可自定义聚合微应用栅格", defaultFamily: "systemLarge" },
 ]
 
 // ── Au9999 + 品牌金行情数据模型 ─────────────────────────
@@ -316,7 +324,7 @@ export const DEFAULT_GOLD: GoldMarketData = {
   updatedAt: new Date().toISOString(),
 }
 
-// ── 辅助行情数据模型 (用于 2x2 Bento) ─────────────────────────
+// ── 辅助行情数据模型 (用于 BENTO 大号看板) ────────────────────
 export interface AuxiliaryMarketData {
   fx: {
     pair: string

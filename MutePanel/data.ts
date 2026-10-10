@@ -473,6 +473,20 @@ export async function refreshDeepSeekData(): Promise<MetricBalanceData | null> {
     const total = balance + bonusBalance
     const cur = currency === "USD" ? "$" : "¥"
 
+    // 累计消费：DeepSeek summary 的 biz_data.total_costs[].amount 是账户历史总消费。
+    // 之前只取了 currency 字段而丢弃了金额，导致「累计消费」永远显示不出来。
+    const totalCost = (() => {
+      let sum = 0
+      for (const c of costs) {
+        const v =
+          typeof c?.amount === "string"
+            ? parseFloat(c.amount)
+            : Number(c?.amount ?? c?.cost ?? c?.total ?? 0)
+        if (Number.isFinite(v)) sum += v
+      }
+      return sum
+    })()
+
     // 2. 尝试获取近 7 天消费用于计算百分比
     let weekCost = 0
     try {
@@ -517,6 +531,7 @@ export async function refreshDeepSeekData(): Promise<MetricBalanceData | null> {
       subValue1: "正常",
       subLabel2: "近7日消费",
       subValue2: `${cur}${weekCost.toFixed(2)}`,
+      totalCostText: `${cur}${totalCost.toFixed(2)}`,
       footerLeft: "官方直连",
       updatedAt: new Date().toISOString(),
     }
@@ -1868,6 +1883,46 @@ export async function refreshFuelData(): Promise<FuelCardData | null> {
       mediumForecast = `${cleanDate}调价 ${arrow}`
     }
 
+    // ── 累积价格历史 ──────────────────────────────────────────────
+    // 油价没有逐日公开历史接口，因此按「每次刷新采样」累积：
+    // 价格变化或跨天时追加一个点，最多保留 30 个，用于中号走势图。
+    const prevHistory = (() => {
+      try {
+        const cached =
+          Storage.get<FuelCardData>(FUEL_CACHE_KEY, { shared: true }) ||
+          Storage.get<FuelCardData>(FUEL_CACHE_KEY)
+        if (cached && Array.isArray(cached.priceHistory)) return cached.priceHistory
+        if (FileManager.existsSync(FUEL_FILE_CACHE_PATH)) {
+          const raw = FileManager.readAsStringSync(FUEL_FILE_CACHE_PATH)
+          const parsed = JSON.parse(raw)
+          if (parsed && Array.isArray(parsed.priceHistory)) return parsed.priceHistory
+        }
+      } catch {}
+      return [] as { label: string; value: number }[]
+    })()
+
+    const focusNum = Number(focusPrice)
+    const now = new Date()
+    const todayLabel = `${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
+    const history = Array.isArray(prevHistory)
+      ? prevHistory.filter((h: any) => h && Number.isFinite(Number(h.value)))
+      : []
+    const lastPoint = history.length > 0 ? history[history.length - 1] : null
+    const lastValue = lastPoint ? Number(lastPoint.value) : NaN
+    const priceChanged = !Number.isFinite(lastValue) || Math.abs(lastValue - focusNum) >= 0.005
+    const dayChanged = !lastPoint || lastPoint.label !== todayLabel
+
+    if (Number.isFinite(focusNum) && focusNum > 0) {
+      if (priceChanged) {
+        // 价格变动：追加新采样点
+        history.push({ label: todayLabel, value: focusNum })
+      } else if (dayChanged) {
+        // 同价但跨天：刷新最新点的时间标签，让走势图时间轴保持新鲜
+        history[history.length - 1] = { label: todayLabel, value: focusNum }
+      }
+    }
+    const priceHistory = history.slice(-30)
+
     const data: FuelCardData = {
       serviceId: "fuel",
       province: targetProvince,
@@ -1888,6 +1943,7 @@ export async function refreshFuelData(): Promise<FuelCardData | null> {
       trendType,
       trendColor,
       rawForecast,
+      priceHistory,
       updatedAt: new Date().toISOString(),
     }
 

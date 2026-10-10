@@ -18,6 +18,7 @@ import {
 } from "./cards"
 import {
   getAntigravityData,
+  getAuxMarketData,
   getCodexData,
   getCpampData,
   getDeepSeekData,
@@ -43,13 +44,50 @@ import {
   refreshWorkBuddyData,
 } from "./data"
 
+/** BENTO 模块顺序的存储键（App 内配置 / Widget 读取共享） */
+export const LARGE_MODULES_KEY = "mutepanel_large_modules_v1"
+
+/** 可选的 BENTO 模块 id（顺序即默认展示顺序） */
+export const LARGE_MODULE_IDS = ["gold", "deepseek", "fx", "oil", "stock"] as const
+
+/** BENTO 默认模块顺序 */
+export const DEFAULT_LARGE_MODULES = ["gold", "deepseek", "fx", "oil"]
+
+/** 读取用户自定义的 BENTO 模块顺序，未配置时返回默认四模块 */
+export function getLargeModules(): string[] {
+  try {
+    const saved =
+      Storage.get<string[]>(LARGE_MODULES_KEY, { shared: true }) ||
+      Storage.get<string[]>(LARGE_MODULES_KEY)
+    if (Array.isArray(saved)) {
+      const valid = saved
+        .map((m) => String(m || "").trim().toLowerCase())
+        .filter((m) => (LARGE_MODULE_IDS as readonly string[]).includes(m))
+      if (valid.length > 0) return valid.slice(0, 4)
+    }
+  } catch {}
+  return [...DEFAULT_LARGE_MODULES]
+}
+
+/** 保存 BENTO 模块顺序 */
+export function saveLargeModules(ids: string[]): void {
+  try {
+    const valid = (Array.isArray(ids) ? ids : [])
+      .map((m) => String(m || "").trim().toLowerCase())
+      .filter((m) => (LARGE_MODULE_IDS as readonly string[]).includes(m))
+    Storage.set(LARGE_MODULES_KEY, valid, { shared: true })
+    Storage.set(LARGE_MODULES_KEY, valid)
+  } catch {}
+}
+
 /** 全局小组件配置与偏好 */
 export const CONFIG = {
   // 留空表示自动选择：优先展示已配置凭证的服务，全部未配置时回落 DeepSeek 演示数据
   // 也可手动指定："workbuddy" | "deepseek" | "codex" | "antigravity"
   smallStyle: "",
   mediumStyle: "",
-  largeModules: ["gold", "deepseek", "fx", "oil"],
+  // BENTO 大号看板模块顺序：可在 App 内「BENTO 大号看板 (模块配置)」中调整
+  largeModules: getLargeModules(),
 }
 
 /**
@@ -129,14 +167,15 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
   else if (target.includes("fuel") || target.includes("oil") || target.includes("油价")) param = "fuel"
   else if (target.includes("gold") || target.includes("金价") || target.includes("黄金")) param = "gold"
 
-  // 1. 大型组件 (Large Widget): 2x2 Bento 模块化网格
+  // 1. 大型组件 (Large Widget): BENTO 模块化栅格
   if (family === "systemLarge") {
     return (
       <BentoLargeGridCard
         gold={getGoldData()}
         deepseek={getDeepSeekData()}
         fuel={getFuelData()}
-        modules={CONFIG.largeModules}
+        fx={getAuxMarketData()}
+        modules={getLargeModules()}
       />
     )
   }
@@ -275,10 +314,9 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
             mainLabel: "账户余额",
             symbol: d.prefix || "¥",
             mainValue: d.mainValue || "0.00",
-            subTag1: `累计消费 ${d.subValue2 || "--"}`,
+              subTag1: `累计消费 ${d.totalCostText || "--"}`,
             subTag2: `近7日消耗 ${d.subValue2 || "--"}`,
             chartTitle: "近7天余额",
-            peakText: "峰值",
             trendData: [
               { label: "7天前", value: 1.20 },
               { label: "5天前", value: 1.45 },

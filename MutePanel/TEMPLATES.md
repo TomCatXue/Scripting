@@ -119,7 +119,7 @@ export function NewAiSmallCard({ data }: { data: MetricBalanceData }) {
   subTag1="周额度 0%"
   subTag2="可重置 0 次"
   chartTitle="近7日配额占用"
-  peakText="峰值 90%"
+  peakText="峰值 90%"                 // 可选：留空/删除则右侧标签自动隐藏，不出现空白
   trendData={[{ label: "7天前", value: 45 }, /* … */]}
   lineColor="#10A37F"
   gradient={["#6EE7B7", "rgba(110,231,183,0)"]}
@@ -129,6 +129,10 @@ export function NewAiSmallCard({ data }: { data: MetricBalanceData }) {
 
 **约定**：`gradient` 首色为实色（贴近折线）、末色为全透明（贴近横轴），
 这是面积图向下渐隐的标准写法。
+
+**健壮性**：`peakText` 与 `trendData` 均为可选容错项 ——
+`peakText` 留空时右侧标签整块隐藏（不留空白占位）；`trendData` 为空或不足 2 点、
+含 `NaN`/`null` 时自动过滤并回落为单点占位，**不会出现空白或断图**。
 
 ---
 
@@ -158,9 +162,47 @@ export function NewAiSmallCard({ data }: { data: MetricBalanceData }) {
 />
 ```
 
+**健壮性**：`trendData` 少于 2 个有效点时，底部自动降级为「暂无历史走势数据」，
+**不会渲染一条误导性的直斜线**。这与油价的历史数据机制直接相关：
+
+> 油价没有公开的逐日历史接口，因此 `data.ts` 的 `refreshFuelData()` 采用
+> **累积采样**策略 —— 每次刷新时若价格发生变化就追加一个采样点，跨天则刷新
+> 最新点的时间标签，最多保留 30 个点（见 `FuelCardData.priceHistory`）。
+> 采样点不足 2 个之前，图表会显示说明文案而不是直线，避免「假走势」。
+
 ---
 
-## 五、通用工具
+## 五、BENTO 大号看板（可自定义模块）
+
+> 2 列弹性栅格，按 `modules` 顺序渲染微应用卡片。
+> 模块列表可在 App 内「BENTO 大号看板 (模块配置)」中调整顺序与取舍。
+
+**可用模块 id**：`gold`（金价）、`deepseek`（余额）、`fx`（汇率）、
+`oil`（油价）、`stock`（A 股，暂无数据源时显示占位）
+
+**配置方式**：
+
+- **App 内**：打开脚本 → 「BENTO 大号看板 (模块配置)」→ 调整顺序 / 恢复默认
+- **代码内**：`CONFIG.largeModules`（仅作为初始默认值）
+- **存储键**：`mutepanel_large_modules_v1`（`Storage` shared，Widget 可读）
+
+**健壮性**：`modules` 为空、全部为未知 id、或超过 4 个时，
+都会自动过滤并回落到默认四模块，**保证看板永远不空白**；
+模块数为奇数时最后一行自动补占位，保持左右等宽。
+
+```tsx
+<BentoLargeGridCard
+  gold={getGoldData()}
+  deepseek={getDeepSeekData()}
+  fuel={getFuelData()}
+  fx={getAuxMarketData()}
+  modules={getLargeModules()}
+/>
+```
+
+---
+
+## 六、通用工具
 
 | 名称 | 用途 |
 |---|---|
@@ -176,7 +218,7 @@ Base64（见 `icons.ts`），由 `UIImage.fromBase64String` 解码渲染。
 
 ---
 
-## 六、新增一个组件的完整步骤
+## 七、新增一个组件的完整步骤
 
 1. **取数据**：在 `data.ts` 添加 `getXxxData()`，返回统一结构。
 2. **选模板**：行情类用 `TrendSmallTemplate` / `MarketMediumTemplate`；

@@ -425,8 +425,8 @@ export interface WaveformMediumTemplateProps {
   subTag2: string
   /** 图表标题（居中） */
   chartTitle: string
-  /** 图表右上角峰值文本 */
-  peakText: string
+  /** 图表右上角峰值文本（可选；留空时自动按数据计算，不显示则传空字符串） */
+  peakText?: string
   /** 走势序列 */
   trendData: { label: string; value: number }[]
   /** 折线主色 */
@@ -530,13 +530,15 @@ export function WaveformMediumTemplate(props: WaveformMediumTemplateProps) {
             font={10}
             fontWeight="semibold"
             foregroundStyle={THEME.dim}
-            frame={{ maxWidth: "infinity", alignment: "center" }}
+              frame={{ maxWidth: "infinity", alignment: props.peakText ? "center" : "leading" }}
           >
             {props.chartTitle}
           </Text>
-          <Text font={9.5} fontWeight="bold" foregroundStyle={props.lineColor}>
-            {props.peakText}
-          </Text>
+            {props.peakText ? (
+              <Text font={9.5} fontWeight="bold" foregroundStyle={props.lineColor} lineLimit={1}>
+                {props.peakText}
+              </Text>
+            ) : null}
         </HStack>
         <Spacer />
 
@@ -599,7 +601,7 @@ export interface MarketMediumTemplateProps {
   badgeBg: any
   /** 4 张等宽卡片 */
   items: MarketMediumItem[]
-  /** 底部走势序列 */
+  /** 底部走势序列（可为空：为空时自动隐藏图表区，不出现空白/断图） */
   trendData: { label: string; value: number }[]
   /** 走势线颜色 */
   lineColor: any
@@ -609,14 +611,26 @@ export interface MarketMediumTemplateProps {
 /**
  * 中号行情 4 联卡片：顶部来源与涨跌 → 4 张等宽等高卡片 → 底部 30 日走势。
  * 金价与油价共用，保证两套组件的卡片尺寸完全一致。
+ *
+ * 走势图渲染规则：
+ *   - 少于 2 个数据点：隐藏图表，改显示一行说明，避免「一条斜线」的误导性观感。
+ *   - 2 个以上数据点：平滑曲线 + 渐变面积 + 最新点光斑，并按实际区间收紧 Y 轴。
  */
 export function MarketMediumTemplate(props: MarketMediumTemplateProps) {
-  const marks = props.trendData
-  const values = marks.length > 0 ? marks.map((m) => m.value) : [0]
+  // 过滤非法值，避免 NaN 造成空白图
+  const marks = props.trendData.filter(
+    (m) => m && typeof m.value === "number" && Number.isFinite(m.value)
+  )
+  const hasTrend = marks.length >= 2
+
+  const values = hasTrend ? marks.map((m) => m.value) : [0]
   const minY = Math.min(...values)
   const maxY = Math.max(...values)
   const span = Math.max(maxY - minY, Math.abs(maxY) * 0.004, 0.01)
   const yScale = { from: minY - span * 0.12, to: maxY + span * 0.12 }
+  // 数据点少时用更粗的线与更大的光斑，保证小样本也清晰
+  const lineWidth = marks.length <= 3 ? 3.2 : 2.6
+  const dotSize = marks.length <= 3 ? 56 : 32
 
   return (
     <VStack
@@ -636,14 +650,16 @@ export function MarketMediumTemplate(props: MarketMediumTemplateProps) {
           <Text font={14} fontWeight="bold" foregroundStyle={THEME.text} lineLimit={1} minScaleFactor={0.8}>
             {props.title}
           </Text>
-          <HStack
-            padding={{ top: 1, bottom: 1, leading: 5, trailing: 5 }}
-            widgetBackground={props.badgeBg}
-          >
-            <Text font={9.5} fontWeight="bold" foregroundStyle={props.badgeColor} lineLimit={1}>
-              {props.badgeText}
-            </Text>
-          </HStack>
+          {props.badgeText ? (
+            <HStack
+              padding={{ top: 1, bottom: 1, leading: 5, trailing: 5 }}
+              widgetBackground={props.badgeBg}
+            >
+              <Text font={9.5} fontWeight="bold" foregroundStyle={props.badgeColor} lineLimit={1}>
+                {props.badgeText}
+              </Text>
+            </HStack>
+          ) : null}
         </HStack>
         <Spacer />
         <Text font={10} foregroundStyle={THEME.dim} monospacedDigit>
@@ -703,38 +719,52 @@ export function MarketMediumTemplate(props: MarketMediumTemplateProps) {
 
       <Spacer minLength={5} />
 
-      {/* 底部走势图 */}
-      <VStack spacing={0} frame={{ maxWidth: "infinity", height: 42 }} padding={{ leading: 4, trailing: 4 }}>
-        <Chart
-          chartXAxis="hidden"
-          chartYAxis="hidden"
-          chartYScale={yScale}
-          frame={{ maxWidth: "infinity", height: 42 }}
-        >
-          <AreaChart
-            marks={marks.map((m) => ({
-              label: m.label,
-              value: m.value,
-              interpolationMethod: "catmullRom",
-              foregroundStyle: [props.lineColor, "rgba(0, 0, 0, 0)"] as any,
-            }))}
-          />
-          <LineChart
-            marks={marks.map((m, i) => {
-              const isLast = i === marks.length - 1
-              return {
+      {/* 底部走势区：数据不足时降级为说明文案，绝不渲染误导性的直线 */}
+      {hasTrend ? (
+        <VStack spacing={0} frame={{ maxWidth: "infinity", height: 46 }} padding={{ leading: 4, trailing: 4 }}>
+          <Chart
+            chartXAxis="hidden"
+            chartYAxis="hidden"
+            chartYScale={yScale}
+            frame={{ maxWidth: "infinity", height: 46 }}
+          >
+            <AreaChart
+              marks={marks.map((m) => ({
                 label: m.label,
                 value: m.value,
                 interpolationMethod: "catmullRom",
-                foregroundStyle: props.lineColor,
-                lineStyle: { lineWidth: 2.8, lineCap: "round", lineJoin: "round" },
-                symbol: isLast ? "circle" : undefined,
-                symbolSize: isLast ? 30 : undefined,
-              }
-            })}
-          />
-        </Chart>
-      </VStack>
+                foregroundStyle: [props.lineColor, "rgba(0, 0, 0, 0)"] as any,
+              }))}
+            />
+            <LineChart
+              marks={marks.map((m, i) => {
+                const isLast = i === marks.length - 1
+                return {
+                  label: m.label,
+                  value: m.value,
+                  interpolationMethod: "catmullRom",
+                  foregroundStyle: props.lineColor,
+                  lineStyle: { lineWidth, lineCap: "round", lineJoin: "round" },
+                  // 最新数据点加实心光斑
+                  symbol: isLast ? "circle" : undefined,
+                  symbolSize: isLast ? dotSize : undefined,
+                }
+              })}
+            />
+          </Chart>
+        </VStack>
+      ) : (
+        <HStack
+          alignment="center"
+          frame={{ maxWidth: "infinity", height: 46 }}
+          padding={{ leading: 4, trailing: 4 }}
+        >
+          <Text font={10} foregroundStyle={THEME.dim} lineLimit={1}>
+            暂无历史走势数据
+          </Text>
+          <Spacer />
+        </HStack>
+      )}
     </VStack>
   )
 }

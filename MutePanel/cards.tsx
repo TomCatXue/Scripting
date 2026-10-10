@@ -750,29 +750,30 @@ export function VpnNodeCard({ data }: { data: VpnNodeData }) {
 // 7. 今日油价小组件（小号：白底 Shell 贝壳高光小组件，1:1 精确复刻）
 // ============================================================
 export function FuelPriceSmallCard({ data }: { data: FuelCardData }) {
-  // 油价暂无逐日历史序列，用「上期 → 本期」两点构造走势；
-  // 若后续接入真实历史，只需替换 history 即可复用同一模板。
+  // 使用累积的真实价格历史；无历史时回落到「当前价」单点，
+  // 模板会在数据不足时自动降级，不渲染误导性的直线。
+  const history = Array.isArray(data.priceHistory) ? data.priceHistory : []
   const current = Number(data.focusPrice) || 0
-  const trend = String(data.smallTrend || "")
-  const isDown = trend.includes("跌") || trend.includes("下调") || trend.includes("-")
-  const delta = Math.abs(current * 0.012)
-  const prev = isDown ? current + delta : current - delta
-  const history = [
-    { label: "上期", value: Number(prev.toFixed(2)) },
-    { label: "本期", value: current },
-  ]
-  const dif = current - prev
-  const rate = prev !== 0 ? (dif / prev) * 100 : 0
+  const marks = history.length >= 2 ? history : [{ label: "当前", value: current }]
+
+  const last = marks[marks.length - 1]
+  const prev = marks.length >= 2 ? marks[marks.length - 2] : null
+  const close = Number(last?.value) || current
+  const dif = prev ? close - Number(prev.value) : 0
+  const rate = prev && Number(prev.value) !== 0 ? (dif / Number(prev.value)) * 100 : 0
+  // 涨跌方向以真实差值优先，缺失时回落到调价预测方向
+  const trendText = String(data.smallTrend || "")
+  const isUp = prev ? dif >= 0 : !(trendText.includes("跌") || trendText.includes("下调"))
 
   return (
     <TrendSmallTemplate
       title={data.oilName || "92# 汽油"}
       subtitle={data.subTitle || `${data.province || ""}实时油价`}
-      data={history}
-      priceText={current.toFixed(2)}
-      changeText={signedText(dif)}
-      rateText={signedText(rate, 2, "%")}
-      isUp={!isDown}
+      data={marks}
+      priceText={close.toFixed(2)}
+      changeText={prev ? signedText(dif) : "--"}
+      rateText={prev ? signedText(rate, 2, "%") : "--"}
+      isUp={isUp}
       footnote={data.cleanDateText || undefined}
     />
   )
@@ -785,16 +786,11 @@ export function FuelPriceMediumCard({ data }: { data: FuelCardData }) {
     { name: "98 号", price: data.prices?.oil98 || "--", textColor: "#E05268", tagBg: "rgba(224, 82, 104, 0.18)" },
     { name: "柴油", price: data.prices?.oil0 || "--", textColor: "#34C759", tagBg: "rgba(52, 199, 89, 0.18)" },
   ]
-  // 油价暂无逐日历史，用 92# 上期→本期两点构造走势；接入真实历史后替换即可
-  const current = Number(data.focusPrice) || 0
+
+  // 真实累积历史；数据不足时模板自动降级为说明文案
+  const history = Array.isArray(data.priceHistory) ? data.priceHistory : []
   const trendText = String(data.smallTrend || "")
-  const isDown = trendText.includes("跌") || trendText.includes("下调") || trendText.includes("-")
-  const delta = Math.abs(current * 0.012)
-  const prev = isDown ? current + delta : current - delta
-  const marks = [
-    { label: "上期", value: Number(prev.toFixed(2)) },
-    { label: "本期", value: current },
-  ]
+  const isDown = trendText.includes("跌") || trendText.includes("下调")
   const color = isDown
     ? ({ light: "#00B368", dark: "#30D158" } as any)
     : ({ light: "#FF3B30", dark: "#FF453A" } as any)
@@ -804,11 +800,11 @@ export function FuelPriceMediumCard({ data }: { data: FuelCardData }) {
       iconName="fuelpump.fill"
       iconColor="#F59E0B"
       title={`${data.province || ""}实时油价`}
-      badgeText={data.smallTrend || "--"}
+      badgeText={data.smallTrend || ""}
       badgeColor={color}
       badgeBg={isDown ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)"}
       items={items}
-      trendData={marks}
+      trendData={history}
       lineColor={color}
       updatedAt={data.updatedAt}
     />
@@ -928,6 +924,8 @@ export function DeepSeekSmallCard({ data }: { data: MetricBalanceData }) {
   const currency = (data.prefix || "¥").trim()
   const raw = String(data.subValue2 ?? "").trim()
   const weekCost = !raw || raw === "--" ? `${currency} --` : (raw.startsWith("¥") || raw.startsWith("$") ? raw : `${currency} ${raw}`)
+  // 累计消费优先用后端解析出的真实总额，缺失时回落到近 7 日消费
+  const totalCost = String(data.totalCostText || "").trim() || weekCost
   const iconColor = { light: "#1E60FF", dark: "#3B82F6" } as any
 
   return (
@@ -942,7 +940,7 @@ export function DeepSeekSmallCard({ data }: { data: MetricBalanceData }) {
         value: data.mainValue || "0.00",
       }}
       cells={[
-        { icon: "checkmark.seal.fill", iconColor: THEME.green, label: "状态", value: data.statusText || "正常", valueColor: THEME.green },
+          { icon: "sum", iconColor, label: "累计消费", value: totalCost },
         { icon: "chart.line.uptrend.xyaxis", iconColor, label: "近7日消费", value: weekCost },
       ]}
       footerLeft="官方直连"
@@ -1034,95 +1032,236 @@ export function WaveformDashboardMediumCard({ props }: { props: WaveformMediumTe
   return <WaveformMediumTemplate {...props} />
 }
 
-function BentoCard({
-  iconName,
-  iconColor,
-  title,
-  mainValue,
-  subLabel,
-  tagText,
-  isUp,
-  progress = 0.6,
-}: {
-  iconName: string
-  iconColor: any
+// ═════════════════════════════════════════════════════════════════
+// 7. BENTO 大号看板：可自定义模块的弹性微应用栅格
+// ═════════════════════════════════════════════════════════════════
+
+export interface BentoModuleDef {
+  /** 模块 id，用于 CONFIG.largeModules 配置 */
+  id: string
+  /** 卡片标题 */
   title: string
-  mainValue: string
-  subLabel: string
-  tagText: string
-  isUp?: boolean
+  /** SF Symbol 图标 */
+  icon: string
+  /** 图标与强调色 */
+  color: any
+  /** 主数值 */
+  value: string
+  /** 副标题 */
+  sub: string
+  /** 右上角标签文案（可选） */
+  tag?: string
+  /** 标签配色方向 */
+  tagUp?: boolean
+  /** 底部进度槽 0-1（可选） */
   progress?: number
-}) {
-  const tagBg = isUp ? "rgba(239,68,68,0.12)" : "rgba(16,185,129,0.12)"
-  const tagColor = isUp ? THEME.red : THEME.green
+}
+
+/** 单个 Bento 微应用卡片 */
+function BentoCard({ mod }: { mod: BentoModuleDef }) {
+  const tagColor = mod.tagUp ? THEME.red : THEME.green
+  const tagBg = mod.tagUp ? "rgba(239,68,68,0.12)" : "rgba(16,185,129,0.12)"
 
   return (
     <VStack
       alignment="leading"
       spacing={0}
-      padding={10}
-      frame={{ maxWidth: "infinity" }}
+      padding={11}
+      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
       widgetBackground={{ light: "#F8FAFC", dark: "#1E222B" }}
     >
-      {/* 顶部标题行 */}
-      <HStack spacing={4} alignment="center">
-        <Image systemName={iconName} font={{ name: "system", size: 15 }} foregroundStyle={iconColor} />
-        <Text font={11} fontWeight="bold" foregroundStyle={THEME.text}>{title}</Text>
+      {/* 标题行：图标 + 名称 + 涨跌标签 */}
+      <HStack spacing={5} alignment="center">
+        <Image
+          systemName={mod.icon}
+          font={{ name: "system", size: 14 }}
+          foregroundStyle={mod.color}
+        />
+        <Text
+          font={11}
+          fontWeight="bold"
+          foregroundStyle={THEME.text}
+          lineLimit={1}
+          minScaleFactor={0.7}
+        >
+          {mod.title}
+        </Text>
         <Spacer />
-        {tagText && (
-          <HStack padding={{ top: 1, bottom: 1, leading: 4, trailing: 4 }} widgetBackground={tagBg}>
-            <Text font={9} fontWeight="bold" foregroundStyle={tagColor}>{tagText}</Text>
+        {mod.tag ? (
+          <HStack
+            padding={{ top: 1, bottom: 1, leading: 4, trailing: 4 }}
+            widgetBackground={tagBg}
+          >
+            <Text font={9} fontWeight="bold" foregroundStyle={tagColor} lineLimit={1}>
+              {mod.tag}
+            </Text>
           </HStack>
-        )}
+        ) : null}
       </HStack>
 
-      <Spacer minLength={4} />
+      <Spacer minLength={5} />
 
-      {/* 主大字 */}
-      <Text font={18} fontWeight="heavy" foregroundStyle={THEME.text} monospacedDigit lineLimit={1} minScaleFactor={0.65}>
-        {mainValue}
+      {/* 主数值 */}
+      <Text
+        font={19}
+        fontWeight="heavy"
+        foregroundStyle={THEME.text}
+        monospacedDigit
+        lineLimit={1}
+        allowsTightening={true}
+        minScaleFactor={0.55}
+      >
+        {mod.value}
       </Text>
 
-      <Spacer minLength={2} />
+      <Spacer minLength={3} />
 
-      {/* 底部副标题 */}
-      <Text font={9.5} foregroundStyle={THEME.dim} lineLimit={1}>
-        {subLabel}
+      {/* 副标题 */}
+      <Text
+        font={9.5}
+        foregroundStyle={THEME.dim}
+        lineLimit={1}
+        minScaleFactor={0.8}
+      >
+        {mod.sub}
       </Text>
 
-      <Spacer minLength={6} />
+      <Spacer />
 
-      {/* 卡片底部微型胶囊进度条 */}
-      <ZStack frame={{ maxWidth: "infinity", height: 3.5 }}>
-        <RoundedRectangle
-          fill={{ light: "#E2E8F0", dark: "#334155" }}
-          cornerRadius={2}
-          frame={{ maxWidth: "infinity", height: 3.5 }}
-        />
-        <HStack>
+      {/* 底部进度槽 */}
+      {mod.progress !== undefined ? (
+        <ZStack frame={{ maxWidth: "infinity", height: 4 }}>
           <RoundedRectangle
-            fill={iconColor}
+            fill={{ light: "#E2E8F0", dark: "#334155" }}
             cornerRadius={2}
-            frame={{ width: Math.round(110 * progress), height: 3.5 }}
+            frame={{ maxWidth: "infinity", height: 4 }}
           />
-          <Spacer />
-        </HStack>
-      </ZStack>
+          {/* 用比例宽度填充，避免写死像素导致不同机型上长度不一致 */}
+          <GeometryReader>
+            {(p: any) => (
+              <RoundedRectangle
+                fill={mod.color}
+                cornerRadius={2}
+                frame={{
+                  width: Math.max(
+                    4,
+                    Math.round(
+                      (p?.size?.width || 120) * Math.max(0, Math.min(1, mod.progress || 0))
+                    )
+                  ),
+                  height: 4,
+                }}
+              />
+            )}
+          </GeometryReader>
+        </ZStack>
+      ) : null}
     </VStack>
   )
 }
 
+/**
+ * BENTO 大号看板：按 `modules` 顺序渲染 2 列栅格。
+ * `modules` 为空或全部无效时自动回落到默认四模块，保证永远不出现空白。
+ */
 export function BentoLargeGridCard({
   gold,
   deepseek,
   fuel,
+  fx,
   modules = ["gold", "deepseek", "fx", "oil"],
 }: {
   gold: GoldMarketData
   deepseek: MetricBalanceData
   fuel: FuelCardData
+  fx?: AuxiliaryMarketData
   modules?: string[]
 }) {
+  // 汇总所有可用模块（字段严格对应各自数据模型）
+  const fxData = fx?.fx
+  const registry: Record<string, BentoModuleDef> = {
+    gold: {
+      id: "gold",
+      title: "Au9999 金价",
+      icon: "centsign.circle.fill",
+      color: { light: "#F59E0B", dark: "#FBBF24" },
+      value: `¥${gold.prices?.au9999 || gold.focusPrice || "--"}`,
+      sub: `周大福 ¥${gold.prices?.chowTaiFook || "--"}`,
+      tag: `${gold.changeValue} (${gold.changeRate})`,
+      tagUp: gold.isUp,
+      // 进度槽取当前价在 30 日区间中的相对位置（真实数据，非写死值）
+      progress: (() => {
+        const cur = Number(gold.prices?.au9999 || gold.focusPrice)
+        const lo = Number(gold.minPrice)
+        const hi = Number(gold.maxPrice)
+        if (!Number.isFinite(cur) || !Number.isFinite(lo) || !Number.isFinite(hi) || hi <= lo) return undefined
+        return Math.max(0, Math.min(1, (cur - lo) / (hi - lo)))
+      })(),
+    },
+    deepseek: {
+      id: "deepseek",
+      title: "DeepSeek 余额",
+      icon: "sparkles",
+      color: { light: "#1E60FF", dark: "#3B82F6" },
+      value: `${deepseek.prefix || "¥"}${deepseek.mainValue || "0.00"}`,
+      sub: `近7日消费 ${deepseek.subValue2 || "--"}`,
+      tag: "官方直连",
+      tagUp: false,
+      progress: Math.max(0, Math.min(1, (deepseek.progressPct || 0) / 100)),
+    },
+    fx: {
+      id: "fx",
+      title: fxData?.pair || "USD / CNY",
+      icon: "dollarsign.arrow.circlepath",
+      color: { light: "#6366F1", dark: "#818CF8" },
+      value: fxData?.rate || "--",
+      sub: `较前值 ${fxData?.change || "--"}`,
+      tag: fxData?.changeRate || "--",
+      tagUp: fxData?.isUp ?? false,
+      // 汇率暂无区间数据，不显示进度槽（避免无意义的写死长度）
+    },
+    stock: {
+      id: "stock",
+      title: "A 股大盘",
+      icon: "chart.line.uptrend.xyaxis",
+      color: { light: "#EF4444", dark: "#F87171" },
+      value: "--",
+      sub: "指数行情未接入",
+      tag: undefined,
+    },
+    oil: {
+      id: "oil",
+      title: `${fuel.province || "北京"} ${fuel.oilName || "92#"}`,
+      icon: "fuelpump.fill",
+      color: { light: "#F97316", dark: "#FB923C" },
+      value: `¥${fuel.focusPrice || "--"}/L`,
+      sub: fuel.smallTrend || fuel.mediumForecast || "下次调价近期",
+      tag: fuel.trendType === "down" ? "下调" : fuel.trendType === "up" ? "上调" : "搁浅",
+      tagUp: fuel.trendType === "up",
+      // 用真实价格历史绘制「当前价在区间中的位置」
+      progress: (() => {
+        const hist = (fuel.priceHistory || []).map((h) => Number(h?.value)).filter(Number.isFinite)
+        const cur = Number(fuel.focusPrice)
+        if (!Number.isFinite(cur) || hist.length < 2) return undefined
+        const lo = Math.min(...hist)
+        const hi = Math.max(...hist)
+        if (hi <= lo) return undefined
+        return Math.max(0, Math.min(1, (cur - lo) / (hi - lo)))
+      })(),
+    },
+  }
+
+  // 解析模块列表：过滤未知 id；为空时回落默认顺序，避免空白看板
+  const resolved = (Array.isArray(modules) ? modules : [])
+    .map((m) => String(m || "").trim().toLowerCase())
+    .filter((m) => Boolean(registry[m]))
+  const list = (resolved.length > 0 ? resolved : ["gold", "deepseek", "fx", "oil"]).slice(0, 4)
+  const cards = list.map((id) => registry[id])
+
+  // 每行 2 张，最后一行只有 1 张时用占位撑满，保持栅格对齐
+  const rows: BentoModuleDef[][] = []
+  for (let i = 0; i < cards.length; i += 2) rows.push(cards.slice(i, i + 2))
+
   return (
     <VStack
       alignment="leading"
@@ -1130,66 +1269,45 @@ export function BentoLargeGridCard({
       padding={14}
       widgetBackground={THEME.bg}
     >
-      {/* 主控顶部状态栏 */}
-      <HStack spacing={6} alignment="center" frame={{ height: 20 }}>
-        <Image systemName="square.grid.2x2.fill" font={{ name: "system", size: 14 }} foregroundStyle={THEME.blue} />
-        <Text font={13.5} fontWeight="heavy" foregroundStyle={THEME.text}>哑巴面板监控总览</Text>
+      {/* 顶部主控状态栏 */}
+      <HStack spacing={6} alignment="center" frame={{ height: 22 }}>
+        <Image
+          systemName="square.grid.2x2.fill"
+          font={{ name: "system", size: 15 }}
+          foregroundStyle={THEME.blue}
+        />
+        <Text
+          font={14}
+          fontWeight="heavy"
+          foregroundStyle={THEME.text}
+          lineLimit={1}
+          minScaleFactor={0.8}
+        >
+          BENTO大号看板
+        </Text>
         <Spacer />
         <RefreshButton />
         <Spacer minLength={4} />
-        <Text font={10} foregroundStyle={THEME.dim} monospacedDigit>{`更新于 ${formatTime(gold.updatedAt)}`}</Text>
+        <Text font={10} foregroundStyle={THEME.dim} monospacedDigit>
+          {`更新于 ${formatTime(gold.updatedAt)}`}
+        </Text>
       </HStack>
 
       <Spacer minLength={10} />
 
-      {/* 2x2 Bento 栅格网格 */}
-      <HStack spacing={10}>
-        <BentoCard
-          iconName="centsign.circle.fill"
-          iconColor={{ light: "#F59E0B", dark: "#FBBF24" }}
-          title="Au9999 金价"
-          mainValue={`¥${gold.auPrice}`}
-          subLabel={`周大福 ¥${gold.chowTaiFook}`}
-          tagText={`${gold.auChange} (${gold.auChangeRate})`}
-          isUp={gold.isUp}
-          progress={0.75}
-        />
-        <BentoCard
-          iconName="sparkles"
-          iconColor={{ light: "#1E60FF", dark: "#3B82F6" }}
-          title="DeepSeek 余额"
-          mainValue={`¥${deepseek.mainValue || "1.86"}`}
-          subLabel={`近7日消费 ${deepseek.subValue2 || "¥5.39"}`}
-          tagText="官方直连"
-          isUp={true}
-          progress={0.6}
-        />
-      </HStack>
-
-      <Spacer minLength={10} />
-
-      <HStack spacing={10}>
-        <BentoCard
-          iconName="dollarsign.arrow.circlepath"
-          iconColor={{ light: "#6366F1", dark: "#818CF8" }}
-          title="USD / CNY 汇率"
-          mainValue="7.1425"
-          subLabel="离岸人民币现汇"
-          tagText="-0.17%"
-          isUp={false}
-          progress={0.45}
-        />
-        <BentoCard
-          iconName="fuelpump.fill"
-          iconColor={{ light: "#F97316", dark: "#FB923C" }}
-          title={`${fuel.province || "北京"} ${fuel.focusOilKey?.toUpperCase() || "92#"} 汽油`}
-          mainValue={`¥${fuel.focusPrice || "7.88"}/L`}
-          subLabel={fuel.mediumForecast || fuel.rawForecast || "下次调价近期"}
-          tagText="下调预期"
-          isUp={false}
-          progress={0.65}
-        />
-      </HStack>
+      {/* 2 列栅格 */}
+      {rows.map((row, ri) => (
+        <VStack key={ri} spacing={10} frame={{ maxWidth: "infinity", maxHeight: "infinity" }}>
+          <HStack spacing={10} frame={{ maxWidth: "infinity", maxHeight: "infinity" }}>
+            {row.map((mod) => (
+              <BentoCard key={mod.id} mod={mod} />
+            ))}
+            {/* 奇数个模块时补一个占位，保证最后一行左右等宽 */}
+            {row.length === 1 ? <HStack frame={{ maxWidth: "infinity" }} /> : null}
+          </HStack>
+          {ri < rows.length - 1 ? <Spacer minLength={10} /> : null}
+        </VStack>
+      ))}
     </VStack>
   )
 }

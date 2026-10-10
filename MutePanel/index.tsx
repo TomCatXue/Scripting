@@ -19,6 +19,11 @@ import {
 } from "scripting"
 import { BrandHeaderIcon } from "./cards"
 import {
+  LARGE_MODULE_IDS,
+  getLargeModules,
+  saveLargeModules,
+} from "./widget"
+import {
   GOLD_SOURCE_KEY,
   getGoldData,
   refreshGoldData,
@@ -156,6 +161,24 @@ function OptionBrandIcon({ id }: { id: string }) {
         systemName="fuelpump.fill"
         font={{ name: "system", size: 16 }}
         foregroundStyle="#F59E0B"
+      />
+    )
+  }
+  if (id === "gold") {
+    return (
+      <Image
+        systemName="centsign.circle.fill"
+        font={{ name: "system", size: 16 }}
+        foregroundStyle="#F59E0B"
+      />
+    )
+  }
+  if (id === "bento") {
+    return (
+      <Image
+        systemName="square.grid.2x2.fill"
+        font={{ name: "system", size: 16 }}
+        foregroundStyle="#0A84FF"
       />
     )
   }
@@ -806,6 +829,57 @@ async function configureGoldSettings() {
   }
 }
 
+/** BENTO 模块的展示名称 */
+const BENTO_MODULE_LABELS: Record<string, string> = {
+  gold: "Au9999 金价",
+  deepseek: "DeepSeek 余额",
+  fx: "USD / CNY 汇率",
+  oil: "今日油价",
+  stock: "A 股大盘",
+}
+
+/**
+ * 配置 BENTO 大号看板的模块与顺序。
+ * 每轮选择一个模块追加到列表，选「完成」保存；最多 4 个模块（2×2 栅格）。
+ */
+async function configureBentoModules() {
+  const picked: string[] = []
+  const all = LARGE_MODULE_IDS as readonly string[]
+
+  while (picked.length < 4) {
+    const remaining = all.filter((id) => !picked.includes(id))
+    if (remaining.length === 0) break
+
+    const options = remaining.map((id) => BENTO_MODULE_LABELS[id] || id)
+    const doneLabel = picked.length >= 1 ? "完成并保存" : "取消"
+    const chosen = await gActionSheet(
+      picked.length === 0
+        ? "选择第 1 个模块（最多 4 个）"
+        : `已选：${picked.map((p) => BENTO_MODULE_LABELS[p] || p).join(" → ")}\n请选择第 ${picked.length + 1} 个模块`,
+      [...options, doneLabel]
+    )
+    if (!chosen || chosen === "取消") return
+    if (chosen === doneLabel) break
+
+    const id = all.find((k) => (BENTO_MODULE_LABELS[k] || k) === chosen)
+    if (id) picked.push(id)
+  }
+
+  if (picked.length === 0) return
+  saveLargeModules(picked)
+  await gAlert(`已保存 BENTO 模块顺序：\n${picked.map((p) => BENTO_MODULE_LABELS[p] || p).join(" → ")}`)
+  Widget.reloadAll()
+}
+
+/** 恢复 BENTO 默认模块顺序 */
+async function resetBentoModules() {
+  const ok = await gConfirm("恢复 BENTO 大号看板的默认模块顺序？")
+  if (!ok) return
+  saveLargeModules(["gold", "deepseek", "fx", "oil"])
+  await gAlert("已恢复默认顺序：金价 → DeepSeek → 汇率 → 油价")
+  Widget.reloadAll()
+}
+
 /** 配置今日油价监测省份与主力关注油品 */
 async function configureFuelSettings() {
   const currentProv =
@@ -1131,6 +1205,36 @@ export default function ConfigView() {
               }}
             />
           </HStack>
+            <HStack spacing={10} alignment="center">
+              <Image
+                systemName="square.grid.2x2.fill"
+                font={{ name: "system", size: 14 }}
+                foregroundStyle="#0A84FF"
+              />
+              <VStack alignment="leading" spacing={2}>
+                <Text font={14} fontWeight="medium">BENTO 大号看板 (模块配置)</Text>
+                <Text font={11} foregroundStyle={C_SUBTITLE}>
+                  当前：{getLargeModules().map((m) => BENTO_MODULE_LABELS[m] || m).join(" → ")}
+                </Text>
+              </VStack>
+              <Spacer />
+              <Button
+                title="调整顺序"
+                buttonStyle="bordered"
+                controlSize="mini"
+                action={async () => {
+                  await configureBentoModules()
+                }}
+              />
+              <Button
+                title="恢复默认"
+                buttonStyle="bordered"
+                controlSize="mini"
+                action={async () => {
+                  await resetBentoModules()
+                }}
+              />
+            </HStack>
           <HStack spacing={10} alignment="center" padding={{ top: 4 }}>
             <Image
               systemName="arrow.clockwise.circle.fill"
