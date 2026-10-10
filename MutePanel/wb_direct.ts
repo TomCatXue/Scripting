@@ -57,6 +57,40 @@ function asMs(v: unknown): number {
   return 0
 }
 
+/**
+ * 宽松解析：真实粘贴场景里用户常常只复制了「某一条」而不是合法 JSON。
+ * 依次尝试：直接解析 → 补外层花括号（形如 `"workbuddy": {...}` 的片段）
+ * → 去尾随逗号。
+ */
+function tryParseLoose(text: string): any {
+  const attempts = [
+    text,
+    `{${text.replace(/,\s*$/, "")}}`,
+    text.replace(/,\s*([}\]])/g, "$1"),
+    `{${text.replace(/,\s*([}\]])/g, "$1").replace(/,\s*$/, "")}}`,
+  ]
+  for (const candidate of attempts) {
+    try {
+      const parsed = JSON.parse(candidate)
+      if (parsed && typeof parsed === "object") return parsed
+    } catch {}
+  }
+  return undefined
+}
+
+/** 判断某个值是否像一条 WorkBuddy OAuth 凭据 */
+export function looksLikeWbCredential(v: any): boolean {
+  return (
+    !!v &&
+    typeof v === "object" &&
+    !Array.isArray(v) &&
+    typeof v.access === "string" &&
+    v.access.trim() !== "" &&
+    typeof v.refresh === "string" &&
+    v.refresh.trim() !== ""
+  )
+}
+
 /** 由域名/accountId 形态推断 build */
 function inferBuild(domain: string, accountId: string): WbDirectBuild {
   const d = domain.toLowerCase()
@@ -88,10 +122,12 @@ export function parseWbDirectCredential(raw: unknown, buildHint?: WbDirectBuild)
   if (typeof raw === "string") {
     const text = raw.trim()
     if (!text) throw new Error("凭据为空，请粘贴完整的 OAuth JSON")
-    try {
-      obj = JSON.parse(text)
-    } catch {
-      throw new Error("凭据 JSON 解析失败，请确认粘贴的是完整的 JSON 文本")
+    obj = tryParseLoose(text)
+    if (obj === undefined) {
+      throw new Error(
+        "凭据 JSON 解析失败。请确认粘贴的是完整 JSON，且未在传输中被截断。\n" +
+          "可直接点「从剪贴板读取」或「选择文件」，避免手动选中导致缺字符。"
+      )
     }
   }
 
@@ -99,17 +135,34 @@ export function parseWbDirectCredential(raw: unknown, buildHint?: WbDirectBuild)
     throw new Error("凭据 JSON 解析失败：顶层不是对象")
   }
 
-  // 外层包裹：plugin-auth.json 里形如 { "workbuddy": { ... } }
-  const WRAPPERS = ["workbuddy", "workbuddy-ai", "workbuddy_direct", "workbuddy-direct"]
-  const looksLikeCredential = obj.access !== undefined || obj.refresh !== undefined
-  if (!looksLikeCredential) {
+  // 直接是凭据
+  if (!looksLikeWbCredential(obj)) {
+    // 优先按条目名取
+    const WRAPPERS = ["workbuddy", "workbuddy-ai", "workbuddy_direct", "workbuddy-direct"]
+    let picked: any = undefined
     for (const key of WRAPPERS) {
-      const inner = obj[key]
-      if (inner && typeof inner === "object" && !Array.isArray(inner)) {
-        obj = inner
+      if (looksLikeWbCredential(obj[key])) {
+        picked = obj[key]
         break
       }
     }
+    // 兜底：整份 plugin-auth.json（含若干账号条目）时，取第一条 oauth 凭据。
+    // 只取第一条，其余账号请用「从剪贴板读取」逐条添加。
+    if (!picked) {
+      for (const v of Object.values(obj)) {
+        if (looksLikeWbCredential(v)) {
+          picked = v
+          break
+        }
+      }
+    }
+    if (!picked) {
+      throw new Error(
+        "未在粘贴的内容中找到 WorkBuddy 凭据（需要 access 与 refresh 字段）。\n" +
+          "若粘贴的是整份 plugin-auth.json，请改用「从剪贴板读取」并选择具体条目。"
+      )
+    }
+    obj = picked
   }
 
   const access = asString(obj.access)
@@ -143,6 +196,41 @@ export function parseWbDirectCredential(raw: unknown, buildHint?: WbDirectBuild)
     ...(tokenType ? { tokenType } : {}),
     build,
   }
+}
+
+/**
+ * 从「整份 plugin-auth.json」这类多条目内容里列出全部候选凭据。
+ * 用于让用户选择要导入哪一个账号，而不是被迫一次只粘一条。
+ *
+ * @returns 条目名与规范化凭据的列表；解析失败时返回空数组
+ */
+export function listWbDirectCandidates(
+  raw: unknown
+): { key: string; credential: WbDirectCredential }[] {
+  let obj: any = raw
+  if (typeof raw === "string") {
+    obj = tryParseLoose(raw.trim())
+  }
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return []
+
+  // 本身就是单条凭据
+  if (looksLikeWbCredential(obj)) {
+    try {
+      const c = parseWbDirectCredential(obj)
+      return [{ key: c.accountId, credential: c }]
+    } catch {
+      return []
+    }
+  }
+
+  const out: { key: string; credential: WbDirectCredential }[] = []
+  for (const [key, value] of Object.entries(obj)) {
+    if (!looksLikeWbCredential(value)) continue
+    try {
+      out.push({ key, credential: parseWbDirectCredential(value) })
+    } catch {}
+  }
+  return out
 }
 
 /** 接口基址（不含路径） */

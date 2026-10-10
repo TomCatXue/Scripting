@@ -6,6 +6,7 @@ import { installGlobals, resetGlobals } from "./globals.ts";
 installGlobals();
 
 const {
+  listWbDirectCandidates,
   WB_ENDPOINT_CN,
   WB_ENDPOINT_INTL,
   parseWbDirectCredential,
@@ -206,6 +207,84 @@ function testParseIdempotent(): void {
     assert.deepEqual(twice, once, "对已规范化对象再次解析结果一致");
 }
 
+// ── 13. 整份 plugin-auth.json（多条目字典）─────────────────────
+function testParseWholeFile(): void {
+    // 真实文件顶层是一个含 8 个条目的字典，不是单条凭据
+    const file = {
+        workbuddy: cnCredential(),
+        "{{SECRET_aaa}}": cnCredential({ uid: "u2" }),
+        "workbuddy-ai": cnCredential({ domain: "www.workbuddy.ai", accountId: "a@b.com" }),
+        "workbuddy-ai#vnhzbk": cnCredential({ domain: "www.workbuddy.ai", accountId: "c@d.com" }),
+        "opencode-zen-free": { type: "api", key: "public" },
+    };
+    const c = parseWbDirectCredential(JSON.stringify(file));
+    assert.equal(c.accountId, "13800138000", "整份文件时取 workbuddy 条目");
+    assert.equal(c.build, "workbuddy", "build 正确");
+}
+
+function testParseWholeFileNoWorkbuddyKey(): void {
+    // 没有 workbuddy 键时，回落到第一条 oauth 凭据
+    const file = {
+        "{{SECRET_aaa}}": cnCredential({ uid: "u-first" }),
+        "{{SECRET_bbb}}": cnCredential({ uid: "u-second" }),
+        "opencode-zen-free": { type: "api", key: "public" },
+    };
+    const c = parseWbDirectCredential(JSON.stringify(file));
+    assert.equal(c.uid, "u-first", "取第一条 oauth 凭据");
+}
+
+// ── 14. 带键名的片段（不是合法 JSON）──────────────────────────
+function testParseKeyedFragment(): void {
+    // 用户常见操作：只复制了 `"workbuddy": { ... }` 这一段
+    const fragment = `"workbuddy": ${JSON.stringify(cnCredential())}`;
+    const c = parseWbDirectCredential(fragment);
+    assert.equal(c.access, "eyJhbGciOiJSUzI1NiJ9.access", "补花括号后可解析");
+}
+
+function testParseTrailingComma(): void {
+    const withComma = JSON.stringify(cnCredential(), null, 2).replace(/\n\}$/, ",\n}");
+    const c = parseWbDirectCredential(withComma);
+    assert.equal(c.access, "eyJhbGciOiJSUzI1NiJ9.access", "容忍尾随逗号");
+}
+
+// ── 15. 候选列表（供选择要导入的账号）────────────────────────
+function testListCandidates(): void {
+    const file = {
+        workbuddy: cnCredential(),
+        "{{SECRET_aaa}}": cnCredential({ uid: "u2", accountId: "{{PHONE_second}}" }),
+        "workbuddy-ai": cnCredential({ domain: "www.workbuddy.ai", accountId: "a@b.com" }),
+        "opencode-zen-free": { type: "api", key: "public" },
+    };
+    const list = listWbDirectCandidates(JSON.stringify(file));
+
+    assert.equal(list.length, 3, "列出 3 条 oauth 凭据（api 条目被排除）");
+    assert.deepEqual(
+        list.map((x) => x.key),
+        ["workbuddy", "{{SECRET_aaa}}", "workbuddy-ai"],
+        "保留原始条目名，便于用户辨认"
+    );
+    assert.equal(list[1].credential.uid, "u2", "第二条解析正确");
+
+    // 单条凭据也能列出
+    assert.equal(listWbDirectCandidates(JSON.stringify(cnCredential())).length, 1, "单条凭据返回 1 项");
+    // 无法解析时返回空数组而非抛错
+    assert.deepEqual(listWbDirectCandidates("不是 JSON"), [], "解析失败返回空数组");
+}
+
+// ── 16. 截断的 JSON 必须给出可操作提示 ────────────────────────
+function testTruncatedGivesActionableError(): void {
+    const full = JSON.stringify({ workbuddy: cnCredential() });
+    try {
+        parseWbDirectCredential(full.slice(0, Math.floor(full.length / 2)));
+        assert.fail("截断的 JSON 应当抛错");
+    } catch (e: any) {
+        assert.ok(
+            /截断|剪贴板|文件/.test(String(e?.message)),
+            `错误信息应给出可操作建议，实际: ${e?.message}`
+        );
+    }
+}
+
 // ── 执行 ───────────────────────────────────────────────────────
 const tests: [string, () => void][] = [
     ["解析合法凭据", testParseValid],
@@ -220,6 +299,12 @@ const tests: [string, () => void][] = [
     ["续期失败保留旧值", testRefreshFailureKeepsOld],
     ["忽略未知字段", testUnknownFieldsIgnored],
     ["重复解析幂等", testParseIdempotent],
+    ["整份 plugin-auth.json", testParseWholeFile],
+    ["无 workbuddy 键的整份文件", testParseWholeFileNoWorkbuddyKey],
+    ["带键名的片段", testParseKeyedFragment],
+    ["容忍尾随逗号", testParseTrailingComma],
+    ["候选列表", testListCandidates],
+    ["截断给出可操作提示", testTruncatedGivesActionableError],
 ];
 
 let passed = 0;

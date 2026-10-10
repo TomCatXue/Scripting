@@ -750,15 +750,17 @@ export function VpnNodeCard({ data }: { data: VpnNodeData }) {
 // 7. 今日油价小组件（小号：白底 Shell 贝壳高光小组件，1:1 精确复刻）
 // ============================================================
 export function FuelPriceSmallCard({ data }: { data: FuelCardData }) {
-  // 使用累积的真实价格历史；无历史时回落到「当前价」单点，
-  // 模板会在数据不足时自动降级，不渲染误导性的直线。
-  const history = Array.isArray(data.priceHistory) ? data.priceHistory : []
+  // 只使用累积的真实价格历史。历史不足 2 天时**不画线**：
+  // 单点连成的是水平直线，会被误读成「油价一直没变」。
+  const history = Array.isArray(data.priceHistory)
+    ? data.priceHistory.filter((h: any) => h && Number.isFinite(Number(h.value)))
+    : []
   const current = Number(data.focusPrice) || 0
-  const marks = history.length >= 2 ? history : [{ label: "当前", value: current }]
+  const hasTrend = history.length >= 2
 
-  const last = marks[marks.length - 1]
-  const prev = marks.length >= 2 ? marks[marks.length - 2] : null
-  const close = Number(last?.value) || current
+  const last = hasTrend ? history[history.length - 1] : null
+  const prev = hasTrend ? history[history.length - 2] : null
+  const close = last ? Number(last.value) : current
   const dif = prev ? close - Number(prev.value) : 0
   const rate = prev && Number(prev.value) !== 0 ? (dif / Number(prev.value)) * 100 : 0
   // 涨跌方向以真实差值优先，缺失时回落到调价预测方向
@@ -769,12 +771,12 @@ export function FuelPriceSmallCard({ data }: { data: FuelCardData }) {
     <TrendSmallTemplate
       title={data.oilName || "92# 汽油"}
       subtitle={data.subTitle || `${data.province || ""}实时油价`}
-      data={marks}
+      data={hasTrend ? history : []}
       priceText={close.toFixed(2)}
       changeText={prev ? signedText(dif) : "--"}
       rateText={prev ? signedText(rate, 2, "%") : "--"}
       isUp={isUp}
-      footnote={data.cleanDateText || undefined}
+      footnote={hasTrend ? data.cleanDateText || undefined : "累积走势中"}
     />
   )
 }

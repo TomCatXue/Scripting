@@ -40,7 +40,9 @@
    * **MoviePilot / Emby**：填入服务器局域网或公网地址及 API Key。
    * **DeepSeek**：填入平台 User Token 或官方开放平台 API Key。
    * **WorkBuddy（面板版）**：填入 workbuddy2api-panel 面板地址及 Token。
-   * **WorkBuddy 直连**：粘贴 `plugin-auth.json` 中 `workbuddy` / `workbuddy-ai` 条目的完整 OAuth JSON。
+   * **WorkBuddy 直连**：三种方式任选 —— **从剪贴板读取**（推荐）、**从文件选择** `plugin-auth.json`、手动粘贴。
+     一条凭据约 2.7 KB（access + refresh 就占 2.5 KB），手动长按选择极易缺字符，建议优先用前两种。
+     直接选 `plugin-auth.json` 文件时会**列出文件内全部账号**，可一键全部导入或挑选单个。
 3. **多账号管理**：DeepSeek / Codex / Antigravity / WorkBuddy 直连均支持多账号。
    在「数据源状态」中点击对应服务的 **管理** 按钮，可添加、启用/停用、设为默认、重命名与删除账号。
    小组件会把所有**已启用**账号**聚合为一张卡**。

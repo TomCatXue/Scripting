@@ -81,7 +81,7 @@ import {
   setAccountEnabled,
   setDefaultAccount,
 } from "./accounts"
-import { parseWbDirectCredential } from "./wb_direct"
+import { listWbDirectCandidates, parseWbDirectCredential } from "./wb_direct"
 import {
   completeAntigravityOAuth,
   completeCodexOAuth,
@@ -397,28 +397,156 @@ async function clearAllAccounts(
   await gAlert("已清除该服务的全部账号与凭据，卡片已恢复为默认数据。")
 }
 
-/** 引导录入 WorkBuddy 官方直连凭据（粘贴整段 OAuth JSON） */
-async function configureWbDirect(editAccountId?: string): Promise<boolean> {
-  const raw = await gPrompt({
+/**
+ * 读取用户提供的凭据原文。
+ *
+ * WorkBuddy 的一条凭据就有 2.7KB 左右（access 约 1.4K + refresh 约 1.1K），
+ * 手动长按粘贴极易缺字符，因此优先提供「剪贴板」「选择文件」两条免手打路径。
+ */
+async function readWbDirectRaw(editAccountId?: string): Promise<string | null> {
+  const choice = await gActionSheet(
+    editAccountId ? "更新 WorkBuddy 直连凭据" : "配置 WorkBuddy 直连",
+    [
+      "📋 从剪贴板读取（推荐）",
+      "📁 从文件选择（plugin-auth.json）",
+      "✍️ 手动粘贴",
+      "取消",
+    ]
+  )
+  if (choice === "取消") return null
+
+  if (choice === "📋 从剪贴板读取（推荐）") {
+    try {
+      const text = await Pasteboard.getString()
+      if (!text || !text.trim()) {
+        await gAlert("剪贴板里没有文本内容。\n请先复制凭据 JSON，或改用「从文件选择」。")
+        return null
+      }
+      return text
+    } catch (e: any) {
+      await gAlert(`读取剪贴板失败：${e?.message || e}`)
+      return null
+    }
+  }
+
+  if (choice === "📁 从文件选择（plugin-auth.json）") {
+    try {
+      const paths = await DocumentPicker.pickFiles({
+        types: ["public.json", "public.text"],
+        allowsMultipleSelection: false,
+      })
+      const path = paths && paths[0]
+      if (!path) return null
+      const content = FileManager.readAsStringSync(path)
+      // 释放安全作用域资源，避免长期持有对用户文件的访问权
+      try {
+        DocumentPicker.stopAcessingSecurityScopedResources()
+      } catch {}
+      if (!content || !content.trim()) {
+        await gAlert("所选文件为空。")
+        return null
+      }
+      return content
+    } catch (e: any) {
+      await gAlert(`读取文件失败：${e?.message || e}`)
+      return null
+    }
+  }
+
+  // 手动粘贴
+  return await gPrompt({
     title: editAccountId ? "更新 WorkBuddy 直连凭据" : "配置 WorkBuddy 直连",
     message:
-      "请粘贴 magpie plugin-auth.json 中 workbuddy / workbuddy-ai 条目的完整 JSON\n" +
+      "粘贴 magpie plugin-auth.json 的**整份内容**或其中一条条目\n" +
       "（含 access、refresh、uid、domain 等字段）",
     placeholder: '{"access":"...","refresh":"...","uid":"..."}',
     obscureText: true,
-    confirmLabel: editAccountId ? "更新" : "解析并添加",
+    confirmLabel: "解析",
     cancelLabel: "取消",
   })
+}
+
+/**
+ * 引导录入 WorkBuddy 官方直连凭据。
+ *
+ * 支持两种输入：
+ *  · 整份 plugin-auth.json —— 列出全部候选账号供多选，可一次导入多个
+ *  · 单条凭据 —— 直接导入
+ */
+async function configureWbDirect(editAccountId?: string): Promise<boolean> {
+  const raw = await readWbDirectRaw(editAccountId)
   if (raw === null) return false
 
-  let cred
-  try {
-    cred = parseWbDirectCredential(raw)
-  } catch (e: any) {
-    await gAlert(`凭据解析失败：\n${e?.message || e}`)
-    return false
+  // 一次可能解析出多个候选（整份文件）
+  const candidates = listWbDirectCandidates(raw)
+  if (candidates.length === 0) {
+    // 回落到单条解析，以拿到更具体的错误信息
+    try {
+      const cred = parseWbDirectCredential(raw)
+      return await importWbDirectCredential(cred, editAccountId)
+    } catch (e: any) {
+      await gAlert(`凭据解析失败：\n${e?.message || e}`)
+      return false
+    }
   }
 
+  // 单条：直接导入
+  if (candidates.length === 1 && !editAccountId) {
+    return await importWbDirectCredential(candidates[0].credential)
+  }
+
+  // 多条：让用户选择要导入哪些
+  const existing = new Set(listAccounts("workbuddy_direct").map((a) => a.label))
+  const rows = candidates.map((c) => {
+    const seen = existing.has(c.credential.accountId) ? "（已存在）" : ""
+    const ver = c.credential.build === "workbuddy-ai" ? "国际版" : "国内版"
+    return `${c.credential.accountId} · ${ver}${seen}`
+  })
+
+  const choice = await gActionSheet(
+    `检测到 ${candidates.length} 个账号`,
+    ["✅ 全部导入", ...rows, "取消"]
+  )
+  if (choice === "取消") return false
+
+  let targets = candidates
+  if (choice !== "✅ 全部导入") {
+    const idx = rows.indexOf(choice)
+    if (idx < 0) return false
+    targets = [candidates[idx]]
+  }
+
+  let added = 0
+  let updated = 0
+  for (const t of targets) {
+    const existingAcc = listAccounts("workbuddy_direct").find((a) => a.label === t.credential.accountId)
+    if (existingAcc) {
+      setWbDirectCredential(existingAcc.id, t.credential)
+      updated++
+    } else {
+      const acc = addAccount("workbuddy_direct", t.credential.accountId)
+      setWbDirectCredential(acc.id, t.credential)
+      added++
+    }
+  }
+
+  const res = await refreshWbDirectData()
+  Widget.reloadAll()
+  if (res) {
+    await gAlert(
+      `✓ 导入完成：新增 ${added} 个，更新 ${updated} 个\n\n` +
+        `积分剩余：${res.mainValue}\n已用：${res.subValue2}\n账号：${res.subValue1}`
+    )
+  } else {
+    await gAlert(
+      `已保存 ${added + updated} 个账号，但首次拉取积分失败。\n请确认网络可达，或凭据是否已过期。`
+    )
+  }
+  return true
+}
+
+/** 导入（或更新）单条凭据 */
+async function importWbDirectCredential(cred: any, editAccountId?: string): Promise<boolean> {
   const buildLabel = cred.build === "workbuddy-ai" ? "国际版 (workbuddy-ai)" : "国内版 (workbuddy)"
   const confirmed = await gConfirm(
     `已解析凭据：\n\n账号：${cred.accountId}\n版本：${buildLabel}\n域名：${cred.domain}\n\n确定${editAccountId ? "更新" : "添加"}该账号吗？`

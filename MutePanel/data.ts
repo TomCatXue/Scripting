@@ -161,6 +161,9 @@ export const DEEPSEEK_CACHE_KEY = "dashboard_kit_deepseek_cache_v1"
 export const TREND_KEY_WORKBUDDY = "mutepanel_trend_workbuddy_v1"
 export const TREND_KEY_CODEX = "mutepanel_trend_codex_v1"
 export const TREND_KEY_ANTIGRAVITY = "mutepanel_trend_antigravity_v1"
+// Antigravity 分指标走势（供中号 Gemini/Claude 切换各自展示）
+export const TREND_KEY_ANTIGRAVITY_GEMINI = "mutepanel_trend_antigravity_gemini_v1"
+export const TREND_KEY_ANTIGRAVITY_CLAUDE = "mutepanel_trend_antigravity_claude_v1"
 export const TREND_KEY_CPAMP = "mutepanel_trend_cpamp_v1"
 const DEEPSEEK_USAGE_STORE_PATH =
   FileManager.appGroupDocumentsDirectory + "/deepseek_usage_keys.json"
@@ -1715,8 +1718,18 @@ function buildAntigravityAggregate(
 ): DualQuotaData {
   if (results.length === 1) {
     const only = results[0]
-    if (okCount >= totalCount) return only.display
-    return { ...only.display, footerStatus: `${only.display.footerStatus} · 可用 ${okCount}/${totalCount}` }
+    // 单账号也要带上分模式走势，否则中号切换后图表拿不到对应数据
+    const gemOnly = (() => {
+      pushSnapshot(TREND_KEY_ANTIGRAVITY_GEMINI, only.pct1)
+      return snapshotSeries(TREND_KEY_ANTIGRAVITY_GEMINI)
+    })()
+    const claudeOnly = (() => {
+      pushSnapshot(TREND_KEY_ANTIGRAVITY_CLAUDE, only.pct2)
+      return snapshotSeries(TREND_KEY_ANTIGRAVITY_CLAUDE)
+    })()
+    const base = { ...only.display, trends: { gemini: gemOnly, claude: claudeOnly } }
+    if (okCount >= totalCount) return base
+    return { ...base, footerStatus: `${only.display.footerStatus} · 可用 ${okCount}/${totalCount}` }
   }
 
   const quota = aggregateQuota(results.map((r) => ({ pct1: r.pct1, pct2: r.pct2 })))
@@ -1727,6 +1740,17 @@ function buildAntigravityAggregate(
   // Antigravity 的「最紧」跨 Gemini 与 Claude 两个指标，
   // 与原实现的 min(p1, p2) 一致，因此这里用 lowestAny 而非主指标最低值
   const note = accountNote(totalCount, okCount, quota.lowestAny)
+
+  // 两条指标各自快照，供中号切换胶囊展示「对应指标的走势」。
+  // 必须各用独立键：TREND_KEY_ANTIGRAVITY 保留给默认的「最紧额度」。
+  const gemTrend = (() => {
+    pushSnapshot(TREND_KEY_ANTIGRAVITY_GEMINI, quota.sum1)
+    return snapshotSeries(TREND_KEY_ANTIGRAVITY_GEMINI)
+  })()
+  const claudeTrend = (() => {
+    pushSnapshot(TREND_KEY_ANTIGRAVITY_CLAUDE, quota.sum2)
+    return snapshotSeries(TREND_KEY_ANTIGRAVITY_CLAUDE)
+  })()
 
   return {
     ...DEFAULT_ANTIGRAVITY,
@@ -1750,11 +1774,13 @@ function buildAntigravityAggregate(
     },
     // 「最紧」跨两个指标取最小，与原实现 min(p1,p2) 的语义一致
     footerStatus: note || `最紧 ${formatPct(quota.lowestAny)}%`,
-    // 快照累积聚合后的「最紧额度」，与原实现同口径
+    // 默认走势仍为「最紧额度」，与改造前同口径
     trend7d: (() => {
       pushSnapshot(TREND_KEY_ANTIGRAVITY, quota.lowestAny)
       return snapshotSeries(TREND_KEY_ANTIGRAVITY)
     })(),
+    // 分模式走势：切换胶囊用它让图表真正随模式变化
+    trends: { gemini: gemTrend, claude: claudeTrend },
     updatedAt: new Date().toISOString(),
   }
 }
@@ -2541,8 +2567,12 @@ export async function refreshFuelData(): Promise<FuelCardData | null> {
     }
 
     // ── 累积价格历史 ──────────────────────────────────────────────
-    // 油价没有逐日公开历史接口，因此按「每次刷新采样」累积：
-    // 价格变化或跨天时追加一个点，最多保留 30 个，用于中号走势图。
+    // 油价没有逐日公开历史接口（中石化 / 发改委预测都只返回「当前值」），
+    // 因此按「每个自然日一个采样点」累积真实挂牌价，最多保留 30 天。
+    //
+    // 注意：必须按日期 upsert（同一天覆盖、新一天追加）。
+    // 早期实现是「价格不变时替换最后一个点」，那会在两次调价之间
+    // （通常相隔约 10 天）把历史不断压缩，最终只剩 1 个点 → 走势图退化成直线。
     const prevHistory = (() => {
       try {
         const cached =
@@ -2560,22 +2590,20 @@ export async function refreshFuelData(): Promise<FuelCardData | null> {
 
     const focusNum = Number(focusPrice)
     const now = new Date()
-    const todayLabel = `${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`
+    // 与 recentDays 保持一致：紧凑的「月/日」，避免宽字符被截断
+    const todayLabel = `${now.getMonth() + 1}/${now.getDate()}`
     const history = Array.isArray(prevHistory)
       ? prevHistory.filter((h: any) => h && Number.isFinite(Number(h.value)))
       : []
-    const lastPoint = history.length > 0 ? history[history.length - 1] : null
-    const lastValue = lastPoint ? Number(lastPoint.value) : NaN
-    const priceChanged = !Number.isFinite(lastValue) || Math.abs(lastValue - focusNum) >= 0.005
-    const dayChanged = !lastPoint || lastPoint.label !== todayLabel
 
     if (Number.isFinite(focusNum) && focusNum > 0) {
-      if (priceChanged) {
-        // 价格变动：追加新采样点
+      const todayIdx = history.findIndex((h: any) => h.label === todayLabel)
+      if (todayIdx >= 0) {
+        // 今天已有采样：覆盖为最新价（同日多次刷新只保留一条）
+        history[todayIdx] = { label: todayLabel, value: focusNum }
+      } else {
+        // 新的一天：追加，保留全部历史日
         history.push({ label: todayLabel, value: focusNum })
-      } else if (dayChanged) {
-        // 同价但跨天：刷新最新点的时间标签，让走势图时间轴保持新鲜
-        history[history.length - 1] = { label: todayLabel, value: focusNum }
       }
     }
     const priceHistory = history.slice(-30)

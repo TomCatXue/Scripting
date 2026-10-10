@@ -93,6 +93,9 @@ export interface TrendSmallTemplateProps {
  */
 export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
   const info = props.data.slice(-30)
+  // 少于 2 个点时不绘制折线：单点会渲染成一条水平直线，
+  // 看起来像「价格一直没变」，属于误导性展示。
+  const hasTrend = info.length >= 2
   const values = info.length > 0 ? info.map((d) => d.value) : [0]
   const minY = Math.min(...values)
   const color = trendColor(props.isUp)
@@ -141,15 +144,30 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
         {props.subtitle}
       </Text>
 
-      {/* 走势线：隐藏坐标轴，仅保留平滑曲线 */}
-      <Chart
-        chartXAxis="hidden"
-        chartYAxis="hidden"
-        frame={{ maxWidth: "infinity", height: 46 }}
-        padding={{ top: 2, bottom: 2 }}
-      >
-        <LineChart marks={marks} interpolationMethod="catmullRom" />
-      </Chart>
+      {/* 走势线：隐藏坐标轴，仅保留平滑曲线。
+          历史不足 2 天时不画线 —— 单点会连成一条误导性的水平直线。 */}
+      {hasTrend ? (
+        <Chart
+          chartXAxis="hidden"
+          chartYAxis="hidden"
+          frame={{ maxWidth: "infinity", height: 46 }}
+          padding={{ top: 2, bottom: 2 }}
+        >
+          <LineChart marks={marks} interpolationMethod="catmullRom" />
+        </Chart>
+      ) : (
+        <HStack
+          alignment="center"
+          frame={{ maxWidth: "infinity", height: 46 }}
+          padding={{ top: 2, bottom: 2 }}
+        >
+          <Spacer />
+          <Text font={10} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.8}>
+            累积走势中 · 需 2 天以上
+          </Text>
+          <Spacer />
+        </HStack>
+      )}
 
       <Spacer minLength={2} />
 
@@ -481,6 +499,8 @@ export interface WaveformMediumTemplateProps {
   /** 面积渐变（首色实、末色透明） */
   gradient: [any, any]
   updatedAt: string
+  /** 可选：图表下方的模式切换胶囊（如 Antigravity 的 Gemini/Claude） */
+  modeSwitch?: any
 }
 
 /**
@@ -589,15 +609,16 @@ export function WaveformMediumTemplate(props: WaveformMediumTemplateProps) {
         </HStack>
         <Spacer />
 
+        {/*
+          坐标轴整体隐藏：原生图表不在左右边缘留内边距，首尾刻度按
+          multiLabelAlignment:"center" 对齐时会被图表边界截断（只剩月份）。
+          改为在图表下方用 HStack + Spacer 独立渲染首/中/尾三个日期，
+          由布局保证任何屏宽下都完整显示。
+        */}
         <Chart
-          frame={{ maxWidth: "infinity", height: 80 }}
-          chartXAxis={{
-            position: "bottom",
-            tick: false,
-            gridLine: false,
-            values: { type: "values", values: axisValues },
-            valueLabel: { multiLabelAlignment: "center" },
-          }}
+          frame={{ maxWidth: "infinity", height: 68 }}
+          chartXAxis="hidden"
+          chartYAxis="hidden"
         >
           <AreaChart
             marks={marks.map((m) => ({
@@ -620,6 +641,38 @@ export function WaveformMediumTemplate(props: WaveformMediumTemplateProps) {
             })}
           />
         </Chart>
+
+        {/* 独立日期轴：首 / 中 / 尾三点等距分布，左右各留 2pt 防截断 */}
+        <HStack
+          alignment="center"
+          frame={{ maxWidth: "infinity" }}
+          padding={{ leading: 2, trailing: 2, top: 1 }}
+        >
+          {axisValues.flatMap((v, i) => {
+            const node = (
+              <Text
+                key={`axis-${i}`}
+                font={9}
+                foregroundStyle={THEME.dim}
+                monospacedDigit
+                lineLimit={1}
+                minScaleFactor={0.75}
+              >
+                {v}
+              </Text>
+            )
+            return i === 0 ? [node] : [<Spacer key={`axis-sp-${i}`} />, node]
+          })}
+        </HStack>
+
+        {/* 可选：模式切换胶囊 */}
+        {props.modeSwitch ? (
+          <HStack alignment="center" frame={{ maxWidth: "infinity" }} padding={{ top: 2 }}>
+            <Spacer />
+            {props.modeSwitch}
+            <Spacer />
+          </HStack>
+        ) : null}
       </VStack>
     </HStack>
   )

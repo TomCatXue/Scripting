@@ -300,6 +300,8 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
         : `Claude/GPT ${d.item2?.timer || "--"}`
       const subTag2 = `Gem周 ${d.stat1?.value || "--"} · C/G周 ${d.stat2?.value || "--"}`
       const chartTitle = isClaude ? "Claude可用额度" : "Gemini可用额度"
+      // 切换后图表数据要真正随模式变化，而不是只换配色
+      const modeTrend = d.trends?.[isClaude ? "claude" : "gemini"] || d.trend7d || []
 
       const modeSwitchNode = (
         <ModeSwitch
@@ -323,8 +325,8 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
             subTag2,
             chartTitle,
             modeSwitch: modeSwitchNode,
-            peakText: peakLabel(d.trend7d, "%"),
-            trendData: d.trend7d || [],
+            peakText: peakLabel(modeTrend, "%"),
+            trendData: modeTrend,
             lineColor: isClaude ? "#D97706" : "#0091FF",
             gradient: isClaude
               ? ["#FDE68A", "rgba(253,230,138,0)"]

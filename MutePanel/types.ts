@@ -95,6 +95,12 @@ export interface DualQuotaData {
    * 中号波形图直接读取该字段；为空时模板自动降级为说明文案。
    */
   trend7d?: { label: string; value: number }[]
+  /**
+   * 可选：按展示模式区分的走势，供中号切换胶囊使用。
+   * 例如 Antigravity 的 { gemini: [...], claude: [...] }，
+   * 使切换后图表数据真正随模式变化，而非只换配色。
+   */
+  trends?: Record<string, { label: string; value: number }[]>
   footerStatus: string
   footerStatusColor?: any
   updatedAt: string
