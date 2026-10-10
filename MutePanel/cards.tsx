@@ -924,8 +924,6 @@ export function DeepSeekSmallCard({ data }: { data: MetricBalanceData }) {
   const currency = (data.prefix || "¥").trim()
   const raw = String(data.subValue2 ?? "").trim()
   const weekCost = !raw || raw === "--" ? `${currency} --` : (raw.startsWith("¥") || raw.startsWith("$") ? raw : `${currency} ${raw}`)
-  // 累计消费优先用后端解析出的真实总额，缺失时回落到近 7 日消费
-  const totalCost = String(data.totalCostText || "").trim() || weekCost
   const iconColor = { light: "#1E60FF", dark: "#3B82F6" } as any
 
   return (
@@ -940,7 +938,7 @@ export function DeepSeekSmallCard({ data }: { data: MetricBalanceData }) {
         value: data.mainValue || "0.00",
       }}
       cells={[
-          { icon: "sum", iconColor, label: "累计消费", value: totalCost },
+        { icon: "checkmark.seal.fill", iconColor: THEME.green, label: "状态", value: data.statusText || "正常", valueColor: THEME.green },
         { icon: "chart.line.uptrend.xyaxis", iconColor, label: "近7日消费", value: weekCost },
       ]}
       footerLeft="官方直连"
