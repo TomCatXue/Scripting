@@ -27,9 +27,11 @@ function testWaveformAxesHidden(): void {
         body.includes('chartXAxis="hidden"'),
         "波形图中号必须隐藏 X 轴（原生轴无左右内边距，首尾刻度会被截断）"
     );
+    // 参考实现（xubai2001「DeepSeek 用量」）用系统自动 Y 轴，
+    // 因此这里**不应**设置 chartYAxis —— 与参考及改造前行为一致。
     assert.ok(
-        body.includes('chartYAxis="hidden"'),
-        "波形图中号必须隐藏 Y 轴"
+        !body.includes("chartYAxis"),
+        "不应设置 chartYAxis，保持与参考实现一致的系统自动 Y 轴"
     );
     // 不应再配置原生刻度值（截断根因）。
     // 注意：注释里会提到 multiLabelAlignment 说明原因，因此这里针对
@@ -42,10 +44,15 @@ function testWaveformAxesHidden(): void {
         !/chartXAxis=\{\{/.test(body),
         "chartXAxis 不应再传对象配置"
     );
-    // 图表高度按方案调整为 68
+    // 图表高度与参考一致为 80
     assert.ok(
-        body.includes("height: 68"),
-        "图表高度应为 68pt"
+        body.includes("height: 80"),
+        "图表高度应为 80pt（对齐参考实现）"
+    );
+    // 绘图区裁切，与参考一致
+    assert.ok(
+        body.includes("ChartPlotStyle"),
+        "应使用 ChartPlotStyle 裁切绘图区"
     );
 }
 
@@ -59,8 +66,8 @@ function testWaveformOwnDateRow(): void {
         "图表下方必须有独立渲染的日期行（用布局保证完整显示）"
     );
     assert.ok(
-        /padding=\{\{\s*leading:\s*2,\s*trailing:\s*2/.test(body),
-        "日期行左右各留 2pt 内边距防截断"
+        /padding=\{\{\s*top:\s*2,\s*trailing:\s*12/.test(body),
+        "日期行内边距与参考实现一致（top 2 / trailing 12）"
     );
     // 三个日期之间插入 Spacer 实现等距分布。
     // 源码里只有一处 Spacer 模板，运行时由 flatMap 对 i>0 的项各产生一个

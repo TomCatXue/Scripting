@@ -142,6 +142,39 @@ export function accountNote(count: number, onlineCount: number, lowest?: number)
   return parts.join(" · ")
 }
 
+/**
+ * 由「逐日消费」回推「逐日余额」曲线。
+ *
+ * DeepSeek 没有余额历史接口，只有当前余额与逐日消费。
+ * 在「窗口内无充值」的假设下，第 i 天的余额 ≈ 当前余额 + 第 i 天之后各天消费之和。
+ * 口径与 xubai2001「DeepSeek 用量」原版的 BalanceTrendChart 一致。
+ *
+ * @param costSeries     逐日消费（按时间升序）
+ * @param currentBalance 当前余额（含赠送）
+ */
+export function balanceSeriesFromCost(
+  costSeries: { label: string; value: number }[],
+  currentBalance: number
+): { label: string; value: number }[] {
+  const list = Array.isArray(costSeries) ? costSeries : []
+  if (list.length === 0) return []
+
+  // 从最新一天往前回推：after 为「该日之后各天消费之和」
+  let after = 0
+  for (const d of list) after += Number(d?.value) || 0
+
+  const out: { label: string; value: number }[] = []
+  for (const d of list) {
+    const cost = Number(d?.value) || 0
+    after -= cost
+    out.push({
+      label: String(d?.label ?? ""),
+      value: Math.round((currentBalance + after) * 100) / 100,
+    })
+  }
+  return out
+}
+
 /** 多币种混合时取账号数最多的币种，避免把 USD 与 CNY 直接相加 */
 export function dominantCurrency(currencies: string[]): string {
   const tally = new Map<string, number>()

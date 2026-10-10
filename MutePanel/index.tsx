@@ -63,6 +63,7 @@ import {
   refreshVpnData,
   refreshWorkBuddyData,
   refreshWbDirectData,
+  getWbDirectLastError,
   setWbDirectCredential,
   WB_DIRECT_CACHE_KEY,
   WB_CACHE_KEY,
@@ -321,9 +322,28 @@ async function manageAccounts(
     const choice = await gActionSheet(`管理 ${label} 账号（${accounts.length}）`, [
       ...rows,
       "➕ 添加账号",
+      "🔄 测试连接并查看结果",
       "取消",
     ])
     if (choice === "取消") return
+
+    if (choice === "🔄 测试连接并查看结果") {
+      const res = await refreshWbDirectData()
+      if (res) {
+        Widget.reloadAll()
+        await gAlert(
+          `✓ 连接成功\n\n积分剩余：${res.mainValue}\n已用：${res.subValue2}\n账号：${res.subValue1}`
+        )
+      } else {
+        await gAlert(
+          `✗ 拉取失败\n\n原因：${getWbDirectLastError() || "未知（无启用账号？）"}\n\n` +
+            `若提示网络错误，请确认设备可访问 WorkBuddy 官方接口；\n` +
+            `若提示 401/错误码，说明凭据已过期，请重新导入。`
+        )
+      }
+      await onChanged()
+      continue
+    }
 
     if (choice === "➕ 添加账号") {
       if (await onAdd()) await onChanged()
@@ -539,7 +559,7 @@ async function configureWbDirect(editAccountId?: string): Promise<boolean> {
     )
   } else {
     await gAlert(
-      `已保存 ${added + updated} 个账号，但首次拉取积分失败。\n请确认网络可达，或凭据是否已过期。`
+      `已保存 ${added + updated} 个账号，但首次拉取积分失败。\n\n原因：${getWbDirectLastError() || "未知"}\n\n请确认网络可达，或凭据是否已过期。`
     )
   }
   return true
@@ -567,7 +587,9 @@ async function importWbDirectCredential(cred: any, editAccountId?: string): Prom
       `✓ ${cred.accountId} 连接成功！\n\n积分剩余：${res.mainValue}\n已用：${res.subValue2}\n账号：${res.subValue1}`
     )
   } else {
-    await gAlert("凭据已保存，但首次拉取积分失败。\n请确认网络可达，或凭据是否已过期。")
+    await gAlert(
+      `凭据已保存，但首次拉取积分失败。\n\n原因：${getWbDirectLastError() || "未知"}\n\n请确认网络可达，或凭据是否已过期。`
+    )
   }
   return true
 }

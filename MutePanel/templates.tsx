@@ -22,7 +22,9 @@
 //      顶部行情来源与涨跌，中部 4 张等宽等高卡片，底部 30 日走势图。
 // ============================================================
 import {
+  Button,
   Chart,
+  ChartPlotStyle,
   AreaChart,
   LineChart,
   HStack,
@@ -424,6 +426,11 @@ export interface ModeOption {
   color?: any
 }
 
+/**
+ * 模式切换胶囊（余额 / Token 这类）。
+ * 几何参数 1:1 对齐 xubai2001「DeepSeek 用量」的 ChartModeSwitch：
+ * font 9、horizontal 7 / vertical 3、cornerRadius 6 continuous、间距 2。
+ */
 export function ModeSwitch({
   service,
   current,
@@ -437,9 +444,6 @@ export function ModeSwitch({
     <HStack spacing={2} alignment="center">
       {options.map((opt) => {
         const active = current === opt.key
-        const activeBg = opt.color || THEME.blue
-        const activeFg = "#FFFFFF"
-        const inactiveFg = THEME.dim
         return (
           <Button
             key={opt.key}
@@ -449,10 +453,10 @@ export function ModeSwitch({
             <Text
               font={9}
               fontWeight={active ? "semibold" : "regular"}
-              foregroundStyle={active ? activeFg : inactiveFg}
-              padding={{ horizontal: 6, vertical: 2 }}
-              background={active ? activeBg : "rgba(0,0,0,0)"}
-              clipShape={{ type: "rect", cornerRadius: 5 }}
+              foregroundStyle={active ? "#FFFFFF" : THEME.dim}
+              padding={{ horizontal: 7, vertical: 3 }}
+              background={active ? opt.color || THEME.blue : "clear"}
+              clipShape={{ type: "rect", cornerRadius: 6, style: "continuous" }}
             >
               {opt.label}
             </Text>
@@ -592,33 +596,36 @@ export function WaveformMediumTemplate(props: WaveformMediumTemplateProps) {
       {/* 右侧波形图 */}
       <VStack spacing={3} alignment="leading" frame={{ maxWidth: "infinity" }}>
         <Spacer />
+        {/* 标题行：标题居中，右侧放模式切换胶囊（与原版一致） */}
         <HStack alignment="center">
           <Text
             font={10}
             fontWeight="semibold"
             foregroundStyle={THEME.dim}
-              frame={{ maxWidth: "infinity", alignment: props.peakText ? "center" : "leading" }}
+            frame={{ maxWidth: "infinity", alignment: "center" }}
           >
             {props.chartTitle}
           </Text>
-            {props.peakText ? (
-              <Text font={9.5} fontWeight="bold" foregroundStyle={props.lineColor} lineLimit={1}>
-                {props.peakText}
-              </Text>
-            ) : null}
+          {props.modeSwitch ? props.modeSwitch : null}
         </HStack>
+        {/* 峰值标签单独一行，避免挤压标题与胶囊 */}
+        {props.peakText ? (
+          <Text font={9.5} fontWeight="bold" foregroundStyle={props.lineColor} lineLimit={1}>
+            {props.peakText}
+          </Text>
+        ) : null}
         <Spacer />
 
         {/*
-          坐标轴整体隐藏：原生图表不在左右边缘留内边距，首尾刻度按
-          multiLabelAlignment:"center" 对齐时会被图表边界截断（只剩月份）。
-          改为在图表下方用 HStack + Spacer 独立渲染首/中/尾三个日期，
-          由布局保证任何屏宽下都完整显示。
+          1:1 对齐 xubai2001「DeepSeek 用量」：
+          · 右侧图表栏不限宽，占满剩余空间（宽度交给布局分配，不做硬编码）
+          · 折线宽 2，并用 ChartPlotStyle 裁切绘图区
+          · 坐标轴整体隐藏，日期在图表下方用 HStack + Spacer 独立渲染
+            （原生轴在左右无内边距时会把首尾日期截断）
         */}
         <Chart
-          frame={{ maxWidth: "infinity", height: 68 }}
+          frame={{ maxWidth: "infinity", height: 80 }}
           chartXAxis="hidden"
-          chartYAxis="hidden"
         >
           <AreaChart
             marks={marks.map((m) => ({
@@ -628,33 +635,29 @@ export function WaveformMediumTemplate(props: WaveformMediumTemplateProps) {
             }))}
           />
           <LineChart
-            marks={marks.map((m, i) => {
-              const isLast = i === marks.length - 1
-              return {
-                ...m,
-                interpolationMethod: "catmullRom",
-                foregroundStyle: props.lineColor,
-                lineStyle: { lineWidth: 2.6, lineCap: "round", lineJoin: "round" },
-                symbol: isLast ? "circle" : undefined,
-                symbolSize: isLast ? 40 : undefined,
-              }
-            })}
+            marks={marks.map((m) => ({
+              ...m,
+              interpolationMethod: "catmullRom",
+              foregroundStyle: props.lineColor,
+              lineStyle: { lineWidth: 2, lineCap: "round", lineJoin: "round" },
+            }))}
           />
+          <ChartPlotStyle>{(plot: any) => plot.clipShape("rect")}</ChartPlotStyle>
         </Chart>
 
-        {/* 独立日期轴：首 / 中 / 尾三点等距分布，左右各留 2pt 防截断 */}
+        {/* 独立日期轴：首 / 中 / 尾三点等距分布。
+            右侧留白 12 与原版一致，使末位日期与绘图区右缘大致对齐。 */}
         <HStack
           alignment="center"
           frame={{ maxWidth: "infinity" }}
-          padding={{ leading: 2, trailing: 2, top: 1 }}
+          padding={{ top: 2, trailing: 12 }}
         >
           {axisValues.flatMap((v, i) => {
             const node = (
               <Text
                 key={`axis-${i}`}
-                font={9}
+                font={10}
                 foregroundStyle={THEME.dim}
-                monospacedDigit
                 lineLimit={1}
                 minScaleFactor={0.75}
               >
@@ -665,14 +668,6 @@ export function WaveformMediumTemplate(props: WaveformMediumTemplateProps) {
           })}
         </HStack>
 
-        {/* 可选：模式切换胶囊 */}
-        {props.modeSwitch ? (
-          <HStack alignment="center" frame={{ maxWidth: "infinity" }} padding={{ top: 2 }}>
-            <Spacer />
-            {props.modeSwitch}
-            <Spacer />
-          </HStack>
-        ) : null}
       </VStack>
     </HStack>
   )

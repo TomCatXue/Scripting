@@ -374,16 +374,18 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
         "cost"
       const isBalance = dsMode === "balance"
 
+      // 与 xubai2001 原版一致：两个模式是「余额 / Token」，不是「余额 / 消费」
       const modeSwitchNode = (
         <ModeSwitch
           service="deepseek"
-          current={dsMode}
+          current={isBalance ? "balance" : "tokens"}
           options={[
             { key: "balance", label: "余额", color: "#2563EB" },
-            { key: "cost", label: "消费", color: "#10B981" },
+            { key: "tokens", label: "Token", color: "#10B981" },
           ]}
         />
       )
+      const dsTrend = d.trends?.[isBalance ? "balance" : "tokens"] || d.trend7d || []
 
       return (
         <WaveformDashboardMediumCard
@@ -396,11 +398,11 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
             mainValue: d.mainValue || "0.00",
             subTag1: `累计消费 ${d.totalCostText || "--"}`,
             subTag2: `近7日消耗 ${d.subValue2 || "--"}`,
-            chartTitle: isBalance ? "近7日余额" : "近7日消费",
+            chartTitle: isBalance ? "近7天余额" : "近7天用量 (M)",
             modeSwitch: modeSwitchNode,
-            // 峰值来源：d.trend7d（DeepSeek /usage/by_api_key/cost 逐日真实消费）中的最大值
-            peakText: peakLabel(d.trend7d, "", d.prefix || "¥"),
-            trendData: d.trend7d || [],
+            // 峰值来源：当前模式对应的走势序列
+            peakText: peakLabel(dsTrend, isBalance ? "" : "M", isBalance ? d.prefix || "¥" : ""),
+            trendData: dsTrend,
             lineColor: isBalance ? "#2563EB" : "#10B981",
             gradient: isBalance
               ? ["#8AB4FF", "rgba(138,180,255,0)"]

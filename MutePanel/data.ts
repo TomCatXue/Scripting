@@ -13,6 +13,7 @@ import {
   accountNote,
   aggregateQuota,
   aggregateSum,
+  balanceSeriesFromCost,
   currencySymbol,
   dominantCurrency,
   mergeDayCosts,
@@ -452,6 +453,9 @@ interface WbDirectAccountResult {
   refreshExpiresAt?: number
 }
 
+/** 最近一次直连抓取的失败原因（空串表示上次成功） */
+let wbDirectLastError = ""
+
 /** 读取并解析某账号的直连凭据；无效返回 null */
 function readWbDirectCredential(accountId: string): WbDirectCredential | null {
   const raw = getAccountCredential("workbuddy_direct", accountId, "credential")
@@ -505,10 +509,20 @@ async function ensureWbDirectAccess(accountId: string): Promise<WbDirectCredenti
   }
 }
 
-/** 抓取单个账号的积分 */
+/**
+ * 抓取单个账号的积分。
+ *
+ * 关键：响应必须是「合法 JSON 且带 data 对象」才算成功。
+ * 早期实现只判断 res.ok 与 env.code —— 遇到网关返回的 HTML 错误页时
+ * env 为 null、code 为 undefined，会被当成「成功但积分全为 0」，
+ * 小组件于是显示 0 而不是报错，看起来就像「没有数据」。
+ */
 async function fetchWbDirectAccount(accountId: string): Promise<WbDirectAccountResult | null> {
   const cred = await ensureWbDirectAccess(accountId)
-  if (!cred) return null
+  if (!cred) {
+    wbDirectLastError = "凭据缺失或无法续期"
+    return null
+  }
 
   try {
     const res = await fetch(wbDirectCreditsUrl(cred), {
@@ -517,13 +531,37 @@ async function fetchWbDirectAccount(accountId: string): Promise<WbDirectAccountR
       body: "{}",
       timeout: 20,
     })
-    const env: any = await res.json().catch(() => null)
-    if (!res.ok || env?.code) {
-      console.log("WorkBuddy 直连取积分失败:", env?.msg || res.status)
+    const text = await res.text().catch(() => "")
+    let env: any = null
+    try {
+      env = text ? JSON.parse(text) : null
+    } catch {
+      env = null
+    }
+
+    if (!res.ok) {
+      const why = env?.msg || env?.message || text.slice(0, 120) || `HTTP ${res.status}`
+      wbDirectLastError = `${cred.accountId}：HTTP ${res.status} ${why}`
+      console.log("WorkBuddy 直连取积分失败:", wbDirectLastError)
+      return null
+    }
+    if (!env || typeof env !== "object") {
+      wbDirectLastError = `${cred.accountId}：响应不是 JSON（${text.slice(0, 80) || "空响应"}）`
+      console.log("WorkBuddy 直连响应异常:", wbDirectLastError)
+      return null
+    }
+    if (env.code) {
+      wbDirectLastError = `${cred.accountId}：${env.msg || `错误码 ${env.code}`}`
+      console.log("WorkBuddy 直连返回错误:", wbDirectLastError)
+      return null
+    }
+    if (!env.data || typeof env.data !== "object") {
+      wbDirectLastError = `${cred.accountId}：响应缺少 data 字段`
+      console.log("WorkBuddy 直连响应异常:", wbDirectLastError)
       return null
     }
 
-    const sum = sumWbCredits(env?.data)
+    const sum = sumWbCredits(env.data)
     return {
       total: sum.total,
       used: sum.used,
@@ -532,7 +570,8 @@ async function fetchWbDirectAccount(accountId: string): Promise<WbDirectAccountR
       accountId: cred.accountId,
       refreshExpiresAt: cred.refreshExpiresAt,
     }
-  } catch (e) {
+  } catch (e: any) {
+    wbDirectLastError = `${cred.accountId}：${e?.message || e}`
     console.log("WorkBuddy 直连取积分异常:", e)
     return null
   }
@@ -584,6 +623,11 @@ export function hasWbDirectConfigured(): boolean {
   return hasAnyConfiguredAccount("workbuddy_direct")
 }
 
+/** 最近一次直连抓取的失败原因（供配置面板展示，便于定位问题） */
+export function getWbDirectLastError(): string {
+  return wbDirectLastError
+}
+
 export function getWbDirectData(): MetricBalanceData {
   try {
     const cached =
@@ -602,6 +646,8 @@ export function getWbDirectData(): MetricBalanceData {
 export async function refreshWbDirectData(): Promise<MetricBalanceData | null> {
   const accounts = enabledAccounts("workbuddy_direct")
   if (accounts.length === 0) return null
+
+  wbDirectLastError = ""
 
   const settled = await Promise.all(
     accounts.map((a) => fetchWbDirectAccount(a.id).catch(() => null))
@@ -721,6 +767,12 @@ interface DeepSeekAccountResult {
   currency: string
   /** 逐日消费（北京时间自然日 0 点 → 金额）；API Key 模式无此数据 */
   costByDay: Map<number, number>
+  /**
+   * 逐日 Token 用量（北京时间自然日 0 点 → Tokens）。
+   * 来源 /usage/by_api_key/amount，口径与 xubai2001 原版一致：
+   * RESPONSE_TOKEN + PROMPT_CACHE_HIT_TOKEN + PROMPT_CACHE_MISS_TOKEN。
+   */
+  tokenByDay: Map<number, number>
   /** 开放平台 sk- API Key 模式：无逐日消费、无赠送余额 */
   apiKeyMode: boolean
 }
@@ -788,6 +840,8 @@ async function fetchDeepSeekAccount(accountId: string): Promise<DeepSeekAccountR
             totalCost: 0,
             currency: info.currency || "CNY",
             costByDay: new Map<number, number>(),
+            // 开放平台 API Key 模式没有逐日用量接口
+            tokenByDay: new Map<number, number>(),
             apiKeyMode: true,
           }
         }
@@ -884,6 +938,42 @@ async function fetchDeepSeekAccount(accountId: string): Promise<DeepSeekAccountR
       }
     } catch {}
 
+    // 3. 拉取近 7 天逐日 Token 用量（供中号「余额 / Token」切换的第二条曲线）：
+    //    数据来源：/api/v0/usage/by_api_key/amount
+    //    结构：data.biz_data.series[].buckets[] = { time, usage{...} }
+    //    口径与 xubai2001 原版一致：RESPONSE + PROMPT_CACHE_HIT + PROMPT_CACHE_MISS
+    const tokenByDay = new Map<number, number>()
+    try {
+      const today = Math.floor((Date.now() / 1000 + 28800) / 86400) * 86400 - 28800
+      const start = today - 6 * 86400
+      const end = today + 86400
+      const amtRes = await fetch(
+        `https://platform.deepseek.com/api/v0/usage/by_api_key/amount?start=${start}&end=${end}&tz=28800`,
+        { method: "GET", headers, timeout: 15 }
+      )
+      if (amtRes.ok) {
+        const amtJson: any = await amtRes.json().catch(() => null)
+        const biz = amtJson?.data?.biz_data
+        if (Array.isArray(biz?.series)) {
+          for (const s of biz.series) {
+            if (!Array.isArray(s?.buckets)) continue
+            for (const b of s.buckets) {
+              const u = b?.usage
+              if (!u) continue
+              const n =
+                (Number(u.RESPONSE_TOKEN) || 0) +
+                (Number(u.PROMPT_CACHE_HIT_TOKEN) || 0) +
+                (Number(u.PROMPT_CACHE_MISS_TOKEN) || 0)
+              const t = Number(b.time)
+              if (Number.isFinite(t) && n > 0) {
+                tokenByDay.set(t, (tokenByDay.get(t) ?? 0) + n)
+              }
+            }
+          }
+        }
+      }
+    } catch {}
+
     // 近 7 日逐日消费走势（真实数据）
     const trend7d = toDailySeries(costByDay)
 
@@ -914,6 +1004,7 @@ async function fetchDeepSeekAccount(accountId: string): Promise<DeepSeekAccountR
       totalCost,
       currency,
       costByDay,
+      tokenByDay,
       apiKeyMode: false,
     }
   } catch (e) {
@@ -936,8 +1027,18 @@ function buildDeepSeekAggregate(
 ): MetricBalanceData {
   if (results.length === 1) {
     const only = results[0]
-    if (okCount >= totalCount) return only.display
-    return { ...only.display, footerLeft: `${only.display.footerLeft} · 可用 ${okCount}/${totalCount}` }
+    // 单账号也要带上双模式走势，否则中号「余额 / Token」切换拿不到第二条曲线。
+    // 「余额」模式是从当日余额回推的曲线，不是消费曲线。
+    const costTrend = only.display.trend7d || []
+    const base: MetricBalanceData = {
+      ...only.display,
+      trends: {
+        balance: balanceSeriesFromCost(costTrend, only.balance),
+        tokens: toDailySeries(only.tokenByDay),
+      },
+    }
+    if (okCount >= totalCount) return base
+    return { ...base, footerLeft: `${only.display.footerLeft} · 可用 ${okCount}/${totalCount}` }
   }
 
   const currency = dominantCurrency(results.map((r) => r.currency))
@@ -951,6 +1052,10 @@ function buildDeepSeekAggregate(
 
   const anyApiKeyOnly = results.every((r) => r.apiKeyMode)
 
+  // 逐日消费按自然日相加：DeepSeek 有真实逐日接口，不能用快照累积替代
+  const costTrend = toDailySeries(mergeDayCosts(results.map((r) => r.costByDay)))
+  const tokenTrend = toDailySeries(mergeDayCosts(results.map((r) => r.tokenByDay)))
+
   return {
     ...DEFAULT_DEEPSEEK,
     prefix: sym,
@@ -961,8 +1066,10 @@ function buildDeepSeekAggregate(
     subLabel2: "近7日消费",
     subValue2: `${sym}${weekCost.toFixed(2)}`,
     ...(anyApiKeyOnly ? {} : { totalCostText: `${sym}${totalCost.toFixed(2)}` }),
-    // 逐日消费按自然日相加：DeepSeek 有真实逐日接口，不能用快照累积替代
-    trend7d: toDailySeries(mergeDayCosts(results.map((r) => r.costByDay))),
+    trend7d: costTrend,
+    // 中号「余额 / Token」两条曲线（与参考实现同一组模式键）。
+    // 「余额」由当日余额回推，不是消费曲线。
+    trends: { balance: balanceSeriesFromCost(costTrend, balance), tokens: tokenTrend },
     footerLeft: accountNote(totalCount, okCount) || `官方直连 · ${results.length} 账号`,
     updatedAt: new Date().toISOString(),
   }

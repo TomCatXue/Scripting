@@ -5,11 +5,14 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 
-const widgetSrc = readFileSync(new URL("../widget.tsx", import.meta.url), "utf8");
-const cardsSrc = readFileSync(new URL("../cards.tsx", import.meta.url), "utf8");
-const indexSrc = readFileSync(new URL("../index.tsx", import.meta.url), "utf8");
-const typesSrc = readFileSync(new URL("../types.ts", import.meta.url), "utf8");
-const intentsSrc = readFileSync(new URL("../app_intents.tsx", import.meta.url), "utf8");
+const src = (rel: string) => readFileSync(new URL(rel, import.meta.url), "utf8");
+
+const widgetSrc = src("../widget.tsx");
+const cardsSrc = src("../cards.tsx");
+const indexSrc = src("../index.tsx");
+const typesSrc = src("../types.ts");
+const intentsSrc = src("../app_intents.tsx");
+const templatesSrc = src("../templates.tsx");
 
 // ── 1. 参数路由：workbuddy-direct 必须排在 workbuddy 之前 ────────
 function testParamOrderInGetWidgetView(): void {
@@ -138,6 +141,68 @@ function testDirectUsesOwnCache(): void {
     );
 }
 
+// ── 10. 用到的 scripting 组件必须已导入 ───────────────────────
+// 这类问题语法检查抓不到：`@ts-nocheck` 关掉了类型检查，
+// 组件未导入时在真机上渲染为空白/报错。ModeSwitch 曾漏导入 Button。
+function testScriptingComponentsImported(): void {
+    const UI_COMPONENTS = [
+        "Button", "Chart", "ChartPlotStyle", "AreaChart", "LineChart", "BarChart",
+        "HStack", "VStack", "ZStack", "Spacer", "Text", "Image", "SVG", "Path",
+        "Link", "List", "Section", "Toggle", "Gauge", "Divider", "Rectangle",
+        "Circle", "RoundedRectangle", "Color",
+    ];
+
+    const files = ["../templates.tsx", "../cards.tsx", "../widget.tsx"];
+    const problems: string[] = [];
+
+    for (const rel of files) {
+        const text = src(rel);
+
+        // 收集该文件从 "scripting" 导入的名字
+        const importMatch = text.match(/import\s*\{([\s\S]*?)\}\s*from\s*"scripting"/);
+        const imported = new Set(
+            (importMatch?.[1] || "")
+                .split(",")
+                .map((s) => s.trim().replace(/^type\s+/, "").split(/\s+as\s+/).pop()!.trim())
+                .filter(Boolean)
+        );
+
+        // 收集该文件里实际以 JSX 形式使用的组件名
+        const used = new Set<string>();
+        const tagRe = /<([A-Z][A-Za-z0-9]*)[\s/>]/g;
+        let m: RegExpExecArray | null;
+        while ((m = tagRe.exec(text)) !== null) used.add(m[1]);
+
+        for (const name of used) {
+            if (!UI_COMPONENTS.includes(name)) continue; // 本地组件或未列出的 API
+            if (!imported.has(name)) problems.push(`${rel} 使用了 <${name}> 但未从 "scripting" 导入`);
+        }
+    }
+
+    assert.deepEqual(problems, [], `存在未导入的组件:\n  ${problems.join("\n  ")}`);
+}
+
+// ── 11. 中号模板与参考实现的版式关键点 ────────────────────────
+function testMediumMatchesReference(): void {
+    const start = templatesSrc.indexOf("export function WaveformMediumTemplate");
+    const end = templatesSrc.indexOf("\n}", start);
+    const body = templatesSrc.slice(start, end);
+
+    // 左侧 112pt 固定栏（参考 MediumView）
+    assert.ok(body.includes("width: 112"), "左侧栏固定 112pt");
+    // 标题居中，胶囊在其右侧同一行
+    assert.ok(
+        /frame=\{\{ maxWidth: "infinity", alignment: "center" \}\}/.test(body),
+        "图表标题居中"
+    );
+    assert.ok(
+        body.includes("{props.modeSwitch ? props.modeSwitch : null}"),
+        "模式切换胶囊位于标题行右侧（与参考一致）"
+    );
+    // 折线宽 2（参考 lineWidth: 2）
+    assert.ok(body.includes("lineWidth: 2,"), "折线宽 2，与参考一致");
+}
+
 // ── 执行 ───────────────────────────────────────────────────────
 const tests: [string, () => void][] = [
     ["参数路由顺序(getWidgetView)", testParamOrderInGetWidgetView],
@@ -150,6 +215,8 @@ const tests: [string, () => void][] = [
     ["AppIntent 覆盖", testAppIntentCoversDirect],
     ["配置入口接线", testConfigWiring],
     ["直连独立缓存键", testDirectUsesOwnCache],
+    ["组件导入完整", testScriptingComponentsImported],
+    ["中号版式对齐参考", testMediumMatchesReference],
 ];
 
 let passed = 0;

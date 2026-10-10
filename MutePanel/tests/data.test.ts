@@ -262,6 +262,88 @@ async function testWbDirectUnconfigured(): Promise<void> {
     assert.equal(d.serviceId, "workbuddy-direct", "无缓存时回落默认对象");
 }
 
+// ── 8b. 直连：异常响应必须判为失败，而不是「成功但为 0」──────
+async function testWbDirectRejectsNonJson(): Promise<void> {
+    resetGlobals();
+    const a = accounts.addAccount("workbuddy_direct", "WB-A");
+    data.setWbDirectCredential(
+        a.id,
+        wbDirect.parseWbDirectCredential(
+            JSON.stringify({
+                type: "oauth", access: "acc-a", refresh: "ref-a",
+                expires: Date.now() + 30 * 86400_000,
+                accountId: "138****0001", uid: "uid-a",
+                domain: "copilot.tencent.com", tokenType: "Bearer",
+            })
+        )
+    );
+
+    // 网关返回 HTML 错误页（不是 JSON）—— 早期实现会当成成功且积分全 0
+    setMockFetch(async () => ({
+        status: 200, ok: true,
+        text: async () => "<html><body>502 Bad Gateway</body></html>",
+    }));
+
+    const r = await data.refreshWbDirectData();
+    assert.equal(r, null, "非 JSON 响应必须判为失败，不得返回全 0 的成功结果");
+    assert.ok(
+        /不是 JSON/.test(data.getWbDirectLastError()),
+        `失败原因应说明响应非 JSON，实际: ${data.getWbDirectLastError()}`
+    );
+}
+
+async function testWbDirectRejectsMissingData(): Promise<void> {
+    resetGlobals();
+    const a = accounts.addAccount("workbuddy_direct", "WB-A");
+    data.setWbDirectCredential(
+        a.id,
+        wbDirect.parseWbDirectCredential(
+            JSON.stringify({
+                type: "oauth", access: "acc-a", refresh: "ref-a",
+                expires: Date.now() + 30 * 86400_000,
+                accountId: "138****0001", uid: "uid-a",
+                domain: "copilot.tencent.com",
+            })
+        )
+    );
+
+    // 合法 JSON 但缺 data
+    setMockFetch(async () => jsonResponse({ code: 0 }));
+    assert.equal(await data.refreshWbDirectData(), null, "缺 data 字段判为失败");
+    assert.ok(/缺少 data/.test(data.getWbDirectLastError()), "原因说明缺 data");
+
+    // 业务错误码
+    setMockFetch(async () => jsonResponse({ code: 14018, msg: "Credits exhausted" }));
+    assert.equal(await data.refreshWbDirectData(), null, "业务错误码判为失败");
+    assert.ok(/14018|Credits/.test(data.getWbDirectLastError()), "原因带错误码");
+
+    // HTTP 失败
+    setMockFetch(async () => jsonResponse({ msg: "Unauthorized" }, 401));
+    assert.equal(await data.refreshWbDirectData(), null, "HTTP 401 判为失败");
+    assert.ok(/401/.test(data.getWbDirectLastError()), "原因带状态码");
+}
+
+async function testWbDirectSuccessClearsError(): Promise<void> {
+    resetGlobals();
+    const a = accounts.addAccount("workbuddy_direct", "WB-A");
+    data.setWbDirectCredential(
+        a.id,
+        wbDirect.parseWbDirectCredential(
+            JSON.stringify({
+                type: "oauth", access: "acc-a", refresh: "ref-a",
+                expires: Date.now() + 30 * 86400_000,
+                accountId: "138****0001", uid: "uid-a",
+                domain: "copilot.tencent.com",
+            })
+        )
+    );
+
+    setMockFetch(async () => jsonResponse({ code: 0, data: { Packages: [] } }));
+    const r = await data.refreshWbDirectData();
+    assert.ok(r, "合法响应应成功");
+    assert.equal(data.getWbDirectLastError(), "", "成功后清空上次的失败原因");
+}
+
 // ── 9. 配置态判定 ─────────────────────────────────────────────
 async function testConfiguredFlags(): Promise<void> {
     resetGlobals();
@@ -309,6 +391,9 @@ const tests: [string, () => Promise<void>][] = [
     ["Antigravity 多账号", testAntigravityMultiAccount],
     ["WorkBuddy 直连多账号", testWbDirectMultiAccount],
     ["WorkBuddy 直连未配置", testWbDirectUnconfigured],
+    ["直连拒绝非 JSON 响应", testWbDirectRejectsNonJson],
+    ["直连拒绝缺 data/错误码/401", testWbDirectRejectsMissingData],
+    ["直连成功后清空错误", testWbDirectSuccessClearsError],
     ["配置态判定", testConfiguredFlags],
     ["迁移播种注册表", testMigrationSeedsRegistry],
 ];

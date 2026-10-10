@@ -8,6 +8,7 @@ const {
   averagePct,
   mergeDayCosts,
   accountNote,
+  balanceSeriesFromCost,
   dominantCurrency,
   currencySymbol,
 } = await import("../aggregate.ts");
@@ -103,6 +104,41 @@ function testAccountNote(): void {
     assert.equal(accountNote(3, 2, 5.5), "3 账号 · 最低 5.5% · 可用 2/3", "三者齐全");
 }
 
+// ── 5b. 由消费回推余额曲线 ────────────────────────────────────
+function testBalanceSeriesFromCost(): void {
+    // 当前余额 10，最近 3 天各消费 1/2/3
+    // 回推：最后一天余额 = 10；前一天 = 10+3 = 13；再前一天 = 13+2 = 15
+    const cost = [
+        { label: "10/8", value: 1 },
+        { label: "10/9", value: 2 },
+        { label: "10/10", value: 3 },
+    ];
+    const bal = balanceSeriesFromCost(cost, 10);
+
+    assert.equal(bal.length, 3, "长度与输入一致");
+    assert.equal(bal[2].value, 10, "最后一天余额 = 当前余额");
+    assert.equal(bal[1].value, 13, "前一天 = 当前 + 其后消费");
+    assert.equal(bal[0].value, 15, "最早一天 = 当前 + 其后全部消费");
+    assert.equal(bal[0].label, "10/8", "标签原样保留");
+}
+
+function testBalanceSeriesEdge(): void {
+    assert.deepEqual(balanceSeriesFromCost([], 10), [], "空输入返回空");
+    // 全 0 消费 → 余额恒定
+    const flat = balanceSeriesFromCost(
+        [{ label: "a", value: 0 }, { label: "b", value: 0 }],
+        5
+    );
+    assert.equal(flat[0].value, 5, "无消费时余额恒定");
+    assert.equal(flat[1].value, 5, "无消费时余额恒定");
+    // 关键：余额曲线必须单调不减（窗口内无充值的假设下）
+    const cost = [{ label: "a", value: 1 }, { label: "b", value: 2 }, { label: "c", value: 3 }];
+    const bal = balanceSeriesFromCost(cost, 10);
+    for (let i = 1; i < bal.length; i++) {
+        assert.ok(bal[i].value <= bal[i - 1].value, "随时间推进余额递减（消费使余额下降）");
+    }
+}
+
 // ── 6. 币种处理 ────────────────────────────────────────────────
 function testCurrency(): void {
     assert.equal(dominantCurrency(["CNY", "CNY", "USD"]), "CNY", "取多数币种");
@@ -125,6 +161,8 @@ const tests: [string, () => void][] = [
     ["逐日消费合并", testMergeDayCosts],
     ["逐日合并边界", testMergeDayCostsEdge],
     ["账号标注文案", testAccountNote],
+    ["余额曲线回推", testBalanceSeriesFromCost],
+    ["余额曲线边界", testBalanceSeriesEdge],
     ["币种处理", testCurrency],
 ];
 
