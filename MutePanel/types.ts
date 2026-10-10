@@ -69,6 +69,11 @@ export interface MetricBalanceData {
   subValue2: string
   /** WorkBuddy 账号剩余有效天数（接口未提供时为空，卡片显示 --） */
   validDays?: number
+  /**
+   * 近 7 日真实走势序列（来自接口逐日数据，非估算）。
+   * 中号波形图直接读取该字段；为空时模板自动降级为说明文案。
+   */
+  trend7d?: { label: string; value: number }[]
   footerLeft: string
   updatedAt: string
 }
@@ -85,6 +90,11 @@ export interface DualQuotaData {
   item2: { label: string; timer: string; pct: number }
   stat1: { label: string; value: string }
   stat2: { label: string; value: string }
+  /**
+   * 近 7 日真实走势序列（来自接口逐日数据，非估算）。
+   * 中号波形图直接读取该字段；为空时模板自动降级为说明文案。
+   */
+  trend7d?: { label: string; value: number }[]
   footerStatus: string
   footerStatusColor?: any
   updatedAt: string
@@ -174,8 +184,8 @@ export const DEFAULT_ANTIGRAVITY: DualQuotaData = {
   iconImage: loadIcon("assets/antigravity-light.png", "assets/antigravity-dark.png"),
   item1: { label: "Gemini 5h", timer: "--", pct: 0 },
   item2: { label: "Claude/GPT 5h", timer: "--", pct: 0 },
-  stat1: { label: "Gem 周", value: "0%" },
-  stat2: { label: "C/G 周", value: "0%" },
+  stat1: { label: "Gem 周", value: "0.0%" },
+  stat2: { label: "C/G 周", value: "0.0%" },
   footerStatus: "等待更新",
   updatedAt: new Date().toISOString(),
 }

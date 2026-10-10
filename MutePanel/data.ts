@@ -1,6 +1,10 @@
 // @ts-nocheck
 /// <reference path="./global.d.ts" />
 import { fetch, Device } from "scripting"
+import { formatPct } from "./theme"
+
+export { formatPct }
+
 import {
   DEFAULT_ANTIGRAVITY,
   DEFAULT_CODEX,
@@ -25,9 +29,111 @@ import {
 // 数据服务层：聚合各模块真实数据，优雅回落 Mock
 // ============================================================
 
+// ── 通用：近 7 日时间轴工具 ──────────────────────────────────────
+// 所有走势图统一使用「北京时间自然日」作为分桶单位，保证各服务时间轴一致。
+
+/** 北京时间某日 0 点的秒级时间戳（UTC+8） */
+function bjDayStartSec(offsetDays = 0): number {
+  const now = Date.now()
+  const bj = now + 8 * 3600 * 1000 + offsetDays * 86400 * 1000
+  const dayStartBj = Math.floor(bj / 86400000) * 86400000
+  return Math.floor((dayStartBj - 8 * 3600 * 1000) / 1000)
+}
+
+/** 生成近 N 天的时间轴（含今天），返回秒级时间戳与 MM-DD 标签 */
+export function recentDays(n = 7): { time: number; label: string }[] {
+  const out: { time: number; label: string }[] = []
+  for (let i = n - 1; i >= 0; i--) {
+    const time = bjDayStartSec(-i)
+    const d = new Date((time + 8 * 3600) * 1000)
+    const label = `${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`
+    out.push({ time, label })
+  }
+  return out
+}
+
+/**
+ * 把「按天累计的原始值」映射到近 N 天时间轴。
+ * `byDay` 为 秒级时间戳 → 数值 的映射；缺失的日期填 0。
+ * 这样保证横轴恒定 7 个点，走势图不会因为缺数据而断图。
+ */
+export function toDailySeries(
+  byDay: Map<number, number>,
+  n = 7
+): { label: string; value: number }[] {
+  return recentDays(n).map((d) => ({
+    label: d.label,
+    value: Math.round((byDay.get(d.time) ?? 0) * 100) / 100,
+  }))
+}
+
+// ── 通用：快照式历史累积 ─────────────────────────────────────────
+// 部分服务（WorkBuddy / Codex / Antigravity / CPAMP）的接口只返回「当前值」，
+// 没有逐日历史。此时在本地按「每个自然日记录一次快照」的方式累积真实历史：
+//   · 同一天多次刷新 → 覆盖当天快照（保留当天最后一次真实值）
+//   · 跨天 → 追加新快照
+//   · 最多保留 30 天
+// 这样走势图完全由真实采样数据构成，不存在任何随机或编造值。
+
+/** 读取某个 key 的快照历史（秒级日时间戳 → 数值） */
+export function readSnapshotHistory(key: string): Map<number, number> {
+  try {
+    const raw =
+      Storage.get<Record<string, number>>(key, { shared: true }) ||
+      Storage.get<Record<string, number>>(key)
+    if (raw && typeof raw === "object") {
+      const m = new Map<number, number>()
+      for (const [k, v] of Object.entries(raw)) {
+        const t = Number(k)
+        const n = Number(v)
+        if (Number.isFinite(t) && Number.isFinite(n)) m.set(t, n)
+      }
+      return m
+    }
+  } catch {}
+  return new Map<number, number>()
+}
+
+/** 写入当天快照并返回完整历史（最多 30 天） */
+export function pushSnapshot(key: string, value: number): Map<number, number> {
+  const m = readSnapshotHistory(key)
+  if (!Number.isFinite(value)) return m
+  m.set(bjDayStartSec(0), value)
+  // 裁剪到最近 30 天
+  const keep = new Set(recentDays(30).map((d) => d.time))
+  for (const t of [...m.keys()]) if (!keep.has(t)) m.delete(t)
+  try {
+    const obj: Record<string, number> = {}
+    for (const [k, v] of m) obj[String(k)] = v
+    Storage.set(key, obj, { shared: true })
+    Storage.set(key, obj)
+  } catch {}
+  return m
+}
+
+/** 把快照历史映射为近 N 天序列（缺失日期用最近一次已知值补齐，避免断图） */
+export function snapshotSeries(key: string, n = 7): { label: string; value: number }[] {
+  const m = readSnapshotHistory(key)
+  const days = recentDays(n)
+  const out: { label: string; value: number }[] = []
+  let last: number | null = null
+  for (const d of days) {
+    const v = m.get(d.time)
+    if (v !== undefined) last = v
+    out.push({ label: d.label, value: last ?? 0 })
+  }
+  return out
+}
+
 // 1. DeepSeek 常量
 export const DEEPSEEK_TOKEN_KEY = "dashboard_kit_deepseek_token"
 export const DEEPSEEK_CACHE_KEY = "dashboard_kit_deepseek_cache_v1"
+
+// 快照式历史存储键（无逐日接口的服务使用）
+export const TREND_KEY_WORKBUDDY = "mutepanel_trend_workbuddy_v1"
+export const TREND_KEY_CODEX = "mutepanel_trend_codex_v1"
+export const TREND_KEY_ANTIGRAVITY = "mutepanel_trend_antigravity_v1"
+export const TREND_KEY_CPAMP = "mutepanel_trend_cpamp_v1"
 const DEEPSEEK_USAGE_STORE_PATH =
   FileManager.appGroupDocumentsDirectory + "/deepseek_usage_keys.json"
 const DEEPSEEK_PANEL_KEY_PATH =
@@ -218,6 +324,11 @@ export async function refreshWorkBuddyData(): Promise<MetricBalanceData | null> 
       subValue2: used.toLocaleString("en-US"),
       validDays,
       footerLeft: `模型 ${modelCount} · 请求 ${calls.toLocaleString("en-US")}`,
+      // 近 7 日已用积分走势：接口无逐日历史，按每日快照累积真实数据
+      trend7d: (() => {
+        pushSnapshot(TREND_KEY_WORKBUDDY, used)
+        return snapshotSeries(TREND_KEY_WORKBUDDY)
+      })(),
       updatedAt: new Date().toISOString(),
     }
 
@@ -487,8 +598,13 @@ export async function refreshDeepSeekData(): Promise<MetricBalanceData | null> {
       return sum
     })()
 
-    // 2. 尝试获取近 7 天消费用于计算百分比
+    // 2. 拉取近 7 天逐日消费：
+    //    数据来源：platform.deepseek.com /api/v0/usage/by_api_key/cost
+    //    结构：data.biz_data.data[币种].series[].buckets[] = { time, cost }，
+    //    其中 time 为「北京时间自然日 0 点」的秒级时间戳，cost 为该日消费金额。
+    //    用途：① 计算近 7 日消费合计 ② 生成中号波形图的真实走势
     let weekCost = 0
+    const costByDay = new Map<number, number>()
     try {
       const today = Math.floor((Date.now() / 1000 + 28800) / 86400) * 86400 - 28800
       const start = today - 6 * 86400
@@ -507,7 +623,12 @@ export async function refreshDeepSeekData(): Promise<MetricBalanceData | null> {
                 if (Array.isArray(s?.buckets)) {
                   for (const b of s.buckets) {
                     const c = typeof b.cost === "string" ? parseFloat(b.cost) : Number(b.cost) || 0
-                    weekCost += c
+                      if (!Number.isFinite(c)) continue
+                      weekCost += c
+                      const t = Number(b.time)
+                      if (Number.isFinite(t)) {
+                        costByDay.set(t, (costByDay.get(t) ?? 0) + c)
+                      }
                   }
                 }
               }
@@ -516,6 +637,9 @@ export async function refreshDeepSeekData(): Promise<MetricBalanceData | null> {
         }
       }
     } catch {}
+
+    // 近 7 日逐日消费走势（真实数据）
+    const trend7d = toDailySeries(costByDay)
 
     const pct =
       total > 0
@@ -532,6 +656,7 @@ export async function refreshDeepSeekData(): Promise<MetricBalanceData | null> {
       subLabel2: "近7日消费",
       subValue2: `${cur}${weekCost.toFixed(2)}`,
       totalCostText: `${cur}${totalCost.toFixed(2)}`,
+      trend7d,
       footerLeft: "官方直连",
       updatedAt: new Date().toISOString(),
     }
@@ -807,12 +932,12 @@ export async function refreshCodexData(): Promise<DualQuotaData | null> {
       item1: {
         label: "5 小时额度",
         timer: formatCountdown(reset1),
-        pct: Math.round(p1),
+        pct: Math.round(p1 * 10) / 10,
       },
       item2: {
         label: "周额度",
         timer: formatCountdown(reset2),
-        pct: Math.round(p2),
+        pct: Math.round(p2 * 10) / 10,
       },
       stat1: {
         label: "可重置次数",
@@ -822,7 +947,12 @@ export async function refreshCodexData(): Promise<DualQuotaData | null> {
         label: "状态",
         value: "正常",
       },
-      footerStatus: `剩余 ${Math.round(p1)}%`,
+      footerStatus: `剩余 ${formatPct(p1)}%`,
+      // 近 7 日可用额度走势：接口无逐日历史，按每日快照累积真实数据
+      trend7d: (() => {
+        pushSnapshot(TREND_KEY_CODEX, p1)
+        return snapshotSeries(TREND_KEY_CODEX)
+      })(),
       updatedAt: new Date().toISOString(),
     }
 
@@ -988,7 +1118,7 @@ export async function refreshAntigravityData(): Promise<DualQuotaData | null> {
               for (const b of buckets) {
                 const bId = String(b.bucketId || b.bucket_id || b.id || "").toLowerCase()
                 const frac = Number(b.remainingFraction ?? b.remaining_fraction ?? b.remaining ?? 1)
-                const pct = Math.max(0, Math.min(100, Math.round(frac * 100)))
+                const pct = Math.max(0, Math.min(100, Math.round(frac * 1000) / 10))
                 const reset = b.resetTime || b.reset_time
 
                 if (bId.includes("gemini")) {
@@ -1028,14 +1158,19 @@ export async function refreshAntigravityData(): Promise<DualQuotaData | null> {
                 },
                 stat1: {
                   label: "Gem 周",
-                  value: geminiWeekPct != null ? `${geminiWeekPct}%` : "99%",
+                  value: geminiWeekPct != null ? `${formatPct(geminiWeekPct)}%` : "--",
                 },
                 stat2: {
                   label: "C/G 周",
-                  value: claudeWeekPct != null ? `${claudeWeekPct}%` : "100%",
+                  value: claudeWeekPct != null ? `${formatPct(claudeWeekPct)}%` : "--",
                 },
-                footerStatus: `最紧 ${Math.min(p1, p2)}%`,
-                updatedAt: new Date().toISOString(),
+                footerStatus: `最紧 ${formatPct(Math.min(p1, p2))}%`,
+                  // 近 7 日可用额度走势：接口无逐日历史，按每日快照累积真实数据
+                  trend7d: (() => {
+                    pushSnapshot(TREND_KEY_ANTIGRAVITY, Math.min(p1, p2))
+                    return snapshotSeries(TREND_KEY_ANTIGRAVITY)
+                  })(),
+                  updatedAt: new Date().toISOString(),
               }
 
               try {
@@ -1076,7 +1211,7 @@ export async function refreshAntigravityData(): Promise<DualQuotaData | null> {
             const quota = modelVal?.quotaInfo || modelVal?.quota_info
             if (!quota) continue
             const frac = Number(quota.remainingFraction ?? quota.remaining_fraction ?? quota.remaining ?? 1)
-            const pct = Math.max(0, Math.min(100, Math.round(frac * 100)))
+            const pct = Math.max(0, Math.min(100, Math.round(frac * 1000) / 10))
             const reset = quota.resetTime || quota.reset_time
 
             if (mId.includes("gemini") && (mId.includes("pro") || mId.includes("flash"))) {
@@ -1115,7 +1250,12 @@ export async function refreshAntigravityData(): Promise<DualQuotaData | null> {
                 label: "C/G 周",
                 value: "100%",
               },
-              footerStatus: `最紧 ${Math.min(p1, p2)}%`,
+              footerStatus: `最紧 ${formatPct(Math.min(p1, p2))}%`,
+              // 近 7 日可用额度走势：接口无逐日历史，按每日快照累积真实数据
+              trend7d: (() => {
+                pushSnapshot(TREND_KEY_ANTIGRAVITY, Math.min(p1, p2))
+                return snapshotSeries(TREND_KEY_ANTIGRAVITY)
+              })(),
               updatedAt: new Date().toISOString(),
             }
             try {
@@ -1438,6 +1578,11 @@ export async function refreshCpampData(): Promise<MetricBalanceData | null> {
           subLabel2: "失败",
           subValue2: failureCalls.toLocaleString(),
           footerLeft: formatTokenCount(totalTokens),
+          // 近 7 日调用量走势：接口无逐日历史，按每日快照累积真实数据
+          trend7d: (() => {
+            pushSnapshot(TREND_KEY_CPAMP, totalCalls)
+            return snapshotSeries(TREND_KEY_CPAMP)
+          })(),
           updatedAt: new Date().toISOString(),
         }
 
@@ -1485,6 +1630,11 @@ export async function refreshCpampData(): Promise<MetricBalanceData | null> {
           subLabel2: "失败",
           subValue2: failureCalls.toLocaleString(),
           footerLeft: formatTokenCount(totalTokens),
+          // 近 7 日调用量走势：接口无逐日历史，按每日快照累积真实数据
+          trend7d: (() => {
+            pushSnapshot(TREND_KEY_CPAMP, totalCalls)
+            return snapshotSeries(TREND_KEY_CPAMP)
+          })(),
           updatedAt: new Date().toISOString(),
         }
 

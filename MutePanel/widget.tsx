@@ -18,6 +18,7 @@ import {
 } from "./cards"
 import {
   getAntigravityData,
+  formatPct,
   getAuxMarketData,
   getCodexData,
   getCpampData,
@@ -52,6 +53,34 @@ export const LARGE_MODULE_IDS = ["gold", "deepseek", "fx", "oil", "stock"] as co
 
 /** BENTO 默认模块顺序 */
 export const DEFAULT_LARGE_MODULES = ["gold", "deepseek", "fx", "oil"]
+
+/**
+ * 由真实走势数据计算「峰值」标签。
+ *
+ * 数据来源：`trend7d` 字段 —— 各服务近 7 日逐日真实数据的最大值。
+ *   · DeepSeek  → /api/v0/usage/by_api_key/cost 的逐日 buckets[].cost
+ *   · WorkBuddy → /api/overview 每日快照累积的「已用积分」
+ *   · Codex     → rate_limit 每日快照累积的「可用额度百分比」
+ *   · Antigravity → quotaInfo 每日快照累积的「可用额度百分比」
+ *   · CPAMP     → dashboard/summary 每日快照累积的「当日调用量」
+ *
+ * @param trend   近 7 日序列；为空或全 0 时返回空串（模板会自动隐藏该标签）
+ * @param suffix  单位后缀，如 "%"
+ * @param prefix  前缀，如 "¥"
+ */
+export function peakLabel(
+  trend: { label: string; value: number }[] | undefined,
+  suffix = "",
+  prefix = ""
+): string {
+  if (!Array.isArray(trend) || trend.length === 0) return ""
+  const vals = trend.map((t) => Number(t?.value)).filter((v) => Number.isFinite(v))
+  if (vals.length === 0) return ""
+  const peak = Math.max(...vals)
+  if (peak === 0) return ""
+  const shown = peak >= 100 ? Math.round(peak).toLocaleString("en-US") : (Math.round(peak * 100) / 100).toString()
+  return `峰值 ${prefix}${shown}${suffix}`
+}
 
 /** 读取用户自定义的 BENTO 模块顺序，未配置时返回默认四模块 */
 export function getLargeModules(): string[] {
@@ -196,16 +225,10 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
             mainValue: d.mainValue || "0",
             subTag1: `已用 ${d.subValue2 || "--"}`,
             subTag2: `已签 ${d.subValue1 || "--"}${d.validDays != null ? ` · 有效期 ${d.validDays} 天` : ""}`,
-            chartTitle: "近7日消耗趋势",
-            peakText: "峰值 1,300",
-            trendData: [
-              { label: "7天前", value: 820 },
-              { label: "5天前", value: 1140 },
-              { label: "3天前", value: 950 },
-              { label: "前天", value: 1300 },
-              { label: "昨日", value: 1020 },
-              { label: "今日", value: 890 },
-            ],
+            chartTitle: "近7日已用积分",
+            // 峰值来源：d.trend7d（WorkBuddy /api/overview 逐日快照累积的已用积分）
+            peakText: peakLabel(d.trend7d, ""),
+            trendData: d.trend7d || [],
             lineColor: "#6366F1",
             gradient: ["#A5B4FC", "rgba(165,180,252,0)"],
             updatedAt: d.updatedAt,
@@ -220,19 +243,13 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
             brand: "Codex",
             iconImage: brandIcon("codex"),
             mainLabel: "5小时可用额度",
-            mainValue: `${Math.round(d.item1?.pct ?? 0)}%`,
-            subTag1: `周额度 ${Math.round(d.item2?.pct ?? 0)}%`,
+            mainValue: `${formatPct(d.item1?.pct ?? 0)}%`,
+            subTag1: `周额度 ${formatPct(d.item2?.pct ?? 0)}%`,
             subTag2: `可重置 ${d.stat1?.value || "0"} 次`,
-            chartTitle: "近7日配额占用",
-            peakText: "峰值 90%",
-            trendData: [
-              { label: "7天前", value: 45 },
-              { label: "5天前", value: 60 },
-              { label: "3天前", value: 80 },
-              { label: "前天", value: 65 },
-              { label: "昨日", value: 90 },
-              { label: "今日", value: 83 },
-            ],
+            chartTitle: "近7日可用额度",
+            // 峰值来源：d.trend7d（Codex rate_limit 逐日快照累积的可用额度百分比）
+            peakText: peakLabel(d.trend7d, "%"),
+            trendData: d.trend7d || [],
             lineColor: "#10A37F",
             gradient: ["#6EE7B7", "rgba(110,231,183,0)"],
             updatedAt: d.updatedAt,
@@ -250,16 +267,10 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
             mainValue: d.item1?.timer || "--",
             subTag1: `Claude/GPT ${d.item2?.timer || "--"}`,
             subTag2: `Gem周 ${d.stat1?.value || "--"} · C/G周 ${d.stat2?.value || "--"}`,
-            chartTitle: "近7日调用走势",
-            peakText: "峰值 75%",
-            trendData: [
-              { label: "7天前", value: 20 },
-              { label: "5天前", value: 45 },
-              { label: "3天前", value: 75 },
-              { label: "前天", value: 50 },
-              { label: "昨日", value: 65 },
-              { label: "今日", value: 39 },
-            ],
+            chartTitle: "近7日可用额度",
+            // 峰值来源：d.trend7d（Antigravity quotaInfo 逐日快照累积的可用额度百分比）
+            peakText: peakLabel(d.trend7d, "%"),
+            trendData: d.trend7d || [],
             lineColor: "#0091FF",
             gradient: ["#7DD3FC", "rgba(125,211,252,0)"],
             updatedAt: d.updatedAt,
@@ -278,16 +289,10 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
             mainValue: d.mainValue || "0",
             subTag1: `成功 ${d.subValue1 || "--"} · 失败 ${d.subValue2 || "--"}`,
             subTag2: `消耗金额 ${d.costStr || "--"}`,
-            chartTitle: "近7日调用走势",
-            peakText: "峰值 100%",
-            trendData: [
-              { label: "7天前", value: 40 },
-              { label: "5天前", value: 65 },
-              { label: "3天前", value: 55 },
-              { label: "前天", value: 80 },
-              { label: "昨日", value: 70 },
-              { label: "今日", value: 100 },
-            ],
+            chartTitle: "近7日调用量",
+            // 峰值来源：d.trend7d（CPAMP dashboard/summary 逐日快照累积的当日调用量）
+            peakText: peakLabel(d.trend7d, ""),
+            trendData: d.trend7d || [],
             lineColor: "#005CFF",
             gradient: ["#7EB6FF", "rgba(126,182,255,0)"],
             updatedAt: d.updatedAt,
@@ -316,15 +321,10 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
             mainValue: d.mainValue || "0.00",
               subTag1: `累计消费 ${d.totalCostText || "--"}`,
             subTag2: `近7日消耗 ${d.subValue2 || "--"}`,
-            chartTitle: "近7天余额",
-            trendData: [
-              { label: "7天前", value: 1.20 },
-              { label: "5天前", value: 1.45 },
-              { label: "3天前", value: 0.90 },
-              { label: "前天", value: 1.60 },
-              { label: "昨日", value: 1.86 },
-              { label: "今日", value: 1.86 },
-            ],
+              chartTitle: "近7日消费",
+              // 峰值来源：d.trend7d（DeepSeek /usage/by_api_key/cost 逐日真实消费）中的最大值
+              peakText: peakLabel(d.trend7d, "", d.prefix || "¥"),
+              trendData: d.trend7d || [],
             lineColor: "#2563EB",
             gradient: ["#8AB4FF", "rgba(138,180,255,0)"],
             updatedAt: d.updatedAt,

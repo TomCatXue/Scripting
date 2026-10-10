@@ -15,7 +15,7 @@ import {
   ZStack,
 } from "scripting"
 import { RefreshWidgetIntent } from "./app_intents"
-import { THEME, formatTime, remainColor } from "./theme"
+import { THEME, formatPct, formatTime, remainColor } from "./theme"
 import { brandIcon } from "./icons"
 import {
   AiSmallTemplate,
@@ -949,8 +949,8 @@ export function DeepSeekSmallCard({ data }: { data: MetricBalanceData }) {
 
 export function CodexSmallCard({ data }: { data: DualQuotaData }) {
   const iconColor = { light: "#6366F1", dark: "#818CF8" } as any
-  const fiveHourPct = Math.round(data.item1?.pct ?? 0)
-  const weekPct = Math.round(data.item2?.pct ?? 0)
+  const fiveHourPct = Number(data.item1?.pct ?? 0)
+  const weekPct = Number(data.item2?.pct ?? 0)
   const resetCount = (data.stat1?.value || "0").replace(/[^0-9]/g, "") || "0"
 
   return (
@@ -958,10 +958,10 @@ export function CodexSmallCard({ data }: { data: DualQuotaData }) {
       brand="Codex"
       iconImage={data.iconImage || brandIcon("codex")}
       cells={[
-        { icon: "clock", iconColor, label: "5小时额度", value: `${fiveHourPct}%` },
-        { icon: "calendar.badge.clock", iconColor, label: "周额度", value: `${weekPct}%` },
+        { icon: "clock", iconColor, label: "5小时额度", value: `${formatPct(fiveHourPct)}%` },
+        { icon: "calendar.badge.clock", iconColor, label: "周额度", value: `${formatPct(weekPct)}%` },
         { icon: "arrow.clockwise", iconColor, label: "可重置次数", value: resetCount, suffix: "次" },
-        { icon: "chart.bar.fill", iconColor, label: "剩余", value: `${fiveHourPct}%` },
+        { icon: "chart.bar.fill", iconColor, label: "剩余", value: `${formatPct(fiveHourPct)}%` },
       ]}
       progressPct={fiveHourPct}
       footerLeft={`更新于 ${formatTime(data.updatedAt)}`}
@@ -975,9 +975,9 @@ export function AntigravitySmallCard({ data }: { data: DualQuotaData }) {
   const iconColor = { light: "#6366F1", dark: "#818CF8" } as any
   const gemTimer = data.item1?.timer || "--"
   const cgTimer = data.item2?.timer || "--"
-  const gemWeek = String(data.stat1?.value || `${Math.round(data.item1?.pct ?? 0)}%`)
-  const cgWeek = String(data.stat2?.value || `${Math.round(data.item2?.pct ?? 0)}%`)
-  const tightest = `${Math.min(Math.round(data.item1?.pct ?? 0), Math.round(data.item2?.pct ?? 0))}%`
+  const gemWeek = String(data.stat1?.value || `${formatPct(data.item1?.pct ?? 0)}%`)
+  const cgWeek = String(data.stat2?.value || `${formatPct(data.item2?.pct ?? 0)}%`)
+  const tightest = `${formatPct(Math.min(Number(data.item1?.pct ?? 0), Number(data.item2?.pct ?? 0)))}%`
 
   return (
     <AiSmallTemplate

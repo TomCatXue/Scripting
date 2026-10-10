@@ -103,3 +103,12 @@ export function formatTime(isoOrTimestamp: string | number): string {
 export function formatNumber(v: number): string {
   return Number(v || 0).toLocaleString("en-US")
 }
+
+/**
+ * 额度百分比格式化：统一保留 1 位小数（如 96 → "96.0"、83.456 → "83.5"）。
+ * 避免整数值四舍五入后丢失小数位（例如 95.6% 被显示成 96%）。
+ */
+export function formatPct(v: number): string {
+  const n = Number.isFinite(v) ? v : 0
+  return (Math.round(n * 10) / 10).toFixed(1)
+}

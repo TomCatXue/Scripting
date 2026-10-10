@@ -204,6 +204,29 @@ export function NewAiSmallCard({ data }: { data: MetricBalanceData }) {
 
 ## 六、通用工具
 
+### 走势图数据来源（真实数据，无任何随机/编造值）
+
+中号波形图的 `trendData` 全部来自真实数据，峰值标签 `peakText` 由
+`peakLabel()` 从同一份 `trend7d` 取最大值生成：
+
+| 服务 | `trend7d` 数据来源 | 峰值取自 |
+|---|---|---|
+| **DeepSeek** | `/api/v0/usage/by_api_key/cost` 的逐日 `buckets[].cost`（官方逐日消费） | 近 7 日消费最大值 |
+| **WorkBuddy** | `/api/overview` 的「已用积分」，按自然日快照累积 | 近 7 日已用积分最大值 |
+| **Codex** | `rate_limit` 的「可用额度百分比」，按自然日快照累积 | 近 7 日额度最大值 |
+| **Antigravity** | `quotaInfo.remainingFraction` 的「可用额度百分比」，按自然日快照累积 | 近 7 日额度最大值 |
+| **CPA-Manager-Plus** | `/v0/management/dashboard/summary` 的「当日调用量」，按自然日快照累积 | 近 7 日调用量最大值 |
+| **黄金行情** | 上金所 `graph/Dailyhq` 的真实日 K 线（`history30d`） | — |
+| **油价** | 每次刷新采样真实挂牌价（`priceHistory`，变化即追加） | — |
+
+**为什么部分服务用「快照累积」**：WorkBuddy / Codex / Antigravity / CPAMP
+的接口只返回「当前值」，没有逐日历史接口。此时在本地按自然日记录快照
+（同日覆盖、跨天追加、上限 30 天），走势完全由真实采样构成。
+快照不足时缺失日期会沿用最近一次已知值，保证横轴恒定 7 点不断图。
+
+**油价同理**：`m.qiyoujiage.com` 只提供当前挂牌价（已验证无历史接口），
+因此用 `priceHistory` 累积真实采样，**不再使用任何构造/估算的斜率**。
+
 | 名称 | 用途 |
 |---|---|
 | `trendColor(isUp)` | 红涨绿跌动态色（深浅色模式各取高饱和值） |
