@@ -46,7 +46,7 @@ export function recentDays(n = 7): { time: number; label: string }[] {
   for (let i = n - 1; i >= 0; i--) {
     const time = bjDayStartSec(-i)
     const d = new Date((time + 8 * 3600) * 1000)
-    const label = `${String(d.getUTCMonth() + 1).padStart(2, "0")}-${String(d.getUTCDate()).padStart(2, "0")}`
+    const label = `${d.getUTCMonth() + 1}/${d.getUTCDate()}`
     out.push({ time, label })
   }
   return out

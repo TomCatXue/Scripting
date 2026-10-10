@@ -35,6 +35,7 @@ import {
   ZStack,
 } from "scripting"
 import { THEME, formatTime, remainColor } from "./theme"
+import { SetWidgetSubModeIntent } from "./app_intents"
 
 // ── 通用常量与工具 ───────────────────────────────────────────────
 
@@ -398,6 +399,52 @@ export function AiProgressBar({ pct, size = 10 }: { pct: number; size?: number }
 }
 
 // ═════════════════════════════════════════════════════════════════
+
+export interface ModeOption {
+  key: string
+  label: string
+  color?: any
+}
+
+export function ModeSwitch({
+  service,
+  current,
+  options,
+}: {
+  service: string
+  current: string
+  options: ModeOption[]
+}) {
+  return (
+    <HStack spacing={2} alignment="center">
+      {options.map((opt) => {
+        const active = current === opt.key
+        const activeBg = opt.color || THEME.blue
+        const activeFg = "#FFFFFF"
+        const inactiveFg = THEME.dim
+        return (
+          <Button
+            key={opt.key}
+            intent={SetWidgetSubModeIntent(`${service}:${opt.key}`)}
+            buttonStyle="plain"
+          >
+            <Text
+              font={9}
+              fontWeight={active ? "semibold" : "regular"}
+              foregroundStyle={active ? activeFg : inactiveFg}
+              padding={{ horizontal: 6, vertical: 2 }}
+              background={active ? activeBg : "rgba(0,0,0,0)"}
+              clipShape={{ type: "rect", cornerRadius: 5 }}
+            >
+              {opt.label}
+            </Text>
+          </Button>
+        )
+      })}
+    </HStack>
+  )
+}
+
 // 3. 中号 AI 波形看板模板
 //    1:1 对齐 xubai2001「DeepSeek 用量」原版
 // ═════════════════════════════════════════════════════════════════

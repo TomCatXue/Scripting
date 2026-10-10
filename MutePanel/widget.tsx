@@ -3,6 +3,7 @@
 import { Widget } from "scripting"
 import { CPAMP_LOGO_SVG, DEEPSEEK_WHALE_SVG } from "./types"
 import { brandIcon } from "./icons"
+import { ModeSwitch } from "./templates"
 import {
   AntigravitySmallCard,
   BentoLargeGridCard,
@@ -258,21 +259,48 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
       )
     } else if (mService === "antigravity") {
       const d = getAntigravityData()
+      const agMode =
+        Storage.get<string>("dashboard_kit_submode_antigravity", { shared: true }) ||
+        Storage.get<string>("dashboard_kit_submode_antigravity") ||
+        "gemini"
+      const isClaude = agMode === "claude"
+
+      const mainLabel = isClaude ? "Claude/GPT 冷却倒计时" : "Gemini 冷却倒计时"
+      const mainValue = isClaude ? (d.item2?.timer || "--") : (d.item1?.timer || "--")
+      const subTag1 = isClaude
+        ? `Gemini ${d.item1?.timer || "--"}`
+        : `Claude/GPT ${d.item2?.timer || "--"}`
+      const subTag2 = `Gem周 ${d.stat1?.value || "--"} · C/G周 ${d.stat2?.value || "--"}`
+      const chartTitle = isClaude ? "Claude可用额度" : "Gemini可用额度"
+
+      const modeSwitchNode = (
+        <ModeSwitch
+          service="antigravity"
+          current={agMode}
+          options={[
+            { key: "gemini", label: "Gemini", color: "#0091FF" },
+            { key: "claude", label: "Claude", color: "#D97706" },
+          ]}
+        />
+      )
+
       return (
         <WaveformDashboardMediumCard
           props={{
             brand: "Antigravity",
             iconImage: brandIcon("antigravity"),
-            mainLabel: "Gemini 冷却倒计时",
-            mainValue: d.item1?.timer || "--",
-            subTag1: `Claude/GPT ${d.item2?.timer || "--"}`,
-            subTag2: `Gem周 ${d.stat1?.value || "--"} · C/G周 ${d.stat2?.value || "--"}`,
-            chartTitle: "近7日可用额度",
-            // 峰值来源：d.trend7d（Antigravity quotaInfo 逐日快照累积的可用额度百分比）
+            mainLabel,
+            mainValue,
+            subTag1,
+            subTag2,
+            chartTitle,
+            modeSwitch: modeSwitchNode,
             peakText: peakLabel(d.trend7d, "%"),
             trendData: d.trend7d || [],
-            lineColor: "#0091FF",
-            gradient: ["#7DD3FC", "rgba(125,211,252,0)"],
+            lineColor: isClaude ? "#D97706" : "#0091FF",
+            gradient: isClaude
+              ? ["#FDE68A", "rgba(253,230,138,0)"]
+              : ["#7DD3FC", "rgba(125,211,252,0)"],
             updatedAt: d.updatedAt,
           }}
         />
@@ -310,6 +338,23 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
     } else {
       // 默认：DeepSeek 波形看板（原版 1:1）
       const d = getDeepSeekData()
+      const dsMode =
+        Storage.get<string>("dashboard_kit_submode_deepseek", { shared: true }) ||
+        Storage.get<string>("dashboard_kit_submode_deepseek") ||
+        "cost"
+      const isBalance = dsMode === "balance"
+
+      const modeSwitchNode = (
+        <ModeSwitch
+          service="deepseek"
+          current={dsMode}
+          options={[
+            { key: "balance", label: "余额", color: "#2563EB" },
+            { key: "cost", label: "消费", color: "#10B981" },
+          ]}
+        />
+      )
+
       return (
         <WaveformDashboardMediumCard
           props={{
@@ -319,14 +364,17 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
             mainLabel: "账户余额",
             symbol: d.prefix || "¥",
             mainValue: d.mainValue || "0.00",
-              subTag1: `累计消费 ${d.totalCostText || "--"}`,
+            subTag1: `累计消费 ${d.totalCostText || "--"}`,
             subTag2: `近7日消耗 ${d.subValue2 || "--"}`,
-              chartTitle: "近7日消费",
-              // 峰值来源：d.trend7d（DeepSeek /usage/by_api_key/cost 逐日真实消费）中的最大值
-              peakText: peakLabel(d.trend7d, "", d.prefix || "¥"),
-              trendData: d.trend7d || [],
-            lineColor: "#2563EB",
-            gradient: ["#8AB4FF", "rgba(138,180,255,0)"],
+            chartTitle: isBalance ? "近7日余额" : "近7日消费",
+            modeSwitch: modeSwitchNode,
+            // 峰值来源：d.trend7d（DeepSeek /usage/by_api_key/cost 逐日真实消费）中的最大值
+            peakText: peakLabel(d.trend7d, "", d.prefix || "¥"),
+            trendData: d.trend7d || [],
+            lineColor: isBalance ? "#2563EB" : "#10B981",
+            gradient: isBalance
+              ? ["#8AB4FF", "rgba(138,180,255,0)"]
+              : ["#6EE7B7", "rgba(110,231,183,0)"],
             updatedAt: d.updatedAt,
           }}
         />
