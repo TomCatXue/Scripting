@@ -47,7 +47,7 @@ export interface MediaNexusData {
 }
 
 export interface MetricBalanceData {
-  serviceId: "workbuddy" | "deepseek" | "cpamp"
+  serviceId: "workbuddy" | "workbuddy-direct" | "deepseek" | "cpamp"
   brandTitle: string
   brandTitleColor?: any
   wordmarkImage?: any
@@ -146,6 +146,19 @@ export const DEFAULT_WORKBUDDY: MetricBalanceData = {
   subValue2: "--",
   footerLeft: "未配置",
   updatedAt: new Date().toISOString(),
+}
+
+/** WorkBuddy 官方直连（OAuth 凭据）默认展示数据 */
+export const DEFAULT_WORKBUDDY_DIRECT: MetricBalanceData = {
+  ...DEFAULT_WORKBUDDY,
+  serviceId: "workbuddy-direct",
+  brandTitle: "WorkBuddy 直连",
+  mainLabel: "积分剩余",
+  subLabel1: "账号",
+  subValue1: "--",
+  subLabel2: "已用",
+  subValue2: "--",
+  footerLeft: "未配置",
 }
 
 export const DEFAULT_CPAMP: MetricBalanceData = {
@@ -272,6 +285,7 @@ export const WIDGET_OPTIONS = [
   { id: "codex", name: "Codex", desc: "小号双周期额度与重置看板", defaultFamily: "systemSmall" },
   { id: "antigravity", name: "Antigravity", desc: "小号 Gemini/Claude 配额看板", defaultFamily: "systemSmall" },
   { id: "workbuddy", name: "WorkBuddy", desc: "小号账号池积分剩余看板", defaultFamily: "systemSmall" },
+  { id: "workbuddy-direct", name: "WorkBuddy 直连", desc: "官方 OAuth 直连多账号积分聚合看板", defaultFamily: "systemSmall" },
   { id: "cpamp", name: "CPAMP", desc: "小号今日调用与 Token 看板", defaultFamily: "systemSmall" },
   { id: "vpn", name: "VPN 节点", desc: "小号出口 IP 与风险检测看板", defaultFamily: "systemSmall" },
   { id: "fuel", name: "今日油价", desc: "自适应油价行情（小号 Shell 高光 / 中号 4联卡片）", defaultFamily: "systemSmall" },

@@ -2,6 +2,33 @@
 /// <reference path="./global.d.ts" />
 import { fetch, Device } from "scripting"
 import { formatPct } from "./theme"
+import {
+  LEGACY_ACCOUNT_ID,
+  enabledAccounts,
+  getAccountCredential,
+  hasAnyConfiguredAccount,
+  setAccountCredential,
+} from "./accounts"
+import {
+  accountNote,
+  aggregateQuota,
+  aggregateSum,
+  currencySymbol,
+  dominantCurrency,
+  mergeDayCosts,
+} from "./aggregate"
+import {
+  type WbDirectCredential,
+  isCredentialStale,
+  isRefreshExpired,
+  mergeRefreshedCredential,
+  parseWbDirectCredential,
+  sumWbCredits,
+  wbDirectCreditsHeaders,
+  wbDirectCreditsUrl,
+  wbDirectRefreshHeaders,
+  wbDirectRefreshUrl,
+} from "./wb_direct"
 
 export { formatPct }
 
@@ -13,16 +40,17 @@ import {
   DEFAULT_MEDIA_NEXUS,
   DEFAULT_VPN,
   DEFAULT_WORKBUDDY,
+  DEFAULT_WORKBUDDY_DIRECT,
   DEFAULT_FUEL,
   DEFAULT_GOLD,
   DEFAULT_AUX_MARKET,
-  DualQuotaData,
-  FuelCardData,
-  GoldMarketData,
-  AuxiliaryMarketData,
-  MediaNexusData,
-  MetricBalanceData,
-  VpnNodeData,
+  type DualQuotaData,
+  type FuelCardData,
+  type GoldMarketData,
+  type AuxiliaryMarketData,
+  type MediaNexusData,
+  type MetricBalanceData,
+  type VpnNodeData,
 } from "./types"
 
 // ============================================================
@@ -145,6 +173,10 @@ const DEEPSEEK_LEGACY_CACHE_PATH =
 export const WB_ENDPOINT_KEY = "dashboard_kit_wb_endpoint"
 export const WB_API_KEY = "dashboard_kit_wb_api_key" // 面板 api_key 密钥
 export const WB_CACHE_KEY = "dashboard_kit_wb_cache_v1"
+
+// 2b. WorkBuddy 官方直连（OAuth 凭据，多账号）
+export const TREND_KEY_WB_DIRECT = "mutepanel_trend_wb_direct_v1"
+export const WB_DIRECT_CACHE_KEY = "dashboard_kit_wb_direct_cache_v1"
 
 // 3. 媒体库 (Emby / MoviePilot) 常量
 export const MEDIA_TYPE_KEY = "dashboard_kit_media_type" // "moviepilot" | "emby"
@@ -398,6 +430,192 @@ export function getWorkBuddyData(): MetricBalanceData {
 }
 
 // ═════════════════════════════════════════════════════════════════
+// 2b. WorkBuddy 官方直连（OAuth 凭据）
+//
+// 与上面的「面板版」并列：面板版连自建 workbuddy2api-panel，
+// 这里直接携带 magpie plugin-auth.json 的 OAuth 凭据访问官方接口。
+//   · 取积分 POST {endpoint}/billing/meter/get-user-resource-summary  （无 /v2）
+//   · 续期   POST {endpoint}/v2/plugin/auth/token/refresh             （有 /v2）
+// ═════════════════════════════════════════════════════════════════
+
+/** 单个 WorkBuddy 直连账号的抓取结果 */
+interface WbDirectAccountResult {
+  total: number
+  used: number
+  remain: number
+  paid: boolean
+  accountId: string
+  /** refresh token 到期时间，用于取「最晚可续期」 */
+  refreshExpiresAt?: number
+}
+
+/** 读取并解析某账号的直连凭据；无效返回 null */
+function readWbDirectCredential(accountId: string): WbDirectCredential | null {
+  const raw = getAccountCredential("workbuddy_direct", accountId, "credential")
+  if (!raw) return null
+  try {
+    return parseWbDirectCredential(raw)
+  } catch (e) {
+    console.log("WorkBuddy 直连凭据解析失败:", e)
+    return null
+  }
+}
+
+/** 写入凭据（已规范化） */
+export function setWbDirectCredential(accountId: string, cred: WbDirectCredential): void {
+  setAccountCredential("workbuddy_direct", accountId, "credential", JSON.stringify(cred))
+}
+
+/**
+ * 确保拿到可用的 access token。
+ * 临近过期时续期；续期失败**保留旧 access 继续用**，不清除账号。
+ */
+async function ensureWbDirectAccess(accountId: string): Promise<WbDirectCredential | null> {
+  const cred = readWbDirectCredential(accountId)
+  if (!cred) return null
+
+  if (!isCredentialStale(cred)) return cred
+
+  // refresh token 自身已过期，无法续期；若 access 还在就先用着
+  if (isRefreshExpired(cred)) {
+    return cred.access ? cred : null
+  }
+
+  try {
+    const res = await fetch(wbDirectRefreshUrl(cred), {
+      method: "POST",
+      headers: wbDirectRefreshHeaders(cred),
+      body: "{}",
+      timeout: 20,
+    })
+    const env: any = await res.json().catch(() => null)
+    if (!res.ok || !env?.data?.accessToken) {
+      console.log("WorkBuddy 续期未成功，沿用旧 access")
+      return cred
+    }
+    const next = mergeRefreshedCredential(cred, env.data)
+    setWbDirectCredential(accountId, next)
+    return next
+  } catch (e) {
+    console.log("WorkBuddy 续期异常，沿用旧 access:", e)
+    return cred
+  }
+}
+
+/** 抓取单个账号的积分 */
+async function fetchWbDirectAccount(accountId: string): Promise<WbDirectAccountResult | null> {
+  const cred = await ensureWbDirectAccess(accountId)
+  if (!cred) return null
+
+  try {
+    const res = await fetch(wbDirectCreditsUrl(cred), {
+      method: "POST",
+      headers: wbDirectCreditsHeaders(cred),
+      body: "{}",
+      timeout: 20,
+    })
+    const env: any = await res.json().catch(() => null)
+    if (!res.ok || env?.code) {
+      console.log("WorkBuddy 直连取积分失败:", env?.msg || res.status)
+      return null
+    }
+
+    const sum = sumWbCredits(env?.data)
+    return {
+      total: sum.total,
+      used: sum.used,
+      remain: sum.remain,
+      paid: sum.paid,
+      accountId: cred.accountId,
+      refreshExpiresAt: cred.refreshExpiresAt,
+    }
+  } catch (e) {
+    console.log("WorkBuddy 直连取积分异常:", e)
+    return null
+  }
+}
+
+/** 多账号聚合为一张卡；单账号时原样输出 */
+function buildWbDirectAggregate(
+  results: WbDirectAccountResult[],
+  okCount: number,
+  totalCount: number
+): MetricBalanceData {
+  const size = aggregateSum(results.map((r) => r.total)).sum
+  const used = aggregateSum(results.map((r) => r.used)).sum
+  const remain = size - used
+  const pct = size > 0 ? Math.round((remain / size) * 100) : remain > 0 ? 100 : 0
+
+  // 最晚可续期时间 → 剩余有效天数
+  const latestRefreshExpiry = results
+    .map((r) => r.refreshExpiresAt)
+    .filter((v): v is number => typeof v === "number" && Number.isFinite(v) && v > 0)
+    .reduce((a, b) => Math.max(a, b), 0)
+  const validDays =
+    latestRefreshExpiry > 0
+      ? Math.max(0, Math.ceil((latestRefreshExpiry - Date.now()) / 86_400_000))
+      : undefined
+
+  const note = accountNote(totalCount, okCount)
+
+  return {
+    ...DEFAULT_WORKBUDDY_DIRECT,
+    mainValue: remain.toLocaleString("en-US"),
+    progressPct: Math.min(100, Math.max(0, pct)),
+    subLabel1: "账号",
+    subValue1: note || `${results.length}`,
+    subLabel2: "已用",
+    subValue2: used.toLocaleString("en-US"),
+    validDays,
+    footerLeft: `官方直连 · 总量 ${size.toLocaleString("en-US")}`,
+    // 近 7 日已用积分：接口只返回当前值，按自然日快照累积
+    trend7d: (() => {
+      pushSnapshot(TREND_KEY_WB_DIRECT, used)
+      return snapshotSeries(TREND_KEY_WB_DIRECT)
+    })(),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+export function hasWbDirectConfigured(): boolean {
+  return hasAnyConfiguredAccount("workbuddy_direct")
+}
+
+export function getWbDirectData(): MetricBalanceData {
+  try {
+    const cached =
+      Storage.get<MetricBalanceData>(WB_DIRECT_CACHE_KEY, { shared: true }) ||
+      Storage.get<MetricBalanceData>(WB_DIRECT_CACHE_KEY)
+    if (cached && typeof cached === "object" && cached.mainValue) {
+      return cached
+    }
+  } catch (e) {
+    console.log("WorkBuddy 直连读取缓存异常:", e)
+  }
+  return DEFAULT_WORKBUDDY_DIRECT
+}
+
+/** 刷新 WorkBuddy 官方直连数据（多账号并发抓取并聚合） */
+export async function refreshWbDirectData(): Promise<MetricBalanceData | null> {
+  const accounts = enabledAccounts("workbuddy_direct")
+  if (accounts.length === 0) return null
+
+  const settled = await Promise.all(
+    accounts.map((a) => fetchWbDirectAccount(a.id).catch(() => null))
+  )
+  const results = settled.filter((r): r is WbDirectAccountResult => r != null)
+  if (results.length === 0) return null
+
+  const data = buildWbDirectAggregate(results, results.length, accounts.length)
+
+  try {
+    Storage.set(WB_DIRECT_CACHE_KEY, data, { shared: true })
+    Storage.set(WB_DIRECT_CACHE_KEY, data)
+  } catch {}
+  return data
+}
+
+// ═════════════════════════════════════════════════════════════════
 // 2. DeepSeek 真实数据直连与读取
 // ═════════════════════════════════════════════════════════════════
 
@@ -434,7 +652,7 @@ export function findDiscoveredDeepSeekToken(): string {
 }
 
 export function hasDeepSeekConfigured(): boolean {
-  return findDiscoveredDeepSeekToken().length > 0
+  return hasAnyConfiguredAccount("deepseek")
 }
 
 export function getDeepSeekData(): MetricBalanceData {
@@ -487,12 +705,27 @@ export function getDeepSeekData(): MetricBalanceData {
   return DEFAULT_DEEPSEEK
 }
 
-/** 刷新 DeepSeek 官方用量与余额数据（兼容网页 User Token 与开放平台 API Key 两种格式） */
-export async function refreshDeepSeekData(): Promise<MetricBalanceData | null> {
-  let token = (Keychain.get(DEEPSEEK_TOKEN_KEY) || "").trim()
+/**
+ * 单个 DeepSeek 账号的抓取结果。
+ * `display` 是该账号自己的展示对象（认证方式不同，字段语义也不同）；
+ * 其余字段供多账号聚合使用。
+ */
+interface DeepSeekAccountResult {
+  display: MetricBalanceData
+  balance: number
+  weekCost: number
+  totalCost: number
+  currency: string
+  /** 逐日消费（北京时间自然日 0 点 → 金额）；API Key 模式无此数据 */
+  costByDay: Map<number, number>
+  /** 开放平台 sk- API Key 模式：无逐日消费、无赠送余额 */
+  apiKeyMode: boolean
+}
 
-  // 若未手动填入，自动从 DeepSeek Usage 或 DeepSeek Panel 导入
-  if (!token) {
+/** 解析某账号的 DeepSeek Token；legacy 账号额外回落其他小组件的密钥文件 */
+function resolveDeepSeekToken(accountId: string): string {
+  let token = getAccountCredential("deepseek", accountId, "token").trim()
+  if (!token && accountId === LEGACY_ACCOUNT_ID) {
     token = findDiscoveredDeepSeekToken()
     if (token) {
       Keychain.set(DEEPSEEK_TOKEN_KEY, token, {
@@ -500,6 +733,12 @@ export async function refreshDeepSeekData(): Promise<MetricBalanceData | null> {
       })
     }
   }
+  return token
+}
+
+/** 抓取单个 DeepSeek 账号（不做聚合、不写聚合缓存） */
+async function fetchDeepSeekAccount(accountId: string): Promise<DeepSeekAccountResult | null> {
+  const token = resolveDeepSeekToken(accountId)
 
   if (!token) return null
 
@@ -539,11 +778,15 @@ export async function refreshDeepSeekData(): Promise<MetricBalanceData | null> {
             updatedAt: new Date().toISOString(),
           }
 
-          try {
-            Storage.set(DEEPSEEK_CACHE_KEY, data, { shared: true })
-            Storage.set(DEEPSEEK_CACHE_KEY, data)
-          } catch {}
-          return data
+          return {
+            display: data,
+            balance: total,
+            weekCost: 0,
+            totalCost: 0,
+            currency: info.currency || "CNY",
+            costByDay: new Map<number, number>(),
+            apiKeyMode: true,
+          }
         }
       }
     } catch (e) {
@@ -661,15 +904,88 @@ export async function refreshDeepSeekData(): Promise<MetricBalanceData | null> {
       updatedAt: new Date().toISOString(),
     }
 
-    try {
-      Storage.set(DEEPSEEK_CACHE_KEY, data, { shared: true })
-      Storage.set(DEEPSEEK_CACHE_KEY, data)
-    } catch {}
-    return data
+    return {
+      display: data,
+      balance: total,
+      weekCost,
+      totalCost,
+      currency,
+      costByDay,
+      apiKeyMode: false,
+    }
   } catch (e) {
     console.log("刷新 DeepSeek 异常:", e)
     return null
   }
+}
+
+/**
+ * 把多个账号的抓取结果合成一份展示数据。
+ *
+ * 单账号时**原样透传**该账号的 display —— 这是与改造前输出逐字段一致的关键保证。
+ * 多账号时：余额/近7日消费/累计消费求和；逐日走势按自然日相加（真实历史，非快照）；
+ * 币种取账号数最多的那个，避免把 USD 与 CNY 直接相加。
+ */
+function buildDeepSeekAggregate(
+  results: DeepSeekAccountResult[],
+  okCount: number,
+  totalCount: number
+): MetricBalanceData {
+  if (results.length === 1) {
+    const only = results[0]
+    if (okCount >= totalCount) return only.display
+    return { ...only.display, footerLeft: `${only.display.footerLeft} · 可用 ${okCount}/${totalCount}` }
+  }
+
+  const currency = dominantCurrency(results.map((r) => r.currency))
+  const sym = currencySymbol(currency)
+
+  const balance = aggregateSum(results.map((r) => r.balance)).sum
+  const weekCost = aggregateSum(results.map((r) => r.weekCost)).sum
+  const totalCost = aggregateSum(results.map((r) => r.totalCost)).sum
+
+  const pct = balance > 0 ? Math.min(100, Math.round((balance / (balance + weekCost || 1)) * 100)) : 0
+
+  const anyApiKeyOnly = results.every((r) => r.apiKeyMode)
+
+  return {
+    ...DEFAULT_DEEPSEEK,
+    prefix: sym,
+    mainValue: balance.toFixed(2),
+    progressPct: pct > 0 ? pct : DEFAULT_DEEPSEEK.progressPct,
+    subLabel1: "状态",
+    subValue1: "正常",
+    subLabel2: "近7日消费",
+    subValue2: `${sym}${weekCost.toFixed(2)}`,
+    ...(anyApiKeyOnly ? {} : { totalCostText: `${sym}${totalCost.toFixed(2)}` }),
+    // 逐日消费按自然日相加：DeepSeek 有真实逐日接口，不能用快照累积替代
+    trend7d: toDailySeries(mergeDayCosts(results.map((r) => r.costByDay))),
+    footerLeft: accountNote(totalCount, okCount) || `官方直连 · ${results.length} 账号`,
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+/**
+ * 刷新 DeepSeek 官方用量与余额数据（兼容网页 User Token 与开放平台 API Key 两种格式）。
+ * 多账号时并发抓取全部启用账号并聚合；单账号时输出与改造前逐字段一致。
+ */
+export async function refreshDeepSeekData(): Promise<MetricBalanceData | null> {
+  const accounts = enabledAccounts("deepseek")
+  if (accounts.length === 0) return null
+
+  const settled = await Promise.all(
+    accounts.map((a) => fetchDeepSeekAccount(a.id).catch(() => null))
+  )
+  const results = settled.filter((r): r is DeepSeekAccountResult => r != null)
+  if (results.length === 0) return null
+
+  const data = buildDeepSeekAggregate(results, results.length, accounts.length)
+
+  try {
+    Storage.set(DEEPSEEK_CACHE_KEY, data, { shared: true })
+    Storage.set(DEEPSEEK_CACHE_KEY, data)
+  } catch {}
+  return data
 }
 
 // ═════════════════════════════════════════════════════════════════
@@ -677,11 +993,30 @@ export async function refreshDeepSeekData(): Promise<MetricBalanceData | null> {
 // ═════════════════════════════════════════════════════════════════
 
 export function hasCodexConfigured(): boolean {
-  return Keychain.contains(CODEX_TOKEN_KEY)
+  return hasAnyConfiguredAccount("codex")
 }
 
 export function hasAntigravityConfigured(): boolean {
-  return Keychain.contains(ANTIGRAVITY_TOKEN_KEY)
+  return hasAnyConfiguredAccount("antigravity")
+}
+
+/**
+ * 取多个重置时间中最早的一个。
+ * 聚合后「额度最先恢复」取决于最早重置的那个账号，而非最晚。
+ */
+function earliestReset(values: (string | number | null | undefined)[]): number | string | null {
+  let best: number | string | null = null
+  let bestMs = Number.POSITIVE_INFINITY
+  for (const v of values) {
+    if (v == null || v === "") continue
+    const ms = typeof v === "number" ? v : new Date(v).getTime()
+    if (!Number.isFinite(ms)) continue
+    if (ms < bestMs) {
+      bestMs = ms
+      best = v
+    }
+  }
+  return best
 }
 
 function formatCountdown(targetIsoOrMs: string | number | null): string {
@@ -771,10 +1106,10 @@ export function getCodexData(): DualQuotaData {
 }
 
 /** 检查并自动刷新 Codex Token（若有 Refresh Token 且临近过期） */
-async function ensureCodexToken(): Promise<string> {
-  let token = (Keychain.get(CODEX_TOKEN_KEY) || "").trim()
-  const refreshToken = (Keychain.get(CODEX_REFRESH_KEY) || "").trim()
-  const expiresAt = Number(Keychain.get(CODEX_EXPIRES_KEY) || "0")
+async function ensureCodexTokenFor(accountId: string): Promise<string> {
+  let token = getAccountCredential("codex", accountId, "token").trim()
+  const refreshToken = getAccountCredential("codex", accountId, "refresh").trim()
+  const expiresAt = Number(getAccountCredential("codex", accountId, "expires") || "0")
 
   // 若 Token 未过期或无 Refresh Token，直接返回
   if (!refreshToken || (token && expiresAt && expiresAt > Date.now() + 5 * 60_000)) {
@@ -800,18 +1135,12 @@ async function ensureCodexToken(): Promise<string> {
     const payload: any = await resp.json().catch(() => null)
     if (resp.ok && payload?.access_token) {
       token = payload.access_token
-      Keychain.set(CODEX_TOKEN_KEY, token, {
-        accessibility: "first_unlock_this_device",
-      })
+      setAccountCredential("codex", accountId, "token", token)
       if (payload.refresh_token) {
-        Keychain.set(CODEX_REFRESH_KEY, payload.refresh_token, {
-          accessibility: "first_unlock_this_device",
-        })
+        setAccountCredential("codex", accountId, "refresh", payload.refresh_token)
       }
       const expSec = typeof payload.expires_in === "number" ? payload.expires_in : 3600
-      Keychain.set(CODEX_EXPIRES_KEY, String(Date.now() + expSec * 1000), {
-        accessibility: "first_unlock_this_device",
-      })
+      setAccountCredential("codex", accountId, "expires", String(Date.now() + expSec * 1000))
     }
   } catch (e) {
     console.log("刷新 Codex Token 失败:", e)
@@ -820,10 +1149,10 @@ async function ensureCodexToken(): Promise<string> {
 }
 
 /** 检查并自动刷新 Antigravity Token（若有 Refresh Token 且临近过期） */
-async function ensureAntigravityToken(): Promise<string> {
-  let token = (Keychain.get(ANTIGRAVITY_TOKEN_KEY) || "").trim()
-  const refreshToken = (Keychain.get(ANTIGRAVITY_REFRESH_KEY) || Keychain.get("dashboard_kit_antigravity_refresh") || "").trim()
-  const expiresAt = Number(Keychain.get(ANTIGRAVITY_EXPIRES_KEY) || "0")
+async function ensureAntigravityTokenFor(accountId: string): Promise<string> {
+  let token = getAccountCredential("antigravity", accountId, "token").trim()
+  const refreshToken = getAccountCredential("antigravity", accountId, "refresh").trim()
+  const expiresAt = Number(getAccountCredential("antigravity", accountId, "expires") || "0")
 
   if (!refreshToken || (token && expiresAt && expiresAt > Date.now() + 5 * 60_000)) {
     return token
@@ -848,18 +1177,12 @@ async function ensureAntigravityToken(): Promise<string> {
     const payload: any = await resp.json().catch(() => null)
     if (resp.ok && payload?.access_token) {
       token = payload.access_token
-      Keychain.set(ANTIGRAVITY_TOKEN_KEY, token, {
-        accessibility: "first_unlock_this_device",
-      })
+      setAccountCredential("antigravity", accountId, "token", token)
       if (payload.refresh_token) {
-        Keychain.set(ANTIGRAVITY_REFRESH_KEY, payload.refresh_token, {
-          accessibility: "first_unlock_this_device",
-        })
+        setAccountCredential("antigravity", accountId, "refresh", payload.refresh_token)
       }
       const expSec = typeof payload.expires_in === "number" ? payload.expires_in : 3600
-      Keychain.set(ANTIGRAVITY_EXPIRES_KEY, String(Date.now() + expSec * 1000), {
-        accessibility: "first_unlock_this_device",
-      })
+      setAccountCredential("antigravity", accountId, "expires", String(Date.now() + expSec * 1000))
     }
   } catch (e) {
     console.log("刷新 Antigravity Token 失败:", e)
@@ -867,11 +1190,23 @@ async function ensureAntigravityToken(): Promise<string> {
   return token
 }
 
-/** 刷新 Codex 官方用量数据 */
-export async function refreshCodexData(): Promise<DualQuotaData | null> {
-  const token = await ensureCodexToken()
+/** 单个 Codex 账号的抓取结果 */
+interface CodexAccountResult {
+  display: DualQuotaData
+  pct1: number
+  pct2: number
+  /** 5 小时窗口重置时间，用于取「最早恢复」 */
+  reset1: number | string | null
+  reset2: number | string | null
+  /** 可重置次数；未知为 null */
+  resets: number | null
+}
+
+/** 抓取单个 Codex 账号（不做聚合、不写聚合缓存） */
+async function fetchCodexAccount(accountId: string): Promise<CodexAccountResult | null> {
+  const token = await ensureCodexTokenFor(accountId)
   if (!token) return null
-  const accountId = (Keychain.get(CODEX_ACCOUNT_ID_KEY) || "").trim()
+  const accountIdHeader = getAccountCredential("codex", accountId, "accountid").trim()
 
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
@@ -880,7 +1215,7 @@ export async function refreshCodexData(): Promise<DualQuotaData | null> {
       "Codex Desktop/0.147.0-alpha.6.5 (Mac OS 27.0.0; arm64) unknown (Codex Desktop; 26.803.61601)",
     originator: "Codex Desktop",
   }
-  if (accountId) headers["ChatGPT-Account-Id"] = accountId
+  if (accountIdHeader) headers["ChatGPT-Account-Id"] = accountIdHeader
 
   try {
     const res = await fetch("https://chatgpt.com/backend-api/wham/usage", {
@@ -956,16 +1291,97 @@ export async function refreshCodexData(): Promise<DualQuotaData | null> {
       updatedAt: new Date().toISOString(),
     }
 
-    try {
-      Storage.set(CODEX_CACHE_KEY, data, { shared: true })
-      Storage.set(CODEX_CACHE_KEY, data)
-      FileManager.writeAsStringSync(CODEX_FILE_CACHE_PATH, JSON.stringify(data))
-    } catch {}
-    return data
+    return {
+      display: data,
+      pct1: Math.round(p1 * 10) / 10,
+      pct2: Math.round(p2 * 10) / 10,
+      reset1,
+      reset2,
+      resets: creditCount != null ? Number(creditCount) : null,
+    }
   } catch (e) {
     console.log("刷新 Codex 出现异常:", e)
     return null
   }
+}
+
+/**
+ * 把多个 Codex 账号合成一份展示数据。
+ *
+ * 百分比配额按**求和**合并（两个 83% → 166%），同时标注各账号中最紧张的那个，
+ * 避免只看求和误判。单账号时原样透传，保证与改造前一致。
+ */
+function buildCodexAggregate(
+  results: CodexAccountResult[],
+  okCount: number,
+  totalCount: number
+): DualQuotaData {
+  if (results.length === 1) {
+    const only = results[0]
+    if (okCount >= totalCount) return only.display
+    return { ...only.display, footerStatus: `${only.display.footerStatus} · 可用 ${okCount}/${totalCount}` }
+  }
+
+  const quota = aggregateQuota(results.map((r) => ({ pct1: r.pct1, pct2: r.pct2 })))
+
+  // 最早恢复时间：聚合值最先改善的时刻
+  const reset1 = earliestReset(results.map((r) => r.reset1))
+  const reset2 = earliestReset(results.map((r) => r.reset2))
+
+  const resets = results.map((r) => r.resets).filter((v): v is number => v != null && Number.isFinite(v))
+  const resetSum = resets.length > 0 ? resets.reduce((a, b) => a + b, 0) : null
+
+  const note = accountNote(totalCount, okCount, quota.lowest)
+
+  return {
+    ...DEFAULT_CODEX,
+    item1: {
+      label: "5 小时额度",
+      timer: formatCountdown(reset1),
+      pct: Math.round(quota.sum1 * 10) / 10,
+    },
+    item2: {
+      label: "周额度",
+      timer: formatCountdown(reset2),
+      pct: Math.round(quota.sum2 * 10) / 10,
+    },
+    stat1: {
+      label: "可重置次数",
+      value: resetSum != null ? `${resetSum} 次` : DEFAULT_CODEX.stat1.value,
+    },
+    stat2: {
+      label: "账号",
+      value: note || `${results.length} 账号`,
+    },
+    footerStatus: note,
+    // 快照累积聚合后的 5 小时剩余额度
+    trend7d: (() => {
+      pushSnapshot(TREND_KEY_CODEX, quota.sum1)
+      return snapshotSeries(TREND_KEY_CODEX)
+    })(),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+/** 刷新 Codex 官方用量数据（多账号并发抓取并聚合） */
+export async function refreshCodexData(): Promise<DualQuotaData | null> {
+  const accounts = enabledAccounts("codex")
+  if (accounts.length === 0) return null
+
+  const settled = await Promise.all(
+    accounts.map((a) => fetchCodexAccount(a.id).catch(() => null))
+  )
+  const results = settled.filter((r): r is CodexAccountResult => r != null)
+  if (results.length === 0) return null
+
+  const data = buildCodexAggregate(results, results.length, accounts.length)
+
+  try {
+    Storage.set(CODEX_CACHE_KEY, data, { shared: true })
+    Storage.set(CODEX_CACHE_KEY, data)
+    FileManager.writeAsStringSync(CODEX_FILE_CACHE_PATH, JSON.stringify(data))
+  } catch {}
+  return data
 }
 
 export function getAntigravityData(): DualQuotaData {
@@ -1038,11 +1454,22 @@ export function getAntigravityData(): DualQuotaData {
   return DEFAULT_ANTIGRAVITY
 }
 
-/** 刷新 Google Antigravity (Cloud Code) 配额数据 */
-export async function refreshAntigravityData(): Promise<DualQuotaData | null> {
-  const token = await ensureAntigravityToken()
+/** 单个 Antigravity 账号的抓取结果 */
+interface AntigravityAccountResult {
+  display: DualQuotaData
+  pct1: number
+  pct2: number
+  week1: number | null
+  week2: number | null
+  reset1: number | string | null
+  reset2: number | string | null
+}
+
+/** 抓取单个 Antigravity 账号（不做聚合、不写聚合缓存） */
+async function fetchAntigravityAccount(accountId: string): Promise<AntigravityAccountResult | null> {
+  const token = await ensureAntigravityTokenFor(accountId)
   if (!token) return null
-  let projectId = (Keychain.get(ANTIGRAVITY_PROJECT_KEY) || "").trim()
+  let projectId = getAccountCredential("antigravity", accountId, "project").trim()
 
   const hosts = [
     "https://cloudcode-pa.googleapis.com",
@@ -1078,9 +1505,7 @@ export async function refreshAntigravityData(): Promise<DualQuotaData | null> {
           const pId = typeof pVal === "string" ? pVal.trim() : typeof pVal?.id === "string" ? pVal.id.trim() : null
           if (pId) {
             projectId = pId
-            Keychain.set(ANTIGRAVITY_PROJECT_KEY, projectId, {
-              accessibility: "first_unlock_this_device",
-            })
+            setAccountCredential("antigravity", accountId, "project", projectId)
             break
           }
         }
@@ -1173,12 +1598,15 @@ export async function refreshAntigravityData(): Promise<DualQuotaData | null> {
                   updatedAt: new Date().toISOString(),
               }
 
-              try {
-                Storage.set(ANTIGRAVITY_CACHE_KEY, data, { shared: true })
-                Storage.set(ANTIGRAVITY_CACHE_KEY, data)
-                FileManager.writeAsStringSync(ANTIGRAVITY_FILE_CACHE_PATH, JSON.stringify(data))
-              } catch {}
-              return data
+              return {
+                display: data,
+                pct1: p1,
+                pct2: p2,
+                week1: geminiWeekPct,
+                week2: claudeWeekPct,
+                reset1: geminiReset,
+                reset2: claudeReset,
+              }
             }
           }
         }
@@ -1258,12 +1686,15 @@ export async function refreshAntigravityData(): Promise<DualQuotaData | null> {
               })(),
               updatedAt: new Date().toISOString(),
             }
-            try {
-              Storage.set(ANTIGRAVITY_CACHE_KEY, data, { shared: true })
-              Storage.set(ANTIGRAVITY_CACHE_KEY, data)
-              FileManager.writeAsStringSync(ANTIGRAVITY_FILE_CACHE_PATH, JSON.stringify(data))
-            } catch {}
-            return data
+            return {
+              display: data,
+              pct1: p1,
+              pct2: p2,
+              week1: 100,
+              week2: 100,
+              reset1: geminiReset,
+              reset2: claudeReset,
+            }
           }
         }
       } catch {}
@@ -1271,6 +1702,82 @@ export async function refreshAntigravityData(): Promise<DualQuotaData | null> {
   }
 
   return null
+}
+
+/**
+ * 把多个 Antigravity 账号合成一份展示数据。
+ * 百分比配额按求和合并，并标注最紧张的账号；单账号时原样透传。
+ */
+function buildAntigravityAggregate(
+  results: AntigravityAccountResult[],
+  okCount: number,
+  totalCount: number
+): DualQuotaData {
+  if (results.length === 1) {
+    const only = results[0]
+    if (okCount >= totalCount) return only.display
+    return { ...only.display, footerStatus: `${only.display.footerStatus} · 可用 ${okCount}/${totalCount}` }
+  }
+
+  const quota = aggregateQuota(results.map((r) => ({ pct1: r.pct1, pct2: r.pct2 })))
+
+  const week1 = results.map((r) => r.week1).filter((v): v is number => v != null && Number.isFinite(v))
+  const week2 = results.map((r) => r.week2).filter((v): v is number => v != null && Number.isFinite(v))
+
+  // Antigravity 的「最紧」跨 Gemini 与 Claude 两个指标，
+  // 与原实现的 min(p1, p2) 一致，因此这里用 lowestAny 而非主指标最低值
+  const note = accountNote(totalCount, okCount, quota.lowestAny)
+
+  return {
+    ...DEFAULT_ANTIGRAVITY,
+    item1: {
+      label: "Gemini 5h",
+      timer: formatCountdown(earliestReset(results.map((r) => r.reset1))),
+      pct: quota.sum1,
+    },
+    item2: {
+      label: "Claude/GPT 5h",
+      timer: formatCountdown(earliestReset(results.map((r) => r.reset2))),
+      pct: quota.sum2,
+    },
+    stat1: {
+      label: "Gem 周",
+      value: week1.length > 0 ? `${formatPct(week1.reduce((a, b) => a + b, 0))}%` : "--",
+    },
+    stat2: {
+      label: "C/G 周",
+      value: week2.length > 0 ? `${formatPct(week2.reduce((a, b) => a + b, 0))}%` : "--",
+    },
+    // 「最紧」跨两个指标取最小，与原实现 min(p1,p2) 的语义一致
+    footerStatus: note || `最紧 ${formatPct(quota.lowestAny)}%`,
+    // 快照累积聚合后的「最紧额度」，与原实现同口径
+    trend7d: (() => {
+      pushSnapshot(TREND_KEY_ANTIGRAVITY, quota.lowestAny)
+      return snapshotSeries(TREND_KEY_ANTIGRAVITY)
+    })(),
+    updatedAt: new Date().toISOString(),
+  }
+}
+
+/** 刷新 Google Antigravity (Cloud Code) 配额数据（多账号并发抓取并聚合） */
+export async function refreshAntigravityData(): Promise<DualQuotaData | null> {
+  const accounts = enabledAccounts("antigravity")
+  if (accounts.length === 0) return null
+
+  const settled = await Promise.all(
+    accounts.map((a) => fetchAntigravityAccount(a.id).catch(() => null))
+  )
+  const results = settled.filter((r): r is AntigravityAccountResult => r != null)
+  if (results.length === 0) return null
+
+  const data = buildAntigravityAggregate(results, results.length, accounts.length)
+
+  try {
+    Storage.set(ANTIGRAVITY_CACHE_KEY, data, { shared: true })
+    Storage.set(ANTIGRAVITY_CACHE_KEY, data)
+    FileManager.writeAsStringSync(ANTIGRAVITY_FILE_CACHE_PATH, JSON.stringify(data))
+  } catch {}
+  return data
 }
 
 // ═════════════════════════════════════════════════════════════════

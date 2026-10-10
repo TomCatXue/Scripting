@@ -19,6 +19,25 @@ import {
   refreshCodexData,
   refreshAntigravityData,
 } from "./data"
+import { setAccountCredential } from "./accounts"
+
+/**
+ * 写入凭据：给了 accountId 就写进该账号的命名空间，
+ * 否则写回原有固定键（保持单账号路径完全不变）。
+ */
+function storeCredential(
+  accountId: string | undefined,
+  service: "codex" | "antigravity",
+  field: string,
+  value: string,
+  legacyKey: string
+): void {
+  if (accountId) {
+    setAccountCredential(service, accountId, field, value)
+  } else {
+    Keychain.set(legacyKey, value, { accessibility: "first_unlock_this_device" })
+  }
+}
 
 // ── 基础辅助函数 ──
 
@@ -103,7 +122,7 @@ export async function startCodexOAuth(): Promise<string> {
   return url
 }
 
-export async function completeCodexOAuth(callbackText: string): Promise<string> {
+export async function completeCodexOAuth(callbackText: string, accountId?: string): Promise<string> {
   let raw = callbackText.trim()
   if (!raw) throw new Error("请粘贴浏览器地址栏中的完整回调 URL")
   if (/^(localhost|127\.0\.0\.1):1455(?:\/|$)/i.test(raw)) {
@@ -178,28 +197,20 @@ export async function completeCodexOAuth(callbackText: string): Promise<string> 
   Keychain.remove(CODEX_PENDING_KEY)
 
   // 保存 Access Token、Refresh Token、Expires
-  Keychain.set(CODEX_TOKEN_KEY, tokens.access_token, {
-    accessibility: "first_unlock_this_device",
-  })
+  storeCredential(accountId, "codex", "token", tokens.access_token, CODEX_TOKEN_KEY)
   if (tokens.refresh_token) {
-    Keychain.set(CODEX_REFRESH_KEY, tokens.refresh_token, {
-      accessibility: "first_unlock_this_device",
-    })
+    storeCredential(accountId, "codex", "refresh", tokens.refresh_token, CODEX_REFRESH_KEY)
   }
   const expiresIn = typeof tokens.expires_in === "number" ? tokens.expires_in : 3600
-  Keychain.set(CODEX_EXPIRES_KEY, String(Date.now() + expiresIn * 1000), {
-    accessibility: "first_unlock_this_device",
-  })
+  storeCredential(accountId, "codex", "expires", String(Date.now() + expiresIn * 1000), CODEX_EXPIRES_KEY)
 
   // 解析并保存 accountId
   const idToken = tokens.id_token || tokens.access_token
   const payload = decodeJwtPayload(idToken)
   const authPayload = payload?.["https://api.openai.com/auth"] as any
-  const accountId = payload?.chatgpt_account_id || authPayload?.chatgpt_account_id
-  if (typeof accountId === "string" && accountId) {
-    Keychain.set(CODEX_ACCOUNT_ID_KEY, accountId, {
-      accessibility: "first_unlock_this_device",
-    })
+  const remoteAccountId = payload?.chatgpt_account_id || authPayload?.chatgpt_account_id
+  if (typeof remoteAccountId === "string" && remoteAccountId) {
+    storeCredential(accountId, "codex", "accountid", remoteAccountId, CODEX_ACCOUNT_ID_KEY)
   }
 
   const email = (payload?.email || (payload?.["https://api.openai.com/profile"] as any)?.email) as string || ""
@@ -251,7 +262,7 @@ export async function startAntigravityOAuth(): Promise<string> {
   return `${GOOGLE_AUTH_URL}?${params.toString()}`
 }
 
-export async function completeAntigravityOAuth(input: string): Promise<string> {
+export async function completeAntigravityOAuth(input: string, accountId?: string): Promise<string> {
   let value = input.trim()
   if (!value) throw new Error("请粘贴浏览器地址栏中的完整 Google OAuth 回调地址")
   if (/^localhost:51121(?:\/|$)/i.test(value)) value = `http://${value}`
@@ -320,18 +331,12 @@ export async function completeAntigravityOAuth(input: string): Promise<string> {
   Keychain.remove(ANTIGRAVITY_PENDING_KEY)
 
   // 保存凭证
-  Keychain.set(ANTIGRAVITY_TOKEN_KEY, tokens.access_token, {
-    accessibility: "first_unlock_this_device",
-  })
+  storeCredential(accountId, "antigravity", "token", tokens.access_token, ANTIGRAVITY_TOKEN_KEY)
   if (tokens.refresh_token) {
-    Keychain.set(ANTIGRAVITY_REFRESH_KEY, tokens.refresh_token, {
-      accessibility: "first_unlock_this_device",
-    })
+    storeCredential(accountId, "antigravity", "refresh", tokens.refresh_token, ANTIGRAVITY_REFRESH_KEY)
   }
   const expiresIn = typeof tokens.expires_in === "number" ? tokens.expires_in : 3600
-  Keychain.set(ANTIGRAVITY_EXPIRES_KEY, String(Date.now() + expiresIn * 1000), {
-    accessibility: "first_unlock_this_device",
-  })
+  storeCredential(accountId, "antigravity", "expires", String(Date.now() + expiresIn * 1000), ANTIGRAVITY_EXPIRES_KEY)
 
   // 尝试获取用户信息
   let email = ""

@@ -899,14 +899,17 @@ export function GoldPriceCard({ data, family }: { data: GoldMarketData; family?:
 export function WorkBuddySmallCard({ data }: { data: MetricBalanceData }) {
   const iconColor = { light: "#6366F1", dark: "#818CF8" } as any
   const validDays = String(data.validDays ?? "").trim()
+  // 面板版与直连版共用本卡片，副指标标签由数据层给出
+  const isDirect = data.serviceId === "workbuddy-direct"
+  const thirdLabel = data.subLabel1 || (isDirect ? "账号" : "已签")
   return (
     <AiSmallTemplate
-      brand="WorkBuddy"
+      brand={isDirect ? "WorkBuddy 直连" : "WorkBuddy"}
       iconImage={data.iconImage || brandIcon("workbuddy")}
       cells={[
         { icon: "circle.grid.3x3.fill", iconColor, label: "积分剩余", value: data.mainValue || "0" },
         { icon: "doc.plaintext", iconColor, label: "已用", value: data.subValue2 || "--" },
-        { icon: "checkmark.circle", iconColor, label: "已签", value: data.subValue1 || "--" },
+        { icon: "checkmark.circle", iconColor, label: thirdLabel, value: data.subValue1 || "--" },
         {
           icon: "calendar",
           iconColor,
@@ -915,7 +918,7 @@ export function WorkBuddySmallCard({ data }: { data: MetricBalanceData }) {
           suffix: validDays ? "天" : undefined,
         },
       ]}
-      progressPct={data.progressPct || 0}
+      progressPct={Math.max(0, Math.min(100, data.progressPct || 0))}
     />
   )
 }
@@ -953,6 +956,12 @@ export function CodexSmallCard({ data }: { data: DualQuotaData }) {
   const weekPct = Number(data.item2?.pct ?? 0)
   const resetCount = (data.stat1?.value || "0").replace(/[^0-9]/g, "") || "0"
 
+  // 多账号时百分比是各账号之和，可能超过 100：
+  // 进度槽必须钳制，否则渲染溢出；数值本身仍按求和显示。
+  const barPct = Math.max(0, Math.min(100, fiveHourPct))
+  // 多账号标注（如「2 账号 · 最低 41.0%」）优先展示
+  const multiNote = data.footerStatus?.includes("账号") ? data.footerStatus : ""
+
   return (
     <AiSmallTemplate
       brand="Codex"
@@ -963,9 +972,9 @@ export function CodexSmallCard({ data }: { data: DualQuotaData }) {
         { icon: "arrow.clockwise", iconColor, label: "可重置次数", value: resetCount, suffix: "次" },
         { icon: "chart.bar.fill", iconColor, label: "剩余", value: `${formatPct(fiveHourPct)}%` },
       ]}
-      progressPct={fiveHourPct}
-      footerLeft={`更新于 ${formatTime(data.updatedAt)}`}
-      footerRight="服务在线 ●"
+      progressPct={barPct}
+      footerLeft={multiNote || `更新于 ${formatTime(data.updatedAt)}`}
+      footerRight={multiNote ? `更新于 ${formatTime(data.updatedAt)}` : "服务在线 ●"}
       footerRightColor={THEME.green}
     />
   )
@@ -977,7 +986,7 @@ export function AntigravitySmallCard({ data }: { data: DualQuotaData }) {
   const cgTimer = data.item2?.timer || "--"
   const gemWeek = String(data.stat1?.value || `${formatPct(data.item1?.pct ?? 0)}%`)
   const cgWeek = String(data.stat2?.value || `${formatPct(data.item2?.pct ?? 0)}%`)
-  const tightest = `${formatPct(Math.min(Number(data.item1?.pct ?? 0), Number(data.item2?.pct ?? 0)))}%`
+  const multiNote = data.footerStatus?.includes("账号") ? data.footerStatus : ""
 
   return (
     <AiSmallTemplate
@@ -989,7 +998,7 @@ export function AntigravitySmallCard({ data }: { data: DualQuotaData }) {
         { icon: "chart.pie.fill", iconColor, label: "Gem 周", value: gemWeek },
         { icon: "chart.pie.fill", iconColor, label: "C/G 周", value: cgWeek },
       ]}
-      footerLeft="最新"
+      footerLeft={multiNote || "最新"}
       footerRight={`更新于 ${formatTime(data.updatedAt)}`}
     />
   )

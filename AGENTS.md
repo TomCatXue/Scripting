@@ -19,6 +19,7 @@ Each top-level directory represents an independent script deployable via Scripti
 This repository does not require a bundling step; scripts run directly inside Scripting App.
 
 - `node --import "./F50 Widget/tests/register.mjs" "./F50 Widget/tests/regression.test.ts"`: Run regression tests using Node.js native test assertions and custom mock loaders.
+- `node --import "./MutePanel/tests/register.mjs" "./MutePanel/tests/accounts.test.ts"`: Run MutePanel tests. Suites: `accounts`, `aggregate`, `wb_direct`, `data`, `render`, `entry`.
 - `Widget.preview({ family: "systemSmall" })`: In-app debugging method invoked via `index.tsx` to preview widget sizes (`small`, `medium`, `large`).
 
 ## Coding Style & Naming Conventions
@@ -32,7 +33,7 @@ This repository does not require a bundling step; scripts run directly inside Sc
 ## Testing Guidelines
 
 - **Framework**: Node.js ESM with `node:assert/strict`.
-- **Mocks**: Mock the `"scripting"` module and network fetch via `tests/loader.mjs` and `tests/scripting.mock.ts`.
+- **Mocks**: Mock the `"scripting"` module and network fetch via `tests/loader.mjs` and `tests/scripting.mock.ts`. Ambient globals (`Keychain` / `Storage` / `FileManager`) are installed by `tests/globals.ts` **before** importing modules that read them at top level (e.g. `data.ts`), so those imports must be dynamic (`await import(...)`).
 - **Naming**: Name regression suites `<name>.test.ts`.
 - **Requirements**: Verify state normalization, fallback parsing, unit formatting, and SMS/API error recovery before committing.
 

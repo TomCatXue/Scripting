@@ -25,23 +25,15 @@ import {
 } from "./widget"
 import {
   GOLD_SOURCE_KEY,
+  formatPct,
   getGoldData,
   refreshGoldData,
   ANTIGRAVITY_CACHE_KEY,
-  ANTIGRAVITY_EXPIRES_KEY,
-  ANTIGRAVITY_PROJECT_KEY,
-  ANTIGRAVITY_REFRESH_KEY,
-  ANTIGRAVITY_TOKEN_KEY,
-  CODEX_ACCOUNT_ID_KEY,
   CODEX_CACHE_KEY,
-  CODEX_EXPIRES_KEY,
-  CODEX_REFRESH_KEY,
-  CODEX_TOKEN_KEY,
   CPAMP_CACHE_KEY,
   CPAMP_ENDPOINT_KEY,
   CPAMP_KEY,
   DEEPSEEK_CACHE_KEY,
-  DEEPSEEK_TOKEN_KEY,
   findDiscoveredDeepSeekToken,
   MEDIA_API_KEY,
   MEDIA_ENDPOINT_KEY,
@@ -59,6 +51,7 @@ import {
   hasDeepSeekConfigured,
   hasMediaConfigured,
   hasWbConfigured,
+  hasWbDirectConfigured,
   normalizeUrl,
   refreshAntigravityData,
   refreshCodexData,
@@ -69,7 +62,26 @@ import {
   refreshMediaData,
   refreshVpnData,
   refreshWorkBuddyData,
+  refreshWbDirectData,
+  setWbDirectCredential,
+  WB_DIRECT_CACHE_KEY,
+  WB_CACHE_KEY,
+  TREND_KEY_WB_DIRECT,
 } from "./data"
+import {
+  LEGACY_ACCOUNT_ID,
+  addAccount,
+  clearLegacyCredentials,
+  getDefaultAccountId,
+  listAccounts,
+  registryKey,
+  removeAccount,
+  renameAccount,
+  setAccountCredential,
+  setAccountEnabled,
+  setDefaultAccount,
+} from "./accounts"
+import { parseWbDirectCredential } from "./wb_direct"
 import {
   completeAntigravityOAuth,
   completeCodexOAuth,
@@ -134,7 +146,7 @@ function OptionBrandIcon({ id }: { id: string }) {
       />
     )
   }
-  if (id === "workbuddy") {
+  if (id === "workbuddy" || id === "workbuddy-direct") {
     return (
       <Image
         image={DEFAULT_WORKBUDDY.wordmarkImage}
@@ -261,6 +273,377 @@ async function clearWorkBuddyConfig() {
   await gAlert("已清除配置，WorkBuddy 卡片已恢复为默认演示数据。")
 }
 
+// ═════════════════════════════════════════════════════════════════
+// 多账号通用管理
+//
+// 采用与现有配置流程一致的 Dialog 交互（actionSheet + prompt），
+// 不额外引入自定义页面，避免改动 NavigationStack 结构。
+// ═════════════════════════════════════════════════════════════════
+
+/** 服务展示名，用于文案 */
+const ACCOUNT_SERVICE_LABELS: Record<string, string> = {
+  deepseek: "DeepSeek",
+  codex: "Codex",
+  antigravity: "Antigravity",
+  workbuddy_direct: "WorkBuddy 直连",
+}
+
+/**
+ * 账号管理入口：选择账号 → 操作（启用/停用、设默认、重命名、删除）。
+ * @param onAdd 该服务新增账号的引导函数
+ * @param onChanged 任一变更后的回调（通常触发刷新与重载）
+ */
+async function manageAccounts(
+  service: string,
+  onAdd: () => Promise<boolean>,
+  onChanged: () => Promise<void>
+) {
+  const label = ACCOUNT_SERVICE_LABELS[service] || service
+
+  while (true) {
+    const accounts = listAccounts(service as any)
+    const defaultId = getDefaultAccountId(service as any)
+
+    if (accounts.length === 0) {
+      const choice = await gActionSheet(`管理 ${label} 账号`, ["➕ 添加账号", "取消"])
+      if (choice !== "➕ 添加账号") return
+      if (await onAdd()) await onChanged()
+      return
+    }
+
+    const rows = accounts.map((a) => {
+      const marks: string[] = []
+      if (a.id === defaultId) marks.push("默认")
+      if (!a.on) marks.push("已停用")
+      return `${a.on ? "●" : "○"} ${a.label}${marks.length ? ` (${marks.join("·")})` : ""}`
+    })
+
+    const choice = await gActionSheet(`管理 ${label} 账号（${accounts.length}）`, [
+      ...rows,
+      "➕ 添加账号",
+      "取消",
+    ])
+    if (choice === "取消") return
+
+    if (choice === "➕ 添加账号") {
+      if (await onAdd()) await onChanged()
+      continue
+    }
+
+    const idx = rows.indexOf(choice)
+    if (idx < 0) return
+    const acc = accounts[idx]
+
+    const isDefault = acc.id === defaultId
+    const actions: string[] = []
+    if (!isDefault) actions.push("设为默认")
+    actions.push(acc.on ? "停用（不计入汇总）" : "启用")
+    actions.push("重命名")
+    actions.push("删除")
+
+    const op = await gActionSheet(`${acc.label}`, actions)
+    if (op === "取消") continue
+
+    if (op === "设为默认") {
+      setDefaultAccount(service as any, acc.id)
+    } else if (op === "停用（不计入汇总）" || op === "启用") {
+      setAccountEnabled(service as any, acc.id, op === "启用")
+    } else if (op === "重命名") {
+      const name = await gPrompt({
+        title: "重命名账号",
+        defaultValue: acc.label,
+        placeholder: "账号备注名",
+        confirmLabel: "保存",
+        cancelLabel: "取消",
+      })
+      if (name === null) continue
+      if (name.trim()) renameAccount(service as any, acc.id, name.trim())
+    } else if (op === "删除") {
+      const ok = await gConfirm(`确定删除账号「${acc.label}」吗？\n其保存的凭据会一并移除。`)
+      if (!ok) continue
+      removeAccount(service as any, acc.id)
+    }
+
+    await onChanged()
+  }
+}
+
+/**
+ * 清除某服务的全部账号（含注册表、各账号凭据与聚合缓存）。
+ * 对由遗留配置播种出来的 legacy 账号，同时清理遗留键 —— 这是唯一会
+ * 触碰遗留键的路径，且仅在用户显式确认后执行。
+ */
+async function clearAllAccounts(
+  service: string,
+  cacheKeys: string[],
+  confirmText: string
+) {
+  const ok = await gConfirm(confirmText)
+  if (!ok) return
+
+  const accounts = listAccounts(service as any)
+  const hadLegacy = accounts.some((a) => a.id === LEGACY_ACCOUNT_ID)
+  for (const a of accounts) removeAccount(service as any, a.id)
+  if (hadLegacy) clearLegacyCredentials(service as any)
+
+  Storage.remove(registryKey(service as any), { shared: true })
+  Storage.remove(registryKey(service as any))
+  for (const key of cacheKeys) {
+    Storage.remove(key, { shared: true })
+    Storage.remove(key)
+  }
+
+  Widget.reloadAll()
+  await gAlert("已清除该服务的全部账号与凭据，卡片已恢复为默认数据。")
+}
+
+/** 引导录入 WorkBuddy 官方直连凭据（粘贴整段 OAuth JSON） */
+async function configureWbDirect(editAccountId?: string): Promise<boolean> {
+  const raw = await gPrompt({
+    title: editAccountId ? "更新 WorkBuddy 直连凭据" : "配置 WorkBuddy 直连",
+    message:
+      "请粘贴 magpie plugin-auth.json 中 workbuddy / workbuddy-ai 条目的完整 JSON\n" +
+      "（含 access、refresh、uid、domain 等字段）",
+    placeholder: '{"access":"...","refresh":"...","uid":"..."}',
+    obscureText: true,
+    confirmLabel: editAccountId ? "更新" : "解析并添加",
+    cancelLabel: "取消",
+  })
+  if (raw === null) return false
+
+  let cred
+  try {
+    cred = parseWbDirectCredential(raw)
+  } catch (e: any) {
+    await gAlert(`凭据解析失败：\n${e?.message || e}`)
+    return false
+  }
+
+  const buildLabel = cred.build === "workbuddy-ai" ? "国际版 (workbuddy-ai)" : "国内版 (workbuddy)"
+  const confirmed = await gConfirm(
+    `已解析凭据：\n\n账号：${cred.accountId}\n版本：${buildLabel}\n域名：${cred.domain}\n\n确定${editAccountId ? "更新" : "添加"}该账号吗？`
+  )
+  if (!confirmed) return false
+
+  // 编辑已有账号时直接覆盖凭据；否则新建账号
+  const acc = editAccountId
+    ? { id: editAccountId }
+    : addAccount("workbuddy_direct", cred.accountId)
+  setWbDirectCredential(acc.id, cred)
+  if (editAccountId) renameAccount("workbuddy_direct", editAccountId, cred.accountId)
+
+  const res = await refreshWbDirectData()
+  if (res) {
+    Widget.reloadAll()
+    await gAlert(
+      `✓ ${cred.accountId} 连接成功！\n\n积分剩余：${res.mainValue}\n已用：${res.subValue2}\n账号：${res.subValue1}`
+    )
+  } else {
+    await gAlert("凭据已保存，但首次拉取积分失败。\n请确认网络可达，或凭据是否已过期。")
+  }
+  return true
+}
+
+/** 添加一个 DeepSeek 账号（写入账号命名空间，不覆盖遗留配置） */
+async function addDeepSeekAccount(): Promise<boolean> {
+  // 保留原有「一键导入其他小组件密钥」能力
+  const discovered = findDiscoveredDeepSeekToken()
+  let preset = ""
+
+  if (discovered) {
+    const choice = await Dialog.actionSheet({
+      title: "添加 DeepSeek 账号",
+      message: "检测到本机其他 DeepSeek 小组件中已有可用密钥/Token",
+      actions: [
+        { label: "⚡️ 直接一键导入 (推荐)" },
+        { label: "✍️ 手动输入其他 Token / API Key" },
+      ],
+    })
+    if (choice === null) return false
+    if (choice === 0) preset = discovered
+  }
+
+  let token = preset
+  if (!token) {
+    const input = await gPrompt({
+      title: "添加 DeepSeek 账号",
+      message: "请输入该账号的 User Token 或开放平台 API Key",
+      placeholder: "sk-... 或网页 User Token",
+      obscureText: true,
+      confirmLabel: "保存并测试",
+      cancelLabel: "取消",
+    })
+    if (input === null || !input.trim()) return false
+    token = input.trim()
+  }
+
+  const label = token.startsWith("sk-") ? `API Key …${token.slice(-4)}` : "网页 Token 账号"
+  const acc = addAccount("deepseek", label)
+  setAccountCredential("deepseek", acc.id, "token", token)
+
+  const res = await refreshDeepSeekData()
+  if (res) {
+    Widget.reloadAll()
+    await gAlert(`✓ 已添加账号「${acc.label}」\n\n汇总余额：${res.mainValue}`)
+  } else {
+    await gAlert("凭据已保存，但拉取失败，请检查 Token 是否有效。")
+  }
+  return true
+}
+
+/** 添加一个 Codex 账号（复用与单账号一致的两种授权方式） */
+async function addCodexAccount(): Promise<boolean> {
+  const choice = await gActionSheet("添加 Codex 账号", ["🌐 网页授权", "🔑 手动粘贴 Token", "取消"])
+  if (choice === "取消") return false
+
+  let token = ""
+  let accountId = ""
+
+  if (choice === "🌐 网页授权") {
+    try {
+      const authUrl = await startCodexOAuth()
+      try {
+        await Safari.present(authUrl, true)
+      } catch {
+        await Safari.openURL(authUrl)
+      }
+      const callbackUrl = await gPrompt({
+        title: "完成 Codex 授权",
+        message: "在 Safari 登录并授权后，地址栏将跳转到 localhost:1455...\n请复制地址栏全部内容粘贴到下方：",
+        placeholder: "http://localhost:1455/auth/callback?code=...",
+        confirmLabel: "完成登录",
+        cancelLabel: "取消",
+      })
+      if (!callbackUrl) return false
+
+      // 先建账号，再把 OAuth 结果写进该账号的命名空间
+      const acc = addAccount("codex", "Codex 账号")
+      const label = await completeCodexOAuth(callbackUrl, acc.id)
+      renameAccount("codex", acc.id, label || acc.label)
+
+      const res = await refreshCodexData()
+      if (res) {
+        Widget.reloadAll()
+        await gAlert(`✓ ${label} 已添加\n\n5 小时额度合计：${formatPct(res.item1.pct)}%`)
+      } else {
+        await gAlert("已完成授权，但拉取用量失败，请稍后重试。")
+      }
+      return true
+    } catch (e: any) {
+      await gAlert(`授权失败：${e?.message || e}`)
+      return false
+    }
+  }
+
+  // 手动录入
+  const t = await gPrompt({
+    title: "添加 Codex 账号 · Access Token",
+    message: "请输入 ChatGPT 的 Access Token (Bearer Token)",
+    placeholder: "ey...",
+    obscureText: true,
+    confirmLabel: "下一步",
+    cancelLabel: "取消",
+  })
+  if (t === null || !t.trim()) return false
+  token = t.trim()
+
+  const a = await gPrompt({
+    title: "添加 Codex 账号 · ChatGPT-Account-Id",
+    message: "若为 Team/Enterprise 账号请输入 Account ID，个人账号直接留空即可",
+    placeholder: "可选，个人账号留空",
+    confirmLabel: "保存并测试",
+    cancelLabel: "取消",
+  })
+  if (a === null) return false
+  accountId = a.trim()
+
+  const acc = addAccount("codex", accountId || `Token …${token.slice(-4)}`)
+  setAccountCredential("codex", acc.id, "token", token)
+  if (accountId) setAccountCredential("codex", acc.id, "accountid", accountId)
+
+  const res = await refreshCodexData()
+  if (res) {
+    Widget.reloadAll()
+    await gAlert(`✓ 已添加账号「${acc.label}」\n\n5 小时额度合计：${formatPct(res.item1.pct)}%`)
+  } else {
+    await gAlert("凭据已保存，但拉取用量失败，请检查 Token 是否有效。")
+  }
+  return true
+}
+
+/** 添加一个 Antigravity 账号 */
+async function addAntigravityAccount(): Promise<boolean> {
+  const choice = await gActionSheet("添加 Antigravity 账号", ["🌐 网页授权", "🔑 手动粘贴 Token", "取消"])
+  if (choice === "取消") return false
+
+  if (choice === "🌐 网页授权") {
+    try {
+      const authUrl = await startAntigravityOAuth()
+      try {
+        await Safari.present(authUrl, true)
+      } catch {
+        await Safari.openURL(authUrl)
+      }
+      const callbackUrl = await gPrompt({
+        title: "完成 Antigravity 授权",
+        message: "在 Safari 登录并授权后，复制地址栏中 localhost:51121/oauth-callback 的完整地址粘贴到下方：",
+        placeholder: "http://localhost:51121/oauth-callback?code=...",
+        confirmLabel: "完成登录",
+        cancelLabel: "取消",
+      })
+      if (!callbackUrl) return false
+
+      const acc = addAccount("antigravity", "Antigravity 账号")
+      const label = await completeAntigravityOAuth(callbackUrl, acc.id)
+      renameAccount("antigravity", acc.id, label || acc.label)
+
+      const res = await refreshAntigravityData()
+      if (res) {
+        Widget.reloadAll()
+        await gAlert(`✓ ${label} 已添加\n\nGemini 额度合计：${formatPct(res.item1.pct)}%`)
+      } else {
+        await gAlert("已完成授权，但拉取配额失败，请稍后重试。")
+      }
+      return true
+    } catch (e: any) {
+      await gAlert(`授权失败：${e?.message || e}`)
+      return false
+    }
+  }
+
+  const t = await gPrompt({
+    title: "添加 Antigravity 账号 · Access Token",
+    message: "请输入 Google 的 Access Token (Bearer Token)",
+    placeholder: "ya29...",
+    obscureText: true,
+    confirmLabel: "下一步",
+    cancelLabel: "取消",
+  })
+  if (t === null || !t.trim()) return false
+
+  const p = await gPrompt({
+    title: "添加 Antigravity 账号 · Project ID",
+    message: "可选，留空则自动探测绑定的 Cloud 项目",
+    placeholder: "可选",
+    confirmLabel: "保存并测试",
+    cancelLabel: "取消",
+  })
+  if (p === null) return false
+
+  const acc = addAccount("antigravity", `Token …${t.trim().slice(-4)}`)
+  setAccountCredential("antigravity", acc.id, "token", t.trim())
+  if (p.trim()) setAccountCredential("antigravity", acc.id, "project", p.trim())
+
+  const res = await refreshAntigravityData()
+  if (res) {
+    Widget.reloadAll()
+    await gAlert(`✓ 已添加账号「${acc.label}」\n\nGemini 额度合计：${formatPct(res.item1.pct)}%`)
+  } else {
+    await gAlert("凭据已保存，但拉取配额失败，请检查 Token 是否有效。")
+  }
+  return true
+}
+
 /** 引导录入 MoviePilot / Emby 媒体库配置 */
 async function configureMedia() {
   const currentType = getMediaType()
@@ -351,373 +734,6 @@ async function clearMediaConfig() {
   Keychain.remove(MEDIA_ENDPOINT_KEY)
   Keychain.remove(MEDIA_API_KEY)
   await gAlert("已清除配置，媒体看板卡片已恢复为默认演示数据。")
-}
-
-/** 引导录入 DeepSeek 官方 User Token / API Key（支持一键导入已配置小组件） */
-async function configureDeepSeek() {
-  const discovered = findDiscoveredDeepSeekToken()
-
-  // 如果在其他小组件（DeepSeek Usage / DeepSeek Panel）中找到了密钥，优先提示一键导入
-  if (discovered) {
-    const choice = await Dialog.actionSheet({
-      title: "配置 DeepSeek",
-      message: "检测到本机其他 DeepSeek 小组件中已有可用密钥/Token",
-      actions: [
-        { label: "⚡️ 直接一键导入并连接 (推荐)" },
-        { label: "✍️ 手动输入其他 Token / API Key" },
-      ],
-    })
-    if (choice === null) return
-
-    if (choice === 0) {
-      Keychain.set(DEEPSEEK_TOKEN_KEY, discovered, {
-        accessibility: "first_unlock_this_device",
-      })
-      const res = await refreshDeepSeekData()
-      if (res) {
-        Widget.reloadAll()
-        await gAlert(
-          `✓ 一键导入并连接成功！\n\n当前总余额：${res.prefix}${res.mainValue}\n可用状态：${res.subValue1}\n来源：${res.footerLeft}\n\n小组件现已直接展示真实 DeepSeek 数据！`
-        )
-      } else {
-        await gAlert("已导入密钥，但首次拉取失败，请检查网络或重新配置。")
-      }
-      return
-    }
-  }
-
-  const currentToken = Keychain.contains(DEEPSEEK_TOKEN_KEY)
-    ? Keychain.get(DEEPSEEK_TOKEN_KEY) || ""
-    : discovered
-
-  const token = await gPrompt({
-    title: "配置 DeepSeek · Token / API Key",
-    message: "请输入 DeepSeek 网页 User Token 或开放平台 API Key (sk-...)：",
-    defaultValue: currentToken,
-    placeholder: "sk-... 或 eyJhbGciOi...",
-    obscureText: true,
-    confirmLabel: "保存并测试连接",
-    cancelLabel: "取消",
-  })
-  if (token === null) return
-
-  if (!token.trim()) {
-    await gAlert("Token 不能为空")
-    return
-  }
-
-  Keychain.set(DEEPSEEK_TOKEN_KEY, token.trim(), {
-    accessibility: "first_unlock_this_device",
-  })
-
-  const res = await refreshDeepSeekData()
-  if (res) {
-    Widget.reloadAll()
-    await gAlert(
-      `✓ 连接成功！\n\n当前总余额：${res.prefix}${res.mainValue}\n近 7 日消费：${res.subValue2}\n可用状态：${res.subValue1}\n\n小组件现已直接展示真实 DeepSeek 用量！`
-    )
-  } else {
-    await gAlert(
-      "已保存配置，但首次拉取数据失败。\n请确认：\n1. Token/Key 是否正确有效\n2. 网络是否能正常访问 DeepSeek 官方接口"
-    )
-  }
-}
-
-/** 清理 DeepSeek 配置 */
-async function clearDeepSeekConfig() {
-  const ok = await gConfirm("确定要清除本机保存的 DeepSeek 凭证吗？")
-  if (!ok) return
-  Keychain.remove(DEEPSEEK_TOKEN_KEY)
-  Storage.remove(DEEPSEEK_CACHE_KEY, { shared: true })
-  Storage.remove(DEEPSEEK_CACHE_KEY)
-  await gAlert("已清除配置，DeepSeek 卡片已恢复为默认数据。")
-}
-
-/** 引导配置 Codex (支持官方网页 OAuth 授权 或 手动粘贴 Token) */
-async function configureCodex() {
-  const hasConfig = hasCodexConfigured()
-  const actions = hasConfig
-    ? [
-        { label: "⚡️ 重新测试并拉取最新用量" },
-        { label: "🌐 重新进行网页授权" },
-        { label: "🔑 手动粘贴 Access Token" },
-      ]
-    : [
-        { label: "🌐 网页授权" },
-        { label: "🔑 手动粘贴 Access Token" },
-      ]
-
-  const choice = await Dialog.actionSheet({
-    title: "配置 Codex (ChatGPT)",
-    message: "选择获取凭证的方式（网页授权支持 Token 自动续期）",
-    actions,
-  })
-  if (choice === null) return
-
-  if (hasConfig && choice === 0) {
-    const res = await refreshCodexData()
-    if (res) {
-      Widget.reloadAll()
-      await gAlert(
-        `✓ 用量更新成功！\n\n5 小时额度：${res.item1.pct}% (${res.item1.timer})\n周额度：${res.item2.pct}% (${res.item2.timer})\n可重置次数：${res.stat1.value}\n\n小组件已同步生效！`
-      )
-    } else {
-      await gAlert("未能拉取到最新用量。\n请确认当前网络/VPN 节点是否在 OpenAI 支持的可用地区。")
-    }
-    return
-  }
-
-  const selectedWebAuth = (!hasConfig && choice === 0) || (hasConfig && choice === 1)
-
-  if (selectedWebAuth) {
-    // 官方网页授权流程
-    try {
-      const authUrl = await startCodexOAuth()
-      // 打开 Safari 进行授权
-      try {
-        await Safari.present(authUrl, true)
-      } catch {
-        await Safari.openURL(authUrl)
-      }
-
-      // 等待用户完成并粘贴回调 URL
-      const callbackUrl = await gPrompt({
-        title: "完成 Codex 授权",
-        message: "在 Safari 登录并授权后，地址栏将跳转到 localhost:1455...\n请复制地址栏全部内容粘贴到下方：",
-        placeholder: "http://localhost:1455/auth/callback?code=...",
-        confirmLabel: "完成登录",
-        cancelLabel: "取消",
-      })
-      if (!callbackUrl) return
-
-      const accountLabel = await completeCodexOAuth(callbackUrl)
-      const res = await refreshCodexData()
-      if (res) {
-        Widget.reloadAll()
-        await gAlert(
-          `✓ ${accountLabel} 连接成功！\n\n5 小时额度：${res.item1.pct}% (${res.item1.timer})\n周额度：${res.item2.pct}% (${res.item2.timer})\n可重置次数：${res.stat1.value}\n\n已成功获取凭证与自动刷新密钥，小组件已同步生效！`
-        )
-      } else {
-        await gAlert("已完成登录换取凭证，但拉取用量失败，请检查网络或稍后重试。")
-      }
-    } catch (e: any) {
-      await gAlert(`授权失败：${e?.message || e}`)
-    }
-    return
-  }
-
-  // 手动录入模式
-  const currentToken = Keychain.contains(CODEX_TOKEN_KEY)
-    ? Keychain.get(CODEX_TOKEN_KEY) || ""
-    : ""
-  const currentAccountId = Keychain.contains(CODEX_ACCOUNT_ID_KEY)
-    ? Keychain.get(CODEX_ACCOUNT_ID_KEY) || ""
-    : ""
-
-  const token = await gPrompt({
-    title: "配置 Codex · Access Token",
-    message: "请输入 ChatGPT 的 Access Token (Bearer Token)\n可从浏览器控制台或抓包中获取",
-    defaultValue: currentToken,
-    placeholder: "ey...",
-    obscureText: true,
-    confirmLabel: "下一步",
-    cancelLabel: "取消",
-  })
-  if (token === null) return
-
-  const accountId = await gPrompt({
-    title: "配置 Codex · ChatGPT-Account-Id",
-    message: "若为 Team/Enterprise 账号请输入 Account ID，个人账号直接留空即可",
-    defaultValue: currentAccountId,
-    placeholder: "可选，个人账号留空",
-    confirmLabel: "保存并测试连接",
-    cancelLabel: "取消",
-  })
-  if (accountId === null) return
-
-  if (!token.trim()) {
-    await gAlert("Access Token 不能为空")
-    return
-  }
-
-  Keychain.set(CODEX_TOKEN_KEY, token.trim(), {
-    accessibility: "first_unlock_this_device",
-  })
-  if (accountId.trim()) {
-    Keychain.set(CODEX_ACCOUNT_ID_KEY, accountId.trim(), {
-      accessibility: "first_unlock_this_device",
-    })
-  } else {
-    Keychain.remove(CODEX_ACCOUNT_ID_KEY)
-  }
-
-  const res = await refreshCodexData()
-  if (res) {
-    Widget.reloadAll()
-    await gAlert(
-      `✓ 连接成功！\n\n5 小时额度：${res.item1.pct}% (${res.item1.timer})\n周额度：${res.item2.pct}% (${res.item2.timer})\n可重置次数：${res.stat1.value}\n\n小组件现已直接展示真实 Codex 配额！`
-    )
-  } else {
-    await gAlert(
-      "已保存配置，但首次拉取配额未成功。\n请确认：\n1. Token 是否未过期\n2. 网络是否能正常访问 ChatGPT 后台"
-    )
-  }
-}
-
-/** 清理 Codex 配置 */
-async function clearCodexConfig() {
-  const ok = await gConfirm("确定要清除本机保存的 Codex 授权凭证吗？")
-  if (!ok) return
-  Keychain.remove(CODEX_TOKEN_KEY)
-  Keychain.remove(CODEX_REFRESH_KEY)
-  Keychain.remove(CODEX_EXPIRES_KEY)
-  Keychain.remove(CODEX_ACCOUNT_ID_KEY)
-  Storage.remove(CODEX_CACHE_KEY, { shared: true })
-  Storage.remove(CODEX_CACHE_KEY)
-  await gAlert("已清除配置，Codex 卡片已恢复为默认数据。")
-}
-
-/** 引导配置 Antigravity (支持官方网页 Google OAuth 授权 或 手动粘贴 Token) */
-async function configureAntigravity() {
-  const hasConfig = hasAntigravityConfigured()
-  const actions = hasConfig
-    ? [
-        { label: "⚡️ 重新测试并拉取最新配额" },
-        { label: "🌐 重新进行网页授权" },
-        { label: "🔑 手动粘贴 Access Token" },
-      ]
-    : [
-        { label: "🌐 网页授权" },
-        { label: "🔑 手动粘贴 Access Token" },
-      ]
-
-  const choice = await Dialog.actionSheet({
-    title: "配置 Antigravity (Google)",
-    message: "选择获取凭证的方式（网页授权支持 Token 自动续期）",
-    actions,
-  })
-  if (choice === null) return
-
-  // 如果已有配置且选择了第一个选项：立即重新拉取
-  if (hasConfig && choice === 0) {
-    const res = await refreshAntigravityData()
-    if (res) {
-      Widget.reloadAll()
-      await gAlert(
-        `✓ 配额更新成功！\n\nGemini 5h：${res.item1.pct}% (${res.item1.timer})\nClaude/GPT 5h：${res.item2.pct}% (${res.item2.timer})\nGem 周：${res.stat1.value} · C/G 周：${res.stat2.value}\n\n小组件已同步刷新！`
-      )
-    } else {
-      await gAlert("未能拉取到最新配额。\n请检查当前设备是否已连接代理/VPN 并能正常访问 Google 接口。")
-    }
-    return
-  }
-
-  const selectedWebAuth = (!hasConfig && choice === 0) || (hasConfig && choice === 1)
-
-  if (selectedWebAuth) {
-    // 官方网页授权流程
-    try {
-      const authUrl = await startAntigravityOAuth()
-      try {
-        await Safari.present(authUrl, true)
-      } catch {
-        await Safari.openURL(authUrl)
-      }
-
-      const callbackUrl = await gPrompt({
-        title: "完成 Antigravity 授权",
-        message: "在 Google 完成登录并同意权限后，浏览器将跳转到 localhost:51121...\n请复制地址栏全部内容粘贴到下方：",
-        placeholder: "http://localhost:51121/oauth-callback?code=...",
-        confirmLabel: "完成登录",
-        cancelLabel: "取消",
-      })
-      if (!callbackUrl) return
-
-      const accountLabel = await completeAntigravityOAuth(callbackUrl)
-      const res = await refreshAntigravityData()
-      if (res) {
-        Widget.reloadAll()
-        await gAlert(
-          `✓ ${accountLabel} 连接成功！\n\nGemini 5h：${res.item1.pct}% (${res.item1.timer})\nClaude/GPT 5h：${res.item2.pct}% (${res.item2.timer})\nGem 周：${res.stat1.value} · C/G 周：${res.stat2.value}\n\n已成功获取凭证与自动刷新密钥，小组件已同步生效！`
-        )
-      } else {
-        await gAlert("已完成登录换取凭证，但拉取配额失败，请检查网络或稍后重试。")
-      }
-    } catch (e: any) {
-      await gAlert(`授权失败：${e?.message || e}`)
-    }
-    return
-  }
-
-  // 手动录入模式
-  const currentToken = Keychain.contains(ANTIGRAVITY_TOKEN_KEY)
-    ? Keychain.get(ANTIGRAVITY_TOKEN_KEY) || ""
-    : ""
-  const currentProj = Keychain.contains(ANTIGRAVITY_PROJECT_KEY)
-    ? Keychain.get(ANTIGRAVITY_PROJECT_KEY) || ""
-    : ""
-
-  const token = await gPrompt({
-    title: "配置 Antigravity · OAuth Access Token",
-    message: "请输入 Google Cloud Code 插件的 Access Token (Bearer Token)",
-    defaultValue: currentToken,
-    placeholder: "ya29....",
-    obscureText: true,
-    confirmLabel: "下一步",
-    cancelLabel: "取消",
-  })
-  if (token === null) return
-
-  const project = await gPrompt({
-    title: "配置 Antigravity · Project ID (可选)",
-    message: "若有指定 Google Cloud 项目 ID 可填入，默认留空即可",
-    defaultValue: currentProj,
-    placeholder: "可选，一般直接留空",
-    confirmLabel: "保存并测试连接",
-    cancelLabel: "取消",
-  })
-  if (project === null) return
-
-  if (!token.trim()) {
-    await gAlert("Access Token 不能为空")
-    return
-  }
-
-  Keychain.set(ANTIGRAVITY_TOKEN_KEY, token.trim(), {
-    accessibility: "first_unlock_this_device",
-  })
-  if (project.trim()) {
-    Keychain.set(ANTIGRAVITY_PROJECT_KEY, project.trim(), {
-      accessibility: "first_unlock_this_device",
-    })
-  } else {
-    Keychain.remove(ANTIGRAVITY_PROJECT_KEY)
-  }
-
-  const res = await refreshAntigravityData()
-  if (res) {
-    Widget.reloadAll()
-    await gAlert(
-      `✓ 连接成功！\n\nGemini 5h：${res.item1.pct}% (${res.item1.timer})\nClaude/GPT 5h：${res.item2.pct}% (${res.item2.timer})\nGem 周：${res.stat1.value} · C/G 周：${res.stat2.value}\n\n小组件现已直接展示真实 Antigravity 配额！`
-    )
-  } else {
-    await gAlert(
-      "已保存配置，但首次拉取配额未成功。\n请确认：\n1. Token 是否包含 Cloud Code / Antigravity 权限\n2. 网络是否畅通"
-    )
-  }
-}
-
-/** 清理 Antigravity 配置 */
-async function clearAntigravityConfig() {
-  const ok = await gConfirm("确定要清除本机保存的 Antigravity 凭证吗？")
-  if (!ok) return
-  Keychain.remove(ANTIGRAVITY_TOKEN_KEY)
-  Keychain.remove(ANTIGRAVITY_REFRESH_KEY)
-  Keychain.remove(ANTIGRAVITY_EXPIRES_KEY)
-  Keychain.remove(ANTIGRAVITY_PROJECT_KEY)
-  Storage.remove(ANTIGRAVITY_CACHE_KEY, { shared: true })
-  Storage.remove(ANTIGRAVITY_CACHE_KEY)
-  await gAlert("已清除配置，Antigravity 卡片已恢复为默认数据。")
 }
 
 /** 引导配置 CPA-Manager-Plus (CPAMP) */
@@ -950,10 +966,20 @@ export default function ConfigView() {
   const hasMedia = hasMediaConfigured()
   const mediaType = getMediaType()
   const hasWb = hasWbConfigured()
+  const hasWbDirect = hasWbDirectConfigured()
   const hasDeepSeek = hasDeepSeekConfigured()
   const hasCodex = hasCodexConfigured()
   const hasAntigravity = hasAntigravityConfigured()
   const hasCpamp = hasCpampConfigured()
+
+  // 各服务已配置的账号数（用于在状态行上显示「N 个账号」）
+  const countAccounts = (svc: string) => {
+    try {
+      return listAccounts(svc as any).length
+    } catch {
+      return 0
+    }
+  }
 
   useEffect(() => {
     // 首次进入设置面板后 500ms 轻量触发
@@ -1018,16 +1044,62 @@ export default function ConfigView() {
             <Image
               systemName="circle.fill"
               font={{ name: "system", size: 8 }}
-              foregroundStyle={hasDeepSeek ? "#10B981" : "#F59E0B"}
+              foregroundStyle={hasWbDirect ? "#10B981" : "#F59E0B"}
             />
-            <Text font={14} fontWeight="medium">DeepSeek</Text>
+            <Text font={14} fontWeight="medium">
+              WorkBuddy 直连{countAccounts("workbuddy_direct") > 1 ? ` · ${countAccounts("workbuddy_direct")} 个账号` : ""}
+            </Text>
             <Spacer />
             <Button
-              title={hasDeepSeek ? "已配置 · 修改" : "去配置"}
+              title={hasWbDirect ? "管理" : "去配置"}
               buttonStyle="bordered"
               controlSize="mini"
               action={async () => {
-                await configureDeepSeek()
+                await manageAccounts(
+                  "workbuddy_direct",
+                  async () => configureWbDirect(),
+                  async () => {
+                    await refreshWbDirectData()
+                    Widget.reloadAll()
+                  }
+                )
+              }}
+            />
+            {hasWbDirect ? (
+              <Button
+                title="清除"
+                role="destructive"
+                buttonStyle="bordered"
+                controlSize="mini"
+                action={async () => {
+                  await clearAllAccounts(
+                    "workbuddy_direct",
+                    [WB_DIRECT_CACHE_KEY, TREND_KEY_WB_DIRECT],
+                    "确定要清除 WorkBuddy 直连的全部账号与凭据吗？"
+                  )
+                }}
+              />
+            ) : null}
+          </HStack>
+          <HStack spacing={10} alignment="center">
+            <Image
+              systemName="circle.fill"
+              font={{ name: "system", size: 8 }}
+              foregroundStyle={hasDeepSeek ? "#10B981" : "#F59E0B"}
+            />
+            <Text font={14} fontWeight="medium">
+              DeepSeek{countAccounts("deepseek") > 1 ? ` · ${countAccounts("deepseek")} 个账号` : ""}
+            </Text>
+            <Spacer />
+            <Button
+              title={hasDeepSeek ? "管理" : "去配置"}
+              buttonStyle="bordered"
+              controlSize="mini"
+              action={async () => {
+                await manageAccounts("deepseek", addDeepSeekAccount, async () => {
+                  await refreshDeepSeekData()
+                  Widget.reloadAll()
+                })
               }}
             />
             {hasDeepSeek ? (
@@ -1037,7 +1109,11 @@ export default function ConfigView() {
                 buttonStyle="bordered"
                 controlSize="mini"
                 action={async () => {
-                  await clearDeepSeekConfig()
+                  await clearAllAccounts(
+                    "deepseek",
+                    [DEEPSEEK_CACHE_KEY],
+                    "确定要清除 DeepSeek 的全部账号与凭据吗？"
+                  )
                 }}
               />
             ) : null}
@@ -1048,14 +1124,19 @@ export default function ConfigView() {
               font={{ name: "system", size: 8 }}
               foregroundStyle={hasCodex ? "#10B981" : "#F59E0B"}
             />
-            <Text font={14} fontWeight="medium">Codex</Text>
+            <Text font={14} fontWeight="medium">
+              Codex{countAccounts("codex") > 1 ? ` · ${countAccounts("codex")} 个账号` : ""}
+            </Text>
             <Spacer />
             <Button
-              title={hasCodex ? "已配置 · 修改" : "去配置"}
+              title={hasCodex ? "管理" : "去配置"}
               buttonStyle="bordered"
               controlSize="mini"
               action={async () => {
-                await configureCodex()
+                await manageAccounts("codex", addCodexAccount, async () => {
+                  await refreshCodexData()
+                  Widget.reloadAll()
+                })
               }}
             />
             {hasCodex ? (
@@ -1065,7 +1146,11 @@ export default function ConfigView() {
                 buttonStyle="bordered"
                 controlSize="mini"
                 action={async () => {
-                  await clearCodexConfig()
+                  await clearAllAccounts(
+                    "codex",
+                    [CODEX_CACHE_KEY],
+                    "确定要清除 Codex 的全部账号与凭据吗？"
+                  )
                 }}
               />
             ) : null}
@@ -1076,14 +1161,19 @@ export default function ConfigView() {
               font={{ name: "system", size: 8 }}
               foregroundStyle={hasAntigravity ? "#10B981" : "#F59E0B"}
             />
-            <Text font={14} fontWeight="medium">Antigravity</Text>
+            <Text font={14} fontWeight="medium">
+              Antigravity{countAccounts("antigravity") > 1 ? ` · ${countAccounts("antigravity")} 个账号` : ""}
+            </Text>
             <Spacer />
             <Button
-              title={hasAntigravity ? "已配置 · 修改" : "去配置"}
+              title={hasAntigravity ? "管理" : "去配置"}
               buttonStyle="bordered"
               controlSize="mini"
               action={async () => {
-                await configureAntigravity()
+                await manageAccounts("antigravity", addAntigravityAccount, async () => {
+                  await refreshAntigravityData()
+                  Widget.reloadAll()
+                })
               }}
             />
             {hasAntigravity ? (
@@ -1093,7 +1183,11 @@ export default function ConfigView() {
                 buttonStyle="bordered"
                 controlSize="mini"
                 action={async () => {
-                  await clearAntigravityConfig()
+                  await clearAllAccounts(
+                    "antigravity",
+                    [ANTIGRAVITY_CACHE_KEY],
+                    "确定要清除 Antigravity 的全部账号与凭据吗？"
+                  )
                 }}
               />
             ) : null}
@@ -1254,6 +1348,7 @@ export default function ConfigView() {
                 try {
                   const tasks: Promise<any>[] = []
                   if (hasWb) tasks.push(refreshWorkBuddyData().catch((e) => console.log("wb err:", e)))
+                  if (hasWbDirect) tasks.push(refreshWbDirectData().catch((e) => console.log("wbd err:", e)))
                   if (hasMedia) tasks.push(refreshEmbyData().catch((e) => console.log("media err:", e)))
                   if (hasDeepSeek) tasks.push(refreshDeepSeekData().catch((e) => console.log("ds err:", e)))
                   if (hasCodex) tasks.push(refreshCodexData().catch((e) => console.log("codex err:", e)))
@@ -1347,6 +1442,8 @@ export default function ConfigView() {
                     await refreshDeepSeekData().catch(() => null)
                   } else if (opt.id === "workbuddy") {
                     await refreshWorkBuddyData().catch(() => null)
+                  } else if (opt.id === "workbuddy-direct") {
+                    await refreshWbDirectData().catch(() => null)
                   } else if (opt.id === "cpamp") {
                     await refreshCpampData().catch(() => null)
                   } else if (opt.id === "vpn") {
@@ -1368,7 +1465,7 @@ export default function ConfigView() {
                   } catch {}
 
                   let previewFamily = opt.defaultFamily as any
-                  if (opt.id === "deepseek" || opt.id === "workbuddy" || opt.id === "codex" || opt.id === "antigravity") {
+                  if (opt.id === "deepseek" || opt.id === "workbuddy" || opt.id === "workbuddy-direct" || opt.id === "codex" || opt.id === "antigravity") {
                     const chosen = await gActionSheet("请选择预览尺寸", [
                       "小号组件",
                       "中号组件",

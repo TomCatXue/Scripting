@@ -29,12 +29,14 @@ import {
   getMediaNexusData,
   getVpnData,
   getWorkBuddyData,
+  getWbDirectData,
   hasAntigravityConfigured,
   hasCodexConfigured,
   hasCpampConfigured,
   hasDeepSeekConfigured,
   hasMediaConfigured,
   hasWbConfigured,
+  hasWbDirectConfigured,
   refreshAntigravityData,
   refreshCodexData,
   refreshCpampData,
@@ -44,6 +46,7 @@ import {
   refreshMediaData,
   refreshVpnData,
   refreshWorkBuddyData,
+  refreshWbDirectData,
 } from "./data"
 
 /** BENTO 模块顺序的存储键（App 内配置 / Widget 读取共享） */
@@ -129,7 +132,9 @@ function pickDefaultService(): string {
   try {
     const configured: [string, boolean][] = [
       ["deepseek", hasDeepSeekConfigured()],
+      // 面板版排在直连版之前，保持老用户的默认看板不变
       ["workbuddy", hasWbConfigured()],
+      ["workbuddy-direct", hasWbDirectConfigured()],
       ["codex", hasCodexConfigured()],
       ["antigravity", hasAntigravityConfigured()],
       ["cpamp", hasCpampConfigured()],
@@ -189,6 +194,8 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
   const target = param || p
   if (target.includes("antigravity") || target === "ag" || target.includes("anti-gravity")) param = "antigravity"
   else if (target.includes("codex")) param = "codex"
+  // 直连版必须排在面板版之前：'workbuddy-direct' 也包含 'workbuddy'
+  else if (target.includes("workbuddy-direct") || target.includes("wb-direct") || target === "wbd") param = "workbuddy-direct"
   else if (target.includes("workbuddy") || target === "wb") param = "workbuddy"
   else if (target.includes("deepseek") || target === "ds") param = "deepseek"
   else if (target.includes("media") || target.includes("moviepilot") || target.includes("emby") || target.includes("jellyfin")) param = "media"
@@ -215,7 +222,28 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
   //    金价 / 油价共用 MarketMediumTemplate（4 联卡片 + 30 日走势）。
   if (family === "systemMedium") {
     const mService = param || CONFIG.mediumStyle || pickDefaultService()
-    if (mService === "workbuddy") {
+    if (mService === "workbuddy-direct") {
+      const d = getWbDirectData()
+      return (
+        <WaveformDashboardMediumCard
+          props={{
+            brand: "WorkBuddy 直连",
+            iconImage: brandIcon("workbuddy"),
+            mainLabel: "积分剩余总量",
+            mainValue: d.mainValue || "0",
+            subTag1: `已用 ${d.subValue2 || "--"}`,
+            subTag2: `${d.subValue1 || "--"}${d.validDays != null ? ` · 有效期 ${d.validDays} 天` : ""}`,
+            chartTitle: "近7日已用积分",
+            // 峰值来源：d.trend7d（每日快照累积的已用积分）
+            peakText: peakLabel(d.trend7d, ""),
+            trendData: d.trend7d || [],
+            lineColor: "#6366F1",
+            gradient: ["#A5B4FC", "rgba(165,180,252,0)"],
+            updatedAt: d.updatedAt,
+          }}
+        />
+      )
+    } else if (mService === "workbuddy") {
       const d = getWorkBuddyData()
       return (
         <WaveformDashboardMediumCard
@@ -384,7 +412,9 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
 
   // 3. 小型组件 (Small Widget)
   const sService = param || CONFIG.smallStyle || pickDefaultService()
-  if (sService === "workbuddy") {
+  if (sService === "workbuddy-direct") {
+    return <WorkBuddySmallCard data={getWbDirectData()} />
+  } else if (sService === "workbuddy") {
     return <WorkBuddySmallCard data={getWorkBuddyData()} />
   } else if (sService === "codex") {
     return <CodexSmallCard data={getCodexData()} />
@@ -430,6 +460,9 @@ async function main() {
       await refreshCodexData().catch(() => null)
     } else if (p.includes("deepseek") || p === "ds") {
       await refreshDeepSeekData().catch(() => null)
+    } else if (p.includes("workbuddy-direct") || p.includes("wb-direct") || p === "wbd") {
+      // 直连版必须排在面板版之前，否则会被 'workbuddy' 抢先匹配
+      await refreshWbDirectData().catch(() => null)
     } else if (p.includes("workbuddy") || p === "wb") {
       await refreshWorkBuddyData().catch(() => null)
     } else if (p.includes("media") || p.includes("moviepilot") || p.includes("emby") || p.includes("jellyfin")) {

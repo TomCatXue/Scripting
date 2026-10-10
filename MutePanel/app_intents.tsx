@@ -8,6 +8,7 @@ import {
   refreshEmbyData,
   refreshVpnData,
   refreshWorkBuddyData,
+  refreshWbDirectData,
 } from "./data"
 
 // 统一刷新 Intent
@@ -19,6 +20,7 @@ export const RefreshWidgetIntent = AppIntentManager.register({
       console.log("[DashBoard-Kit] Widget refresh triggered")
       await Promise.all([
         refreshWorkBuddyData().catch(() => null),
+        refreshWbDirectData().catch(() => null),
         refreshEmbyData().catch(() => null),
         refreshDeepSeekData().catch(() => null),
         refreshCodexData().catch(() => null),
