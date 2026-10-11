@@ -95,7 +95,7 @@ function Chip({ icon, text, tint = "label", compact = false }: any) {
         .frame({ height: compact ? 25 : 22 })}
     >
       <Image systemName={icon} frame={{ width: 13, height: 13 }} modifiers={modifiers().foregroundStyle(tint)} />
-      <Text font={compact ? 9 : 10} modifiers={modifiers().foregroundStyle("label").lineLimit(1).minScaleFactor(0.5)}>{text}</Text>
+      <Text font={11} modifiers={modifiers().foregroundStyle("label").lineLimit(1).minScaleFactor(0.5)}>{text}</Text>
     </HStack>
   );
 }
@@ -151,13 +151,13 @@ function Header({ data, compact = false }: any) {
     <HStack spacing={compact ? 3 : 5} alignment="center" modifiers={modifiers().frame({ height: compact ? 22 : 24 })}>
       <Image systemName="wifi.router.fill" frame={{ width: compact ? 14 : 16, height: compact ? 14 : 16 }} modifiers={modifiers().foregroundStyle("systemBlue")} />
       <Text font={compact ? 11 : 12} modifiers={modifiers().foregroundStyle("label").bold().lineLimit(1).minScaleFactor(0.7)}>{textValue(data.model_name)}</Text>
-      <Text font={compact ? 10 : 11} modifiers={modifiers().foregroundStyle("label").lineLimit(1).minScaleFactor(0.55)}>UFI v{textValue(data.ufi_ver)}</Text>
+      <Text font={11} modifiers={modifiers().foregroundStyle("label").lineLimit(1).minScaleFactor(0.55)}>UFI v{textValue(data.ufi_ver)}</Text>
       <Spacer />
       <Image systemName="cellularbars" variableValue={signalFill(textValue(data.signalbar))} frame={{ width: compact ? 13 : 15, height: compact ? 13 : 15 }} modifiers={modifiers().foregroundStyle(signalColor(textValue(data.signalbar)))} />
-      <Text font={compact ? 9 : 10} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit()}>{textValue(data.signalbar)}</Text>
+      <Text font={11} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit()}>{textValue(data.signalbar)}</Text>
       <Rectangle fill="separator" frame={{ width: 1, height: 13 }} />
       <Image systemName={textValue(data.battery_icon)} frame={{ width: compact ? 14 : 16, height: compact ? 14 : 16 }} modifiers={modifiers().foregroundStyle(data.battery_icon_color)} />
-      <Text font={compact ? 9 : 10} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit()}>{textValue(data.battery)}%</Text>
+      <Text font={11} modifiers={modifiers().foregroundStyle("label").bold().monospacedDigit()}>{textValue(data.battery)}%</Text>
     </HStack>
   );
 }
@@ -206,12 +206,12 @@ function MediumDashboard({ data }: any) {
       <HStack spacing={4} alignment="center" modifiers={modifiers().frame({ maxWidth: "infinity", height: 17 })}>
         <HStack spacing={4} alignment="leading" modifiers={modifiers().frame({ maxWidth: "infinity", alignment: "leading" }).padding({ leading: 2 })}>
           <Image systemName="antenna.radiowaves.left.and.right.circle" font={11} frame={{ width: 11, height: 11 }} modifiers={modifiers().foregroundStyle("systemBlue")} />
-          <Text font={8.5} fontWeight="semibold" modifiers={modifiers().foregroundStyle("secondaryLabel").monospacedDigit().lineLimit(1).minScaleFactor(0.55)}>RSRP {textValue(data.rsrp_text)} · RSRQ {textValue(data.rsrq_text)} · SNR {textValue(data.snr_text)}</Text>
+          <Text font={10} fontWeight="semibold" modifiers={modifiers().foregroundStyle("secondaryLabel").monospacedDigit().lineLimit(1).minScaleFactor(0.55)}>RSRP {textValue(data.rsrp_text)} · RSRQ {textValue(data.rsrq_text)} · SNR {textValue(data.snr_text)}</Text>
         </HStack>
         <Spacer minLength={1} />
         <HStack spacing={3} alignment="center">
           <Image systemName="clock.arrow.trianglehead.2.counterclockwise.rotate.90" font={10} frame={{ width: 10, height: 10 }} modifiers={modifiers().foregroundStyle("systemGreen")} />
-          <Text font={8.5} fontWeight="semibold" modifiers={modifiers().foregroundStyle("secondaryLabel").monospacedDigit().lineLimit(1).minScaleFactor(0.5)}>{textValue(data.update_time)}{data.error ? " ⚠" : ""}</Text>
+          <Text font={10} fontWeight="semibold" modifiers={modifiers().foregroundStyle("secondaryLabel").monospacedDigit().lineLimit(1).minScaleFactor(0.5)}>{textValue(data.update_time)}{data.error ? " ⚠" : ""}</Text>
         </HStack>
       </HStack>
     </Card>
@@ -233,7 +233,7 @@ function SmallDashboard({ data }: any) {
         <Chip compact icon="antenna.radiowaves.left.and.right" text={textValue(data.rsrp_text)} tint="systemTeal" />
         <Chip compact icon="wifi" text={textValue(data.ssid_text)} tint="systemTeal" />
       </HStack>
-      <Text font={8} modifiers={modifiers().foregroundStyle("secondaryLabel").monospacedDigit()}>{textValue(data.update_time)}{data.error ? " ⚠" : ""}</Text>
+      <Text font={10} modifiers={modifiers().foregroundStyle("secondaryLabel").monospacedDigit()}>{textValue(data.update_time)}{data.error ? " ⚠" : ""}</Text>
     </Card>
   );
 }

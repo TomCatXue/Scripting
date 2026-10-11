@@ -93,18 +93,18 @@ function WidgetView({ list }: { list: any[] }) {
             <HStack spacing={2}>
               <Image
                 systemName='clock.arrow.circlepath'
-                font={settings.fontSize * 0.7}
+                font={Math.max(10, Math.round(settings.fontSize * 0.7))}
                 foregroundStyle={settings.timeColor}
               />
               <Text
-                font={settings.fontSize * 0.7}
+                font={Math.max(10, Math.round(settings.fontSize * 0.7))}
                 foregroundStyle={settings.timeColor}
               >
                 {`${now.getHours()}`.padStart(2, '0')}:
                 {`${now.getMinutes()}`.padStart(2, '0')}
               </Text>
               <Text
-                font={settings.fontSize * 0.5}
+                font={Math.max(10, Math.round(settings.fontSize * 0.75))}
                 foregroundStyle={settings.timeColor}
               >
                 {WIDGET_VERSION}

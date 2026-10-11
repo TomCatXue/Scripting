@@ -211,7 +211,7 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
 
       {props.footnote ? (
         <Text
-          font={9.5}
+          font={11}
           foregroundStyle={THEME.dim}
           lineLimit={1}
           minScaleFactor={0.8}
@@ -378,12 +378,12 @@ export function AiSmallTemplate(props: AiSmallTemplateProps) {
         <AiProgressBar pct={props.progressPct} />
       ) : (
         <HStack alignment="center">
-          <Text font={10.5} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.8}>
+          <Text font={11} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.8}>
             {props.footerLeft || ""}
           </Text>
           <Spacer />
           <Text
-            font={10.5}
+            font={11}
             foregroundStyle={props.footerRightColor || THEME.dim}
             monospacedDigit
             lineLimit={1}
@@ -451,7 +451,7 @@ export function ModeSwitch({
             buttonStyle="plain"
           >
             <Text
-              font={9}
+              font={10}
               fontWeight={active ? "semibold" : "regular"}
               foregroundStyle={active ? "#FFFFFF" : THEME.dim}
               padding={{ horizontal: 7, vertical: 3 }}
@@ -588,7 +588,7 @@ export function WaveformMediumTemplate(props: WaveformMediumTemplateProps) {
         </Text>
 
         {/* 更新时间 */}
-        <Text font={9.5} foregroundStyle={THEME.dim} monospacedDigit>
+        <Text font={11} foregroundStyle={THEME.dim} monospacedDigit>
           {`更新于 ${formatTime(props.updatedAt)}`}
         </Text>
       </VStack>
@@ -610,7 +610,7 @@ export function WaveformMediumTemplate(props: WaveformMediumTemplateProps) {
         </HStack>
         {/* 峰值标签单独一行，避免挤压标题与胶囊 */}
         {props.peakText ? (
-          <Text font={9.5} fontWeight="bold" foregroundStyle={props.lineColor} lineLimit={1}>
+          <Text font={11} fontWeight="bold" foregroundStyle={props.lineColor} lineLimit={1}>
             {props.peakText}
           </Text>
         ) : null}
@@ -750,7 +750,7 @@ export function MarketMediumTemplate(props: MarketMediumTemplateProps) {
               padding={{ top: 1, bottom: 1, leading: 5, trailing: 5 }}
               widgetBackground={props.badgeBg}
             >
-              <Text font={9.5} fontWeight="bold" foregroundStyle={props.badgeColor} lineLimit={1}>
+              <Text font={11} fontWeight="bold" foregroundStyle={props.badgeColor} lineLimit={1}>
                 {props.badgeText}
               </Text>
             </HStack>

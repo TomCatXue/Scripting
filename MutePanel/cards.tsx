@@ -201,7 +201,7 @@ export function MediaNexusCard({ data }: { data: MediaNexusData }) {
         </Text>
         <Circle fill={cGreen} frame={{ width: 7, height: 7 }} />
         <Spacer />
-        <Text font={11.5} fontWeight="regular" foregroundStyle={cLabel}>
+        <Text font={12} fontWeight="regular" foregroundStyle={cLabel}>
           {data.statusText || "当前空闲"}
         </Text>
         <RefreshButton />
@@ -217,7 +217,7 @@ export function MediaNexusCard({ data }: { data: MediaNexusData }) {
             <Text font={21} fontWeight="bold" foregroundStyle={cGreen} monospacedDigit lineLimit={1} minScaleFactor={0.7}>
               {`+${data.recent7Days}`}
             </Text>
-            <Text font={10.5} fontWeight="regular" foregroundStyle={cLabel} lineLimit={1}>
+            <Text font={11} fontWeight="regular" foregroundStyle={cLabel} lineLimit={1}>
               近7日入库
             </Text>
           </VStack>
@@ -225,7 +225,7 @@ export function MediaNexusCard({ data }: { data: MediaNexusData }) {
             <Text font={21} fontWeight="bold" foregroundStyle={cGreen} monospacedDigit lineLimit={1} minScaleFactor={0.7}>
               {`+${data.todayAdded}`}
             </Text>
-            <Text font={10.5} fontWeight="regular" foregroundStyle={cLabel} lineLimit={1}>
+            <Text font={11} fontWeight="regular" foregroundStyle={cLabel} lineLimit={1}>
               今日入库
             </Text>
           </VStack>
@@ -248,7 +248,7 @@ export function MediaNexusCard({ data }: { data: MediaNexusData }) {
             <Text font={20} fontWeight="bold" foregroundStyle={cBlue} monospacedDigit lineLimit={1} minScaleFactor={0.7}>
               {data.movies.toLocaleString("en-US")}
             </Text>
-            <Text font={10.5} fontWeight="regular" foregroundStyle={cLabel} lineLimit={1}>
+            <Text font={11} fontWeight="regular" foregroundStyle={cLabel} lineLimit={1}>
               电影
             </Text>
           </VStack>
@@ -257,7 +257,7 @@ export function MediaNexusCard({ data }: { data: MediaNexusData }) {
             <Text font={20} fontWeight="bold" foregroundStyle={cBlue} monospacedDigit lineLimit={1} minScaleFactor={0.7}>
               {data.shows.toLocaleString("en-US")}
             </Text>
-            <Text font={10.5} fontWeight="regular" foregroundStyle={cLabel} lineLimit={1}>
+            <Text font={11} fontWeight="regular" foregroundStyle={cLabel} lineLimit={1}>
               剧集
             </Text>
           </VStack>
@@ -266,7 +266,7 @@ export function MediaNexusCard({ data }: { data: MediaNexusData }) {
             <Text font={20} fontWeight="bold" foregroundStyle={cBlue} monospacedDigit lineLimit={1} minScaleFactor={0.7}>
               {data.episodes.toLocaleString("en-US")}
             </Text>
-            <Text font={10.5} fontWeight="regular" foregroundStyle={cLabel} lineLimit={1}>
+            <Text font={11} fontWeight="regular" foregroundStyle={cLabel} lineLimit={1}>
               分集
             </Text>
           </VStack>
@@ -282,7 +282,7 @@ export function MediaNexusCard({ data }: { data: MediaNexusData }) {
         </Text>
         {data.recentItems.slice(0, 2).map((item) => (
           <HStack key={item.id} spacing={6} alignment="center">
-            <Text font={10.5} fontWeight="medium" foregroundStyle={cDim} monospacedDigit>
+            <Text font={11} fontWeight="medium" foregroundStyle={cDim} monospacedDigit>
               {item.id}
             </Text>
             <Image
@@ -299,7 +299,7 @@ export function MediaNexusCard({ data }: { data: MediaNexusData }) {
               {item.title}
             </Text>
             <Spacer />
-            <Text font={10.5} fontWeight="regular" foregroundStyle={cDim} monospacedDigit>
+            <Text font={11} fontWeight="regular" foregroundStyle={cDim} monospacedDigit>
               {item.year}
             </Text>
           </HStack>
@@ -362,7 +362,7 @@ export function MetricBalanceCard({ data }: { data: MetricBalanceData }) {
             />
             {data.brandTitle ? (
               <Text
-                font={13.5}
+                font={14}
                 fontWeight="bold"
                 foregroundStyle={data.brandTitleColor || THEME.text}
               >
@@ -378,7 +378,7 @@ export function MetricBalanceCard({ data }: { data: MetricBalanceData }) {
       <Spacer minLength={7} />
 
       {/* 标签 */}
-      <Text font={10.5} fontWeight="medium" foregroundStyle={THEME.dim}>
+      <Text font={11} fontWeight="medium" foregroundStyle={THEME.dim}>
         {data.mainLabel}
       </Text>
 
@@ -416,7 +416,7 @@ export function MetricBalanceCard({ data }: { data: MetricBalanceData }) {
       {/* 进度条 + 右侧百分比 (单行并排对齐，绝不错行) */}
       <HStack spacing={6} alignment="center">
         <ProgressBar value={data.progressPct} color={pColor} height={4.5} />
-        <Text font={10.5} fontWeight="bold" foregroundStyle={pColor} monospacedDigit>
+        <Text font={11} fontWeight="bold" foregroundStyle={pColor} monospacedDigit>
           {`${Math.round(data.progressPct)}%`}
         </Text>
       </HStack>
@@ -429,14 +429,14 @@ export function MetricBalanceCard({ data }: { data: MetricBalanceData }) {
           <>
             <HStack spacing={3} alignment="center">
               <Text font={10} foregroundStyle={THEME.dim} lineLimit={1}>已签</Text>
-              <Text font={10.5} fontWeight="bold" foregroundStyle={THEME.green} monospacedDigit lineLimit={1}>
+              <Text font={11} fontWeight="bold" foregroundStyle={THEME.green} monospacedDigit lineLimit={1}>
                 {data.subValue1}
               </Text>
             </HStack>
             <Spacer />
             <HStack spacing={3} alignment="center">
               <Text font={10} foregroundStyle={THEME.dim} lineLimit={1}>已用</Text>
-              <Text font={10.5} fontWeight="bold" foregroundStyle={THEME.orange} monospacedDigit lineLimit={1}>
+              <Text font={11} fontWeight="bold" foregroundStyle={THEME.orange} monospacedDigit lineLimit={1}>
                 {data.subValue2}
               </Text>
             </HStack>
@@ -444,7 +444,7 @@ export function MetricBalanceCard({ data }: { data: MetricBalanceData }) {
         ) : isDeepSeek ? (
           <HStack spacing={0} alignment="center" frame={{ maxWidth: "infinity" }}>
             <HStack spacing={3} alignment="center">
-              <Text font={9.5} foregroundStyle={THEME.dim} lineLimit={1}>
+              <Text font={11} foregroundStyle={THEME.dim} lineLimit={1}>
                 {data.subLabel1 || "状态"}
               </Text>
               <Text font={10} fontWeight="medium" foregroundStyle={THEME.green} lineLimit={1}>
@@ -453,7 +453,7 @@ export function MetricBalanceCard({ data }: { data: MetricBalanceData }) {
             </HStack>
             <Spacer />
             <HStack spacing={3} alignment="center">
-              <Text font={9.5} foregroundStyle={THEME.dim} lineLimit={1}>
+              <Text font={11} foregroundStyle={THEME.dim} lineLimit={1}>
                 {data.subLabel2 || "近7日消费"}
               </Text>
               <Text
@@ -472,14 +472,14 @@ export function MetricBalanceCard({ data }: { data: MetricBalanceData }) {
           <>
             <HStack spacing={3} alignment="center">
               <Text font={10} foregroundStyle={THEME.dim} lineLimit={1}>成功</Text>
-              <Text font={10.5} fontWeight="bold" foregroundStyle={THEME.dim} monospacedDigit lineLimit={1}>
+              <Text font={11} fontWeight="bold" foregroundStyle={THEME.dim} monospacedDigit lineLimit={1}>
                 {data.subValue1 || "893"}
               </Text>
             </HStack>
             <Spacer />
             <HStack spacing={3} alignment="center">
               <Text font={10} foregroundStyle={THEME.dim} lineLimit={1}>失败</Text>
-              <Text font={10.5} fontWeight="bold" foregroundStyle={THEME.red} monospacedDigit lineLimit={1}>
+              <Text font={11} fontWeight="bold" foregroundStyle={THEME.red} monospacedDigit lineLimit={1}>
                 {data.subValue2 || "63"}
               </Text>
             </HStack>
@@ -492,7 +492,7 @@ export function MetricBalanceCard({ data }: { data: MetricBalanceData }) {
       {/* 底栏 */}
       <HStack spacing={2} alignment="center" frame={{ maxWidth: "infinity" }}>
         <Text
-          font={8.5}
+          font={10}
           fontWeight={isDeepSeek ? "medium" : "regular"}
           foregroundStyle={isDeepSeek ? THEME.green : THEME.dim}
           lineLimit={1}
@@ -502,7 +502,7 @@ export function MetricBalanceCard({ data }: { data: MetricBalanceData }) {
         </Text>
         <Spacer minLength={4} />
         <Text
-          font={8.5}
+          font={10}
           foregroundStyle={THEME.dim}
           monospacedDigit
           lineLimit={1}
@@ -549,7 +549,7 @@ export function DualQuotaCard({ data }: { data: DualQuotaData }) {
           svgCode={data.svgCode}
           size={16}
         />
-        <Text font={13.5} fontWeight="bold" foregroundStyle={THEME.text}>
+        <Text font={14} fontWeight="bold" foregroundStyle={THEME.text}>
           {data.brandTitle}
         </Text>
         <Spacer />
@@ -561,17 +561,17 @@ export function DualQuotaCard({ data }: { data: DualQuotaData }) {
       {/* 第 1 段额度：上行纯文字标签+倒计时靠右对齐，下行进度条+百分比 */}
       <VStack alignment="leading" spacing={3}>
         <HStack spacing={5} alignment="center">
-          <Text font={10.5} fontWeight="medium" foregroundStyle={THEME.dim} lineLimit={1}>
+          <Text font={11} fontWeight="medium" foregroundStyle={THEME.dim} lineLimit={1}>
             {data.item1.label}
           </Text>
           <Spacer />
-          <Text font={9.5} foregroundStyle={THEME.dim} monospacedDigit lineLimit={1}>
+          <Text font={11} foregroundStyle={THEME.dim} monospacedDigit lineLimit={1}>
             {data.item1.timer.replace(/后?刷新$/, "").trim()}
           </Text>
         </HStack>
         <HStack spacing={6} alignment="center">
           <ProgressBar value={data.item1.pct} color={c1} height={4.5} />
-          <Text font={10.5} fontWeight="bold" foregroundStyle={c1} monospacedDigit lineLimit={1}>
+          <Text font={11} fontWeight="bold" foregroundStyle={c1} monospacedDigit lineLimit={1}>
             {`${Math.round(data.item1.pct)}%`}
           </Text>
         </HStack>
@@ -582,17 +582,17 @@ export function DualQuotaCard({ data }: { data: DualQuotaData }) {
       {/* 第 2 段额度：上行纯文字标签+倒计时靠右对齐，下行进度条+百分比 */}
       <VStack alignment="leading" spacing={3}>
         <HStack spacing={5} alignment="center">
-          <Text font={10.5} fontWeight="medium" foregroundStyle={THEME.dim} lineLimit={1}>
+          <Text font={11} fontWeight="medium" foregroundStyle={THEME.dim} lineLimit={1}>
             {data.item2.label}
           </Text>
           <Spacer />
-          <Text font={9.5} foregroundStyle={THEME.dim} monospacedDigit lineLimit={1}>
+          <Text font={11} foregroundStyle={THEME.dim} monospacedDigit lineLimit={1}>
             {data.item2.timer.replace(/后?刷新$/, "").trim()}
           </Text>
         </HStack>
         <HStack spacing={6} alignment="center">
           <ProgressBar value={data.item2.pct} color={c2} height={4.5} />
-          <Text font={10.5} fontWeight="bold" foregroundStyle={c2} monospacedDigit lineLimit={1}>
+          <Text font={11} fontWeight="bold" foregroundStyle={c2} monospacedDigit lineLimit={1}>
             {`${Math.round(data.item2.pct)}%`}
           </Text>
         </HStack>
@@ -605,33 +605,33 @@ export function DualQuotaCard({ data }: { data: DualQuotaData }) {
         <HStack alignment="center" frame={{ maxWidth: "infinity" }}>
           {/* 左侧：Gem 周 % */}
           <HStack spacing={4} alignment="center">
-            <Text font={9} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.8}>
+            <Text font={10} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.8}>
               {data.stat1.label}
             </Text>
-            <Text font={9.5} fontWeight="bold" foregroundStyle={cStat1} monospacedDigit lineLimit={1}>
+            <Text font={11} fontWeight="bold" foregroundStyle={cStat1} monospacedDigit lineLimit={1}>
               {data.stat1.value}
             </Text>
           </HStack>
           <Spacer />
           {/* 右侧：C/G 周 % */}
           <HStack spacing={4} alignment="center">
-            <Text font={9} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.8}>
+            <Text font={10} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.8}>
               {data.stat2.label}
             </Text>
-            <Text font={9.5} fontWeight="bold" foregroundStyle={cStat2} monospacedDigit lineLimit={1}>
+            <Text font={11} fontWeight="bold" foregroundStyle={cStat2} monospacedDigit lineLimit={1}>
               {data.stat2.value}
             </Text>
           </HStack>
         </HStack>
       ) : (
         <HStack spacing={3} alignment="center">
-          <Text font={9} foregroundStyle={THEME.dim} lineLimit={1}>
+          <Text font={10} foregroundStyle={THEME.dim} lineLimit={1}>
             {data.stat1.label}
           </Text>
-          <Text font={9.5} fontWeight="bold" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
+          <Text font={11} fontWeight="bold" foregroundStyle={THEME.text} monospacedDigit lineLimit={1}>
             {data.stat1.value.replace(/[^0-9]/g, "") || data.stat1.value}
           </Text>
-          <Text font={9} foregroundStyle={THEME.dim} lineLimit={1}>
+          <Text font={10} foregroundStyle={THEME.dim} lineLimit={1}>
             次
           </Text>
           <Spacer />
@@ -644,18 +644,18 @@ export function DualQuotaCard({ data }: { data: DualQuotaData }) {
       <HStack spacing={4} alignment="center">
         {isAntigravity ? (
           <HStack spacing={3} alignment="center">
-            <Text font={9} foregroundStyle={THEME.dim} lineLimit={1}>最紧</Text>
-            <Text font={9} fontWeight="bold" foregroundStyle={cTight} monospacedDigit lineLimit={1}>
+            <Text font={10} foregroundStyle={THEME.dim} lineLimit={1}>最紧</Text>
+            <Text font={10} fontWeight="bold" foregroundStyle={cTight} monospacedDigit lineLimit={1}>
               {data.footerStatus.replace(/最紧|最低/g, "").trim() || "0%"}
             </Text>
           </HStack>
         ) : (
-          <Text font={9} foregroundStyle={THEME.dim} lineLimit={1}>
+          <Text font={10} foregroundStyle={THEME.dim} lineLimit={1}>
             {data.footerStatus}
           </Text>
         )}
         <Spacer />
-        <Text font={9} foregroundStyle={THEME.dim} monospacedDigit lineLimit={1}>
+        <Text font={10} foregroundStyle={THEME.dim} monospacedDigit lineLimit={1}>
           {`更新于 ${formatTime(data.updatedAt)}`}
         </Text>
       </HStack>
@@ -684,7 +684,7 @@ export function VpnNodeCard({ data }: { data: VpnNodeData }) {
           font={{ name: "system", size: 14 }}
           foregroundStyle={cGreen}
         />
-        <Text font={13.5} fontWeight="bold" foregroundStyle={cGreen}>
+        <Text font={14} fontWeight="bold" foregroundStyle={cGreen}>
           {data.statusTitle}
         </Text>
         <Spacer />
@@ -724,7 +724,7 @@ export function VpnNodeCard({ data }: { data: VpnNodeData }) {
           风险
         </Text>
         <ProgressBar value={data.riskPct} color={THEME.orange} height={4.5} />
-        <Text font={10.5} fontWeight="bold" foregroundStyle={THEME.orange} monospacedDigit>
+        <Text font={11} fontWeight="bold" foregroundStyle={THEME.orange} monospacedDigit>
           {`${Math.round(data.riskPct)}%`}
         </Text>
       </HStack>
@@ -733,14 +733,14 @@ export function VpnNodeCard({ data }: { data: VpnNodeData }) {
 
       {/* 底栏 */}
       <HStack spacing={8} alignment="center">
-        <Text font={9.5} fontWeight="medium" foregroundStyle={cGreen} lineLimit={1}>
+        <Text font={11} fontWeight="medium" foregroundStyle={cGreen} lineLimit={1}>
           {data.tag1}
         </Text>
-        <Text font={9.5} foregroundStyle={THEME.dim} lineLimit={1}>
+        <Text font={11} foregroundStyle={THEME.dim} lineLimit={1}>
           {data.tag2}
         </Text>
         <Spacer />
-        <Text font={9.5} foregroundStyle={THEME.dim} monospacedDigit lineLimit={1}>
+        <Text font={11} foregroundStyle={THEME.dim} monospacedDigit lineLimit={1}>
           {`更新于 ${formatTime(data.updatedAt)}`}
         </Text>
       </HStack>
@@ -1102,7 +1102,7 @@ function BentoCard({ mod }: { mod: BentoModuleDef }) {
             padding={{ top: 1, bottom: 1, leading: 4, trailing: 4 }}
             widgetBackground={tagBg}
           >
-            <Text font={9} fontWeight="bold" foregroundStyle={tagColor} lineLimit={1}>
+            <Text font={10} fontWeight="bold" foregroundStyle={tagColor} lineLimit={1}>
               {mod.tag}
             </Text>
           </HStack>
@@ -1128,7 +1128,7 @@ function BentoCard({ mod }: { mod: BentoModuleDef }) {
 
       {/* 副标题 */}
       <Text
-        font={9.5}
+        font={11}
         foregroundStyle={THEME.dim}
         lineLimit={1}
         minScaleFactor={0.8}
@@ -1337,7 +1337,7 @@ export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
       spacing={12}
       alignment="center"
       padding={{ top: 12, bottom: 12, leading: 14, trailing: 14 }}
-      widgetBackground="#0D1117"
+      widgetBackground={THEME.cardBg}
       frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
     >
       {/* 左侧栏：用户信息与三大指标 */}
@@ -1356,10 +1356,10 @@ export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
             <Text font={14} fontWeight="bold" foregroundStyle="#FFFFFF" lineLimit={1}>
               {data.name || data.username}
             </Text>
-            <Text font={10.5} foregroundStyle="#8B949E" lineLimit={1}>
+            <Text font={11} foregroundStyle="#8B949E" lineLimit={1}>
               @{data.username}
             </Text>
-            <Text font={9} foregroundStyle="#8B949E" lineLimit={1}>
+            <Text font={10} foregroundStyle="#8B949E" lineLimit={1}>
               {data.bio || "Code · Learn · Build · Share"}
             </Text>
           </VStack>
@@ -1371,14 +1371,14 @@ export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
           <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
             <HStack spacing={2} alignment="center">
               <Image systemName="person.2.fill" font={10} foregroundStyle="#38BDF8" />
-              <Text font={12.5} fontWeight="bold" foregroundStyle="#FFFFFF">
+              <Text font={13} fontWeight="bold" foregroundStyle="#FFFFFF">
                 {String(data.followers)}
               </Text>
-              <Text font={8} fontWeight="semibold" foregroundStyle={deltaColor(data.followersDelta)}>
+              <Text font={10} fontWeight="semibold" foregroundStyle={deltaColor(data.followersDelta)}>
                 {formatDelta(data.followersDelta)}
               </Text>
             </HStack>
-            <Text font={8.5} foregroundStyle="#8B949E">
+            <Text font={10} foregroundStyle="#8B949E">
               Followers
             </Text>
           </VStack>
@@ -1389,14 +1389,14 @@ export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
               <Text font={11} foregroundStyle="#F59E0B">
                 ★
               </Text>
-              <Text font={12.5} fontWeight="bold" foregroundStyle="#FFFFFF">
+              <Text font={13} fontWeight="bold" foregroundStyle="#FFFFFF">
                 {String(data.stars)}
               </Text>
-              <Text font={8} fontWeight="semibold" foregroundStyle={deltaColor(data.starsDelta)}>
+              <Text font={10} fontWeight="semibold" foregroundStyle={deltaColor(data.starsDelta)}>
                 {formatDelta(data.starsDelta)}
               </Text>
             </HStack>
-            <Text font={8.5} foregroundStyle="#8B949E">
+            <Text font={10} foregroundStyle="#8B949E">
               Stars
             </Text>
           </VStack>
@@ -1404,17 +1404,17 @@ export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
           {/* Forks */}
           <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
             <HStack spacing={2} alignment="center">
-              <Text font={10.5} foregroundStyle="#A855F7">
+              <Text font={11} foregroundStyle="#A855F7">
                 ⑂
               </Text>
-              <Text font={12.5} fontWeight="bold" foregroundStyle="#FFFFFF">
+              <Text font={13} fontWeight="bold" foregroundStyle="#FFFFFF">
                 {String(data.forks)}
               </Text>
-              <Text font={8} fontWeight="semibold" foregroundStyle={deltaColor(data.forksDelta)}>
+              <Text font={10} fontWeight="semibold" foregroundStyle={deltaColor(data.forksDelta)}>
                 {formatDelta(data.forksDelta)}
               </Text>
             </HStack>
-            <Text font={8.5} foregroundStyle="#8B949E">
+            <Text font={10} foregroundStyle="#8B949E">
               Forks
             </Text>
           </VStack>
@@ -1433,14 +1433,14 @@ export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
         <HStack alignment="center" spacing={4}>
           <Image
             systemName="chevron.left.forwardslash.chevron.right"
-            font={10.5}
+            font={11}
             foregroundStyle="#38BDF8"
           />
           <Text font={11} fontWeight="semibold" foregroundStyle="#C9D1D9">
             热门仓库
           </Text>
           <Spacer />
-          <Text font={8.5} foregroundStyle="#6E7681">
+          <Text font={10} foregroundStyle="#6E7681">
             Star 降序
           </Text>
           <RefreshButton />
@@ -1450,30 +1450,30 @@ export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
           {top7.map((repo, i) => (
             <HStack key={repo.name || String(i)} alignment="center" spacing={3}>
               <Text
-                font={8.5}
+                font={10}
                 fontWeight="bold"
                 foregroundStyle={i < 3 ? "#F59E0B" : "#6E7681"}
                 frame={{ width: 10 }}
               >
                 {String(i + 1)}
               </Text>
-              <Text font={9.5} fontWeight="medium" foregroundStyle="#F0F6FC" lineLimit={1}>
+              <Text font={11} fontWeight="medium" foregroundStyle="#F0F6FC" lineLimit={1}>
                 {repo.name}
               </Text>
               <Spacer />
               <HStack alignment="center" spacing={2}>
-                <Text font={8.5} foregroundStyle="#F59E0B">
+                <Text font={10} foregroundStyle="#F59E0B">
                   ★
                 </Text>
-                <Text font={8.5} fontWeight="medium" foregroundStyle="#8B949E">
+                <Text font={10} fontWeight="medium" foregroundStyle="#8B949E">
                   {String(repo.stars)}
                 </Text>
               </HStack>
               <HStack alignment="center" spacing={1}>
-                <Text font={7.5} foregroundStyle="#A855F7">
+                <Text font={10} foregroundStyle="#A855F7">
                   ⑂
                 </Text>
-                <Text font={7.5} foregroundStyle="#6E7681">
+                <Text font={10} foregroundStyle="#6E7681">
                   {String(repo.forks)}
                 </Text>
               </HStack>
@@ -1496,7 +1496,7 @@ export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
       alignment="leading"
       spacing={7}
       padding={{ top: 12, bottom: 10, leading: 16, trailing: 16 }}
-      widgetBackground="#111622"
+      widgetBackground={THEME.cardBg}
       frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
     >
       {/* 顶部标题栏 */}

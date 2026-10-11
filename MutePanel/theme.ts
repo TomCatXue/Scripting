@@ -13,13 +13,13 @@ export const THEME = {
   dim: { light: "#8E8E93", dark: "#A1A1A6" } as any,
   
   // 核心色彩
-  accent: { light: "#2563EB", dark: "#60A5FA" } as any,
-  blue: { light: "#2563EB", dark: "#60A5FA" } as any,
-  green: { light: "#10B981", dark: "#34D399" } as any,
-  orange: { light: "#F97316", dark: "#FB923C" } as any,
-  yellow: { light: "#F59E0B", dark: "#FBBF24" } as any,
-  red: { light: "#EF4444", dark: "#F87171" } as any,
-  purple: { light: "#6366F1", dark: "#818CF8" } as any,
+  accent: { light: "#007AFF", dark: "#0A84FF" } as any,
+  blue: { light: "#007AFF", dark: "#0A84FF" } as any,
+  green: { light: "#34C759", dark: "#30D158" } as any,
+  orange: { light: "#FF9500", dark: "#FF9F0A" } as any,
+  yellow: { light: "#FFCC00", dark: "#FFD60A" } as any,
+  red: { light: "#FF3B30", dark: "#FF453A" } as any,
+  purple: { light: "#AF52DE", dark: "#BF5AF2" } as any,
 
   // 专属黄金主题色：浅色 #D4AF37，深色 #FFD700
   gold: { light: "#D4AF37", dark: "#FFD700" } as any,
@@ -111,4 +111,19 @@ export function formatNumber(v: number): string {
 export function formatPct(v: number): string {
   const n = Number.isFinite(v) ? v : 0
   return (Math.round(n * 10) / 10).toFixed(1)
+}
+
+/**
+ * Apple HIG 规范标准字排印与尺寸 Token
+ * 严格遵循 iOS Dynamic Type 比例尺与统一边距，全面清除 < 10pt 亚像素微字
+ */
+export const HIG_FONT = {
+  heroNumber: 28,      // 仪表盘核心大数值 (原 34pt 缩小避免在小屏溢出并留白)
+  statLarge: 20,       // 中号卡片关键看板数字
+  title: 15,           // 卡片主标题 / 关键分类名
+  headline: 13,        // 次级标题 / 栏目标题 / 榜单标题
+  body: 13,            // 常规说明文本 / 数据副标签
+  subhead: 12,         // 紧凑标签与说明
+  caption: 11,         // 次要信息 / 辅助指标数值 (Apple HIG 标准底线字号)
+  captionSmall: 10,    // 极紧凑状态标识 / 时间戳 (严禁低于 10pt)
 }
