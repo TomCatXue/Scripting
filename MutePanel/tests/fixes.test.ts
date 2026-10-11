@@ -524,6 +524,76 @@ function testPreviewActiveIsTimeBounded(): void {
     );
 }
 
+// ── 18. 分发配置：remoteResource 补齐且指向仓库，版本提升至 1.3.0 ─────
+function testDistributionAndRemoteResource(): void {
+    const scriptJsonRaw = src("../script.json");
+    const scriptJson = JSON.parse(scriptJsonRaw);
+    assert.ok(
+        scriptJson.remoteResource && typeof scriptJson.remoteResource === "object",
+        "script.json 必须配置 remoteResource 对象，否则真机无法从 GitHub 获取更新"
+    );
+    assert.equal(
+        scriptJson.remoteResource.url,
+        "https://github.com/TomCatXue/Scripting/tree/main/MutePanel",
+        "remoteResource.url 指向仓库 MutePanel 目录"
+    );
+    assert.ok(
+        scriptJson.version >= "1.3.0",
+        "版本号提升至 1.3.0 或更高"
+    );
+}
+
+// ── 19. 小组件生命周期：导入 Script，标准 reloadPolicy，调用 Script.exit ──
+function testWidgetLifecycleAndReloadPolicy(): void {
+    const widgetSrc = src("../widget.tsx");
+    assert.ok(
+        /import\s*\{[^}]*?\bScript\b[^}]*?\}\s*from\s*"scripting"/.test(widgetSrc),
+        "widget.tsx 必须导入 Script"
+    );
+    assert.ok(
+        widgetSrc.includes("reloadPolicy:") &&
+            /reloadPolicy:\s*\{\s*policy:\s*"after"/.test(widgetSrc),
+        "Widget.present 传入标准嵌套 reloadPolicy 对象"
+    );
+    assert.ok(
+        widgetSrc.includes("Script.exit()"),
+        "widget.tsx 必须在最后调用 Script.exit()，否则 iOS 扩展进程挂起"
+    );
+}
+
+// ── 20. 多账号跨进程共享：文件级双通道写入与回落 ─────────────────────
+function testAccountsFileDualChannel(): void {
+    const accountsSrc = src("../accounts.ts");
+    assert.ok(
+        accountsSrc.includes("FileManager.appGroupDocumentsDirectory"),
+        "accounts.ts 包含 App Group 文件路径生成"
+    );
+    assert.ok(
+        accountsSrc.includes("FileManager.writeAsStringSync") &&
+            accountsSrc.includes("FileManager.readAsStringSync"),
+        "accounts.ts 读写注册表同时支持 FileManager 双通道"
+    );
+}
+
+// ── 21. 缓存检测 API 严谨性：使用 existsSync ─────────────────────────
+function testDataExistsSyncUsage(): void {
+    const dSrc = src("../data.ts");
+    assert.ok(
+        !dSrc.includes("FileManager.fileExists("),
+        "data.ts 不得裸调未标准化的 FileManager.fileExists"
+    );
+    assert.ok(
+        dSrc.includes("FileManager.existsSync(GITHUB_FILE_CACHE_PATH)") ||
+            dSrc.includes("FileManager.existsSync ? FileManager.existsSync(GITHUB_FILE_CACHE_PATH)"),
+        "GitHub 缓存使用 existsSync 探测"
+    );
+    assert.ok(
+        dSrc.includes("FileManager.existsSync(LOON_FILE_CACHE_PATH)") ||
+            dSrc.includes("FileManager.existsSync ? FileManager.existsSync(LOON_FILE_CACHE_PATH)"),
+        "Loon 缓存使用 existsSync 探测"
+    );
+}
+
 // ── 执行 ───────────────────────────────────────────────────────
 const tests: [string, () => void | Promise<void>][] = [
     ["波形图中号隐藏坐标轴", testWaveformAxesHidden],
@@ -543,6 +613,10 @@ const tests: [string, () => void | Promise<void>][] = [
     ["油价真实调价历史回推", testFuelRealHistoryDerived],
     ["预览限时等待不卡顿", testPreviewBoundedWait],
     ["预览激活 ID 有有效期", testPreviewActiveIsTimeBounded],
+    ["分发配置与 remoteResource 补齐", testDistributionAndRemoteResource],
+    ["小组件生命周期与 reloadPolicy 标准化", testWidgetLifecycleAndReloadPolicy],
+    ["多账号 App Group 文件双通道", testAccountsFileDualChannel],
+    ["缓存存在性使用 existsSync", testDataExistsSyncUsage],
 ];
 
 let passed = 0;

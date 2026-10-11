@@ -9,11 +9,13 @@ type Dict = Record<string, any>;
 let keychainStore: Dict = {};
 let storageShared: Dict = {};
 let storageLocal: Dict = {};
+const filesStore = new Map<string, string>();
 
 export function resetGlobals(): void {
     keychainStore = {};
     storageShared = {};
     storageLocal = {};
+    filesStore.clear();
 }
 
 /** 直接操作 Keychain 桩，供测试预置遗留键 / 断言写入 */
@@ -24,6 +26,11 @@ export function keychainRaw(): Dict {
 /** 直接操作 Storage 桩（shared 通道），供测试预置注册表 */
 export function storageRaw(): Dict {
     return storageShared;
+}
+
+/** 直接操作 FileManager 桩，供测试断言文件落盘 */
+export function filesRaw(): Map<string, string> {
+    return filesStore;
 }
 
 export function installGlobals(): void {
@@ -64,17 +71,17 @@ export function installGlobals(): void {
     };
     g.Storage = storage;
 
-    const files = new Map<string, string>();
     g.FileManager = {
         documentsDirectory: "/tmp/mutepanel-test/Documents",
         appGroupDocumentsDirectory: "/tmp/mutepanel-test/AppGroup",
-        existsSync: (path: string) => files.has(path),
-        readAsStringSync: (path: string) => files.get(path) ?? "",
+        existsSync: (path: string) => filesStore.has(path),
+        fileExists: (path: string) => filesStore.has(path),
+        readAsStringSync: (path: string) => filesStore.get(path) ?? "",
         writeAsStringSync: (path: string, content: string) => {
-            files.set(path, content);
+            filesStore.set(path, content);
         },
         removeSync: (path: string) => {
-            files.delete(path);
+            filesStore.delete(path);
         },
     };
 

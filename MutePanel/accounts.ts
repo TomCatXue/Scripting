@@ -102,12 +102,30 @@ function accountKeyName(service: AccountService, id: string, field: string): str
 
 // ── 注册表读写 ──────────────────────────────────────────────────
 
+function accountRegistryFilePath(service: AccountService): string {
+  try {
+    if (typeof FileManager !== "undefined" && FileManager?.appGroupDocumentsDirectory) {
+      return `${FileManager.appGroupDocumentsDirectory}/mutepanel_accounts_${service}_v1.json`
+    }
+  } catch {}
+  return ""
+}
+
 function readRegistry(service: AccountService): Registry | null {
   let raw: any = null
   try {
     raw = Storage.get(registryKey(service), { shared: true }) || Storage.get(registryKey(service))
   } catch {
-    return null
+    raw = null
+  }
+  if (raw == null) {
+    try {
+      const filePath = accountRegistryFilePath(service)
+      if (filePath && typeof FileManager !== "undefined" && (FileManager.existsSync?.(filePath) || (FileManager as any).fileExists?.(filePath))) {
+        const content = FileManager.readAsStringSync(filePath)
+        if (content) raw = JSON.parse(content)
+      }
+    } catch {}
   }
   if (raw == null) return null
   // 兼容被写成字符串的损坏值
@@ -126,6 +144,12 @@ function writeRegistry(service: AccountService, reg: Registry): void {
   try {
     Storage.set(registryKey(service), reg, { shared: true })
     Storage.set(registryKey(service), reg)
+  } catch {}
+  try {
+    const filePath = accountRegistryFilePath(service)
+    if (filePath && typeof FileManager !== "undefined") {
+      FileManager.writeAsStringSync(filePath, JSON.stringify(reg))
+    }
   } catch {}
 }
 

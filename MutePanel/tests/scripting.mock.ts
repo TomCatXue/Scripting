@@ -60,7 +60,7 @@ export class Response {
 }
 
 /** types.ts 读取 Script.directory 拼图标路径；测试下给个空目录即可 */
-export const Script = { directory: "" };
+export const Script = { directory: "", exit: () => {} };
 
 export const Widget = {};
 

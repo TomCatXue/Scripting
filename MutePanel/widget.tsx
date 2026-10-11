@@ -1,6 +1,6 @@
 // @ts-nocheck
 /// <reference path="./global.d.ts" />
-import { Widget } from "scripting"
+import { Script, Widget } from "scripting"
 import { CPAMP_LOGO_SVG, DEEPSEEK_WHALE_SVG } from "./types"
 import { brandIcon } from "./icons"
 import { ModeSwitch } from "./templates"
@@ -504,13 +504,19 @@ async function main() {
   } catch {}
 
   const view = getWidgetView()
-  // 设置 15 分钟系统 timeline 自动刷新（policy: "after"）
+  // 设置 15 分钟系统 timeline 自动刷新（reloadPolicy: { policy: "after" }）
   Widget.present(view, {
-    policy: "after",
-    date: new Date(Date.now() + 15 * 60 * 1000),
+    reloadPolicy: {
+      policy: "after",
+      date: new Date(Date.now() + 15 * 60 * 1000),
+    },
   })
+  Script.exit()
 }
 
 main().catch((e) => {
   console.log("Widget render error:", e)
+  try {
+    Script.exit()
+  } catch {}
 })

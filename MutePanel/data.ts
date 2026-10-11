@@ -3081,7 +3081,7 @@ export function getGitHubData(): GitHubMonitorData {
       Storage.get<GitHubMonitorData>(GITHUB_LAST_DATA_KEY)
     if (last && last.username) return last
 
-    if (FileManager.fileExists(GITHUB_FILE_CACHE_PATH)) {
+    if (FileManager.existsSync ? FileManager.existsSync(GITHUB_FILE_CACHE_PATH) : (FileManager as any).fileExists?.(GITHUB_FILE_CACHE_PATH)) {
       const raw = FileManager.readAsStringSync(GITHUB_FILE_CACHE_PATH)
       if (raw) {
         const parsed = JSON.parse(raw)
@@ -3323,7 +3323,7 @@ export function getLoonData(): LoonMonitorData {
       if (cached.uploadText) return cached
     }
 
-    if (FileManager.fileExists(LOON_FILE_CACHE_PATH)) {
+    if (FileManager.existsSync ? FileManager.existsSync(LOON_FILE_CACHE_PATH) : (FileManager as any).fileExists?.(LOON_FILE_CACHE_PATH)) {
       const raw = FileManager.readAsStringSync(LOON_FILE_CACHE_PATH)
       if (raw) {
         const parsed = JSON.parse(raw)
