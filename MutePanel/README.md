@@ -21,13 +21,16 @@
 | :--- | :--- | :--- | :--- |
 | `media` 或 `moviepilot` / `emby` | **Media Nexus** | 中号 (Medium) | 聚合展示近 7 日入库、今日入库、电影/剧集/分集总览、最近入库片单及存储余量 |
 | `deepseek` | **DeepSeek 余额** | 小号 (Small) | 实时监控账户余额、可用状态、近 7 日消费金额；**支持多账号聚合** |
-| `workbuddy` 或 `wb` | **WorkBuddy 积分池** | 小号 (Small) | 直连 workbuddy2api 面板，展示积分剩余、签到账号、已消耗积分与请求数 |
-| `workbuddy-direct` 或 `wbd` | **WorkBuddy 直连** | 小号 (Small) | 官方 OAuth 凭据直连，多账号积分聚合（无需自建面板） |
+| `workbuddy` 或 `wb` | **WorkBuddy 积分池** | 小号 / 中号自适应 | 官方 OAuth 凭据直连（无需自建面板），多账号积分聚合；旧参数 `workbuddy-direct` / `wbd` 自动等价 |
 | `codex` | **Codex 用量** | 小号 (Small) | 官方 OAuth 直连，监控 5 小时与周配额用量比例；**支持多账号聚合** |
 | `antigravity` 或 `ag` | **Antigravity 配额** | 小号 (Small) | Google CloudCode 配额用量监控；**支持多账号聚合** |
 | `cpamp` | **CPAMP 监控** | 小号 (Small) | 监控今日调用量、成功/失败数及消费额度 |
 | `vpn` 或 `node` | **网络节点状态** | 小号 (Small) | 当前公网 IP、节点地区、延迟及网络状态监控 |
 | `fuel` 或 `oil` / `油价` | **今日油价** | 小号 / 中号自适应 | 小号展示 Shell 贝壳高光与主力油品大字，中号展示 4 联卡片行情 |
+| `gold` 或 `金价` | **黄金行情** | 中号 (Medium) | 聚合上海黄金交易所官方基准与品牌金零售参考价 |
+| `github` 或 `gh` | **GitHub 监控** | 中号 (Medium) | 实时监控 Followers、Stars、Forks 及变化量，展示按 Stars 降序前 7 热门仓库 |
+| `loon` | **Loon 监控** | 中号 (Medium) | 监控 Loon 网络累计上行/下行流量、策略组数、实时延迟、剩余流量与运行模式 |
+| `bento` | **BENTO 大号看板** | 大号 (Large) | 2×2 自定义微应用栅格 |
 
 > 💡 提示：若参数为空，小组件将根据您已配置的服务自动展示最适宜的看板（中号默认展示 Media Nexus，小号默认展示 WorkBuddy）。
 
@@ -39,11 +42,10 @@
 2. **配置各服务连接**：
    * **MoviePilot / Emby**：填入服务器局域网或公网地址及 API Key。
    * **DeepSeek**：填入平台 User Token 或官方开放平台 API Key。
-   * **WorkBuddy（面板版）**：填入 workbuddy2api-panel 面板地址及 Token。
-   * **WorkBuddy 直连**：三种方式任选 —— **从剪贴板读取**（推荐）、**从文件选择** `plugin-auth.json`、手动粘贴。
+   * **WorkBuddy**：三种方式任选 —— **从剪贴板读取**（推荐）、**从文件选择** `plugin-auth.json`、手动粘贴。
      一条凭据约 2.7 KB（access + refresh 就占 2.5 KB），手动长按选择极易缺字符，建议优先用前两种。
      直接选 `plugin-auth.json` 文件时会**列出文件内全部账号**，可一键全部导入或挑选单个。
-3. **多账号管理**：DeepSeek / Codex / Antigravity / WorkBuddy 直连均支持多账号。
+3. **多账号管理**：DeepSeek / Codex / Antigravity / WorkBuddy 均支持多账号。
    在「数据源状态」中点击对应服务的 **管理** 按钮，可添加、启用/停用、设为默认、重命名与删除账号。
    小组件会把所有**已启用**账号**聚合为一张卡**。
 4. **添加桌面小组件**：
@@ -63,7 +65,7 @@
 | **DeepSeek** | 各账号余额**求和** | 由聚合余额与近 7 日消费推导 | 近 7 日消费按自然日**相加**（真实逐日数据） |
 | **Codex** | 5 小时 / 周额度**求和** | 各账号**平均**剩余（恒 ≤100） | `N 账号 · 最低 X%` |
 | **Antigravity** | Gemini / Claude 额度**求和** | — | `N 账号 · 最低 X%`（跨两指标取最紧） |
-| **WorkBuddy 直连** | 积分剩余**求和** | 聚合剩余 / 聚合总量 | 有效期取各账号最晚可续期时间 |
+| **WorkBuddy** | 积分剩余**求和** | 聚合剩余 / 聚合总量 | 有效期取各账号最晚可续期时间 |
 
 **边界行为**：
 

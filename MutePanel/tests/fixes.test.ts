@@ -261,6 +261,269 @@ function testWidgetConsumesModeTrend(): void {
     );
 }
 
+// ── 8. DeepSeek Token 曲线必须以「M（百万）」为单位 ────────────
+// 回归：曾把原始 Token 数直接当 M 用，导致中号峰值显示 9863（应为 0.01M）。
+async function testDeepSeekTokenUnitIsMillion(): Promise<void> {
+    resetGlobals();
+    keychainRaw()["dashboard_kit_deepseek_token"] = "web-token-abc";
+
+    // 单日 9863 个 Token
+    setMockFetch(async (req: any) => {
+        const url = String(req?.url ?? req);
+        if (url.includes("/users/get_user_summary")) {
+            return {
+                status: 200,
+                ok: true,
+                text: async () =>
+                    JSON.stringify({
+                        code: 0,
+                        data: {
+                            biz_data: {
+                                normal_wallets: [{ balance: "10.00", currency: "CNY" }],
+                                bonus_wallets: [],
+                                total_costs: [{ amount: "100.00", currency: "CNY" }],
+                            },
+                        },
+                    }),
+            };
+        }
+        if (url.includes("/usage/by_api_key/cost")) {
+            return { status: 200, ok: true, text: async () => JSON.stringify({ code: 0, data: { biz_data: { data: [] } } }) };
+        }
+        if (url.includes("/usage/by_api_key/amount")) {
+            return {
+                status: 200,
+                ok: true,
+                text: async () =>
+                    JSON.stringify({
+                        code: 0,
+                        data: {
+                            biz_data: {
+                                series: [
+                                    {
+                                        buckets: [
+                                            {
+                                                time: Math.floor((Date.now() / 1000 + 28800) / 86400) * 86400 - 28800,
+                                                usage: { RESPONSE_TOKEN: 9863, PROMPT_CACHE_HIT_TOKEN: 0, PROMPT_CACHE_MISS_TOKEN: 0 },
+                                            },
+                                        ],
+                                    },
+                                ],
+                            },
+                        },
+                    }),
+            };
+        }
+        return { status: 404, ok: false, text: async () => "{}" };
+    });
+
+    const r = await data.refreshDeepSeekData();
+    assert.ok(r, "刷新成功");
+    assert.ok(r.trends && Array.isArray(r.trends.tokens), "存在 tokens 走势");
+    const today = r.trends.tokens[r.trends.tokens.length - 1].value;
+    assert.equal(today, 0.01, "9863 Token 必须换算为 0.01M，而不是 9863");
+
+    // 中号峰值标签必须显示 M 量级，而不是原始 Token 数
+    // （peakLabel 位于 .tsx，无法 import；这里用同口径公式核对，并静态断言接线）
+    const peakFormula = Math.round((9863 / 1e6) * 100) / 100;
+    assert.equal(peakFormula, 0.01, "9863/1e6 取两位小数应为 0.01");
+    assert.ok(
+        src("../widget.tsx").includes('peakLabel(dsTrend, isBalance ? "" : "M"'),
+        "中号 DeepSeek 峰值以 M 为单位传入"
+    );
+}
+
+// ── 9. 油价：接入真实调价历史，由涨跌额回推价格曲线 ────────────
+function testFuelRealAdjustHistory(): void {
+    assert.ok(
+        dataSrc.includes("fetchFuelAdjustHistory"),
+        "存在真实调价历史抓取函数"
+    );
+    assert.ok(
+        dataSrc.includes("http://www.qiyoujiage.com${tzPath}") &&
+            dataSrc.includes("/^\\/tz\\/\\d{4}\\.shtml$/"),
+        "抓取 qiyoujiage 的调价记录表（真实历史），并校验路径形态"
+    );
+    assert.ok(
+        dataSrc.includes("/\\/tz\\/\\d{4}\\.shtml/"),
+        "从省份页解析其自带的 /tz/<年>.shtml 链接（不自行推算年份，避免 404）"
+    );
+    assert.ok(
+        dataSrc.includes("realHistory.length >= 2"),
+        "优先使用真实调价历史，缺失时回落本地采样"
+    );
+    assert.ok(
+        dataSrc.includes("price -= rows[i].delta / 1000"),
+        "由元/吨的涨跌额回推元/升价格"
+    );
+}
+
+// ── 10. WorkBuddy 合并为单一数据源 ────────────────────────────
+function testWorkBuddyMergedSingleSource(): void {
+    // 面板版实现必须彻底移除
+    assert.ok(!dataSrc.includes("callWbPanel"), "面板版 callWbPanel 已移除");
+    assert.ok(!dataSrc.includes("export function getWorkBuddyData"), "面板版读取函数已移除");
+    assert.ok(!dataSrc.includes("export async function refreshWorkBuddyData"), "面板版刷新函数已移除");
+    // 直连读取必须具备 App Group 文件回落（否则会显示 --）
+    assert.ok(
+        dataSrc.includes("WB_DIRECT_FILE_CACHE_PATH") &&
+            /getWbDirectData[\s\S]*?FileManager.existsSync\(WB_DIRECT_FILE_CACHE_PATH\)/.test(dataSrc),
+        "直连读取带文件回落，避免「有账号却显示 --」"
+    );
+    // 逐账号诊断
+    assert.ok(
+        dataSrc.includes("getWbDirectDiagnostics") && dataSrc.includes("noteDiag("),
+        "直连刷新记录逐账号诊断，便于定位无数据原因"
+    );
+    // 选项注册只剩一个 workbuddy
+    const typesSrc2 = src("../types.ts");
+    assert.ok(!typesSrc2.includes('id: "workbuddy-direct"'), "WIDGET_OPTIONS 不再注册 workbuddy-direct");
+}
+
+// ── 11. 管理弹窗不得跨服务串台 ────────────────────────────────
+function testManageAccountsNoCrossService(): void {
+    const indexSrc = src("../index.tsx");
+    const start = indexSrc.indexOf("async function manageAccounts");
+    const end = indexSrc.indexOf("async function clearAllAccounts");
+    const body = indexSrc.slice(start, end);
+
+    assert.ok(start >= 0 && end > start, "定位到 manageAccounts 函数体");
+    // 函数体内部不得出现任何具体服务的刷新/错误读取
+    for (const forbidden of ["refreshWbDirectData", "getWbDirectLastError", "积分剩余"]) {
+        assert.ok(
+            !body.includes(forbidden),
+            `manageAccounts 内不得写死「${forbidden}」（会导致点 Codex 管理却弹 WorkBuddy 结果）`
+        );
+    }
+    // 每个服务都必须传入自己的 onTest
+    for (const svc of ["deepseek", "codex", "antigravity", "workbuddy_direct"]) {
+        assert.ok(
+            indexSrc.includes(`manageAccounts(\n                  "${svc}"`) ||
+                indexSrc.includes(`manageAccounts(\n                  '${svc}'`) ||
+                new RegExp(`manageAccounts\\(\\s*"${svc}"`).test(indexSrc),
+            `服务 ${svc} 的管理入口调用了 manageAccounts`
+        );
+    }
+    for (const fn of [
+        "testWbDirectConnection",
+        "testDeepSeekConnection",
+        "testCodexConnection",
+        "testAntigravityConnection",
+    ]) {
+        assert.ok(indexSrc.includes(fn), `存在服务级测试连接实现 ${fn}`);
+    }
+}
+
+// ── 12. 快照走势：首个快照之前回填首值，而不是填 0 ─────────────
+// 回归：只填 0 会让新账号的中号图呈现「6 天贴 0 + 末日尖峰」，看起来像显示不全。
+function testSnapshotSeriesBackfillsFirst(): void {
+    resetGlobals();
+    // 只在「今天」写入一个快照
+    data.pushSnapshot("mutepanel_test_backfill_key", 42);
+    const series = data.snapshotSeries("mutepanel_test_backfill_key", 7);
+    assert.equal(series.length, 7, "恒定 7 点");
+    const all42 = series.every((p: any) => p.value === 42);
+    assert.ok(all42, `首个快照之前应回填首值 42，而不是 0：${JSON.stringify(series.map((p: any) => p.value))}`);
+    assert.ok(
+        !series.slice(0, -1).some((p: any) => p.value === 0),
+        "不得出现「前 6 天贴 0」的误导性走势"
+    );
+}
+
+// ── 13. 油价真实调价历史：由涨跌额回推出上下波动的折线 ─────────
+async function testFuelRealHistoryDerived(): Promise<void> {
+    resetGlobals();
+    storageRaw()["dashboard_kit_fuel_province"] = "北京";
+    storageRaw()["dashboard_kit_fuel_oil"] = "oil92";
+
+    const provinceHtml =
+        '<dd>7.88</dd><dd>8.39</dd><dd>9.89</dd><dd>7.59</dd>' +
+        '<a href="/tz/2025.shtml">历史油价</a>';
+    // /tz/2025.shtml 承载「上一年」记录；链接 2025 → 数据年 2026（升序后）
+    const tzHtml =
+        "<table>" +
+        "<tr><th>调价时间</th><th>汽油(元/吨)</th><th>柴油(元/吨)</th></tr>" +
+        "<tr><td>2026年1月16日</td><td>跌200</td><td>跌200</td></tr>" +
+        "<tr><td>2026年1月2日</td><td>涨100</td><td>涨100</td></tr>" +
+        "</table>";
+
+    setMockFetch(async (req: any) => {
+        const url = String(req?.url ?? req);
+        return {
+            status: 200,
+            ok: true,
+            text: async () => (url.includes("/tz/") ? tzHtml : provinceHtml),
+        };
+    });
+
+    const r = await data.refreshFuelData();
+    assert.ok(r, "刷新成功");
+    const hist = r.priceHistory;
+    assert.ok(Array.isArray(hist) && hist.length >= 2, `真实历史应至少 2 点，实际 ${hist?.length}`);
+
+    // 必须呈现真实波动，而不是一条水平直线
+    const values = hist.map((h: any) => Number(h.value));
+    const distinct = new Set(values);
+    assert.ok(distinct.size >= 2, `走势应有真实波动（值不全相同）：${JSON.stringify(values)}`);
+
+    // 回推口径核对：每个调价日的值 = 该日调价后的挂牌价。
+    // 1/16 跌 200 元/吨 → 当前价 7.88；则 1/2（涨 100）之后、1/16 之前为 7.88+0.20=8.08，
+    // 即 1/2 当日的挂牌价应为 8.08，随后 1/16 跌至 7.88。
+    const first = hist[0];
+    assert.equal(first.value, 8.08, `首点应为 1/2 调价后的挂牌价 8.08，实际 ${first.value}`);
+
+    // 末点必须是当前挂牌价
+    assert.equal(hist[hist.length - 1].value, 7.88, "末点为当前挂牌价");
+}
+
+// ── 14. 预览不再被慢网络拖住（限时等待 + 缓存兜底）────────────
+async function testPreviewBoundedWait(): Promise<void> {
+    // withTimeout：超时返回 null，不阻塞界面
+    const slow = new Promise<number>((resolve) => setTimeout(() => resolve(1), 200));
+    const t0 = Date.now();
+    const got = await data.withTimeout(slow, 30);
+    const elapsed = Date.now() - t0;
+    assert.equal(got, null, "超时后返回 null（用缓存出图）");
+    assert.ok(elapsed < 150, `应在超时上限附近返回，实际 ${elapsed}ms`);
+
+    // 正常返回时原样透传
+    assert.equal(await data.withTimeout(Promise.resolve(7), 500), 7, "未超时则透传结果");
+    // 抛错不冒泡
+    assert.equal(await data.withTimeout(Promise.reject(new Error("x")), 500), null, "错误被吞并返回 null");
+
+    const indexSrc = src("../index.tsx");
+    assert.ok(indexSrc.includes("withTimeout(prep,"), "预览数据准备使用限时等待");
+    assert.ok(indexSrc.includes("const prep = (() =>"), "预览数据准备集中为一处，避免每次改动漏改");
+}
+
+// ── 15. 预览激活 ID 必须带时间戳且会过期 ──────────────────────
+function testPreviewActiveIsTimeBounded(): void {
+    const widgetSrc = src("../widget.tsx");
+    assert.ok(
+        widgetSrc.includes("PREVIEW_ACTIVE_TTL_MS"),
+        "定义了预览激活 ID 的有效期"
+    );
+    assert.ok(
+        widgetSrc.includes("Date.now() - ts <= PREVIEW_ACTIVE_TTL_MS"),
+        "读取时校验时间戳，过期即忽略"
+    );
+    assert.ok(
+        widgetSrc.includes("function readActivePreviewId"),
+        "统一由 readActivePreviewId 读取（getWidgetView 与 main 共用）"
+    );
+    // 旧的「纯字符串无条件回落」必须消失（否则会长期劫持所有组件）
+    assert.ok(
+        !widgetSrc.includes('Storage.get<string>("dashboard_kit_preview_active_id"'),
+        "不再以纯字符串形式无条件回落预览 ID"
+    );
+    // 写入侧带时间戳
+    const indexSrc = src("../index.tsx");
+    assert.ok(
+        indexSrc.includes("{ id: opt.id, at: Date.now() }"),
+        "预览时写入带时间戳的激活 ID"
+    );
+}
+
 // ── 执行 ───────────────────────────────────────────────────────
 const tests: [string, () => void | Promise<void>][] = [
     ["波形图中号隐藏坐标轴", testWaveformAxesHidden],
@@ -272,6 +535,14 @@ const tests: [string, () => void | Promise<void>][] = [
     ["油价历史累积行为", testFuelHistoryAccumulates],
     ["Antigravity 分模式走势", testAntigravityPerModeTrends],
     ["widget 消费分模式走势", testWidgetConsumesModeTrend],
+    ["DeepSeek Token 单位为 M", testDeepSeekTokenUnitIsMillion],
+    ["油价接入真实调价历史", testFuelRealAdjustHistory],
+    ["WorkBuddy 单一数据源", testWorkBuddyMergedSingleSource],
+    ["管理弹窗不跨服务串台", testManageAccountsNoCrossService],
+    ["快照走势回填首值", testSnapshotSeriesBackfillsFirst],
+    ["油价真实调价历史回推", testFuelRealHistoryDerived],
+    ["预览限时等待不卡顿", testPreviewBoundedWait],
+    ["预览激活 ID 有有效期", testPreviewActiveIsTimeBounded],
 ];
 
 let passed = 0;

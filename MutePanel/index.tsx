@@ -42,15 +42,12 @@ import {
   FUEL_PROVINCE_KEY,
   FUEL_PROVINCE_MAP,
   VPN_CACHE_KEY,
-  WB_API_KEY,
-  WB_ENDPOINT_KEY,
   getMediaType,
   hasAntigravityConfigured,
   hasCodexConfigured,
   hasCpampConfigured,
   hasDeepSeekConfigured,
   hasMediaConfigured,
-  hasWbConfigured,
   hasWbDirectConfigured,
   normalizeUrl,
   refreshAntigravityData,
@@ -61,13 +58,26 @@ import {
   refreshFuelData,
   refreshMediaData,
   refreshVpnData,
-  refreshWorkBuddyData,
   refreshWbDirectData,
   getWbDirectLastError,
+  getWbDirectDiagnostics,
   setWbDirectCredential,
+  withTimeout,
   WB_DIRECT_CACHE_KEY,
-  WB_CACHE_KEY,
+  WB_DIRECT_FILE_CACHE_PATH,
   TREND_KEY_WB_DIRECT,
+  loadGitHubUsername,
+  saveGitHubUsername,
+  loadGitHubToken,
+  saveGitHubToken,
+  loadGitHubInterval,
+  saveGitHubInterval,
+  refreshGitHubData,
+  hasGitHubConfigured,
+  loadLoonUrl,
+  saveLoonUrl,
+  refreshLoonData,
+  hasLoonConfigured,
 } from "./data"
 import {
   LEGACY_ACCOUNT_ID,
@@ -186,6 +196,24 @@ function OptionBrandIcon({ id }: { id: string }) {
       />
     )
   }
+  if (id === "github") {
+    return (
+      <Image
+        systemName="chevron.left.forwardslash.chevron.right"
+        font={{ name: "system", size: 16 }}
+        foregroundStyle="#38BDF8"
+      />
+    )
+  }
+  if (id === "loon") {
+    return (
+      <Image
+        systemName="paperplane.fill"
+        font={{ name: "system", size: 16 }}
+        foregroundStyle="#38BDF8"
+      />
+    )
+  }
   if (id === "bento") {
     return (
       <Image
@@ -204,75 +232,8 @@ function OptionBrandIcon({ id }: { id: string }) {
   )
 }
 
-/** 引导录入 WorkBuddy 配置 */
-async function configureWorkBuddy() {
-  const currentUrl = Keychain.contains(WB_ENDPOINT_KEY)
-    ? Keychain.get(WB_ENDPOINT_KEY) || ""
-    : ""
-  const currentKey = Keychain.contains(WB_API_KEY)
-    ? Keychain.get(WB_API_KEY) || ""
-    : ""
-
-  const url = await gPrompt({
-    title: "配置 WorkBuddy · 后台地址",
-    message: "请输入 workbuddy2api-panel 服务地址\n例如 http://192.168.1.100:7863",
-    defaultValue: currentUrl,
-    placeholder: "http://192.168.1.100:7863",
-    keyboardType: "URL",
-    confirmLabel: "下一步",
-    cancelLabel: "取消",
-  })
-  if (url === null) return
-
-  const key = await gPrompt({
-    title: "配置 WorkBuddy · API Key (密钥)",
-    message: "请输入配置文件中的 api_key 密钥\n（若 config.json 中未设置 api_key 可直接留空跳过）",
-    defaultValue: currentKey,
-    placeholder: "api_key（选填，未设则留空）",
-    obscureText: true,
-    confirmLabel: "保存并测试连接",
-    cancelLabel: "取消",
-  })
-  if (key === null) return
-
-  if (!url.trim()) {
-    await gAlert("后台服务地址不能为空")
-    return
-  }
-
-  const cleanUrl = normalizeUrl(url.trim())
-  Keychain.set(WB_ENDPOINT_KEY, cleanUrl, {
-    accessibility: "first_unlock_this_device",
-  })
-  if (key.trim()) {
-    Keychain.set(WB_API_KEY, key.trim(), {
-      accessibility: "first_unlock_this_device",
-    })
-  } else {
-    Keychain.remove(WB_API_KEY)
-  }
-
-  const res = await refreshWorkBuddyData()
-  if (res) {
-    Widget.reloadAll()
-    await gAlert(
-      `✓ 连接成功！\n\n剩余积分：${res.mainValue}\n已签到：${res.subValue1} · 已用：${res.subValue2}\n\n小组件与看板现已直接展示你的真实账号池数据！`
-    )
-  } else {
-    await gAlert(
-      "已保存配置，但首次连接测试未通过。\n请检查：\n1. 手机与后台是否在同一局域网（或已打通穿透）\n2. api_key 是否与 config.json 中的一致"
-    )
-  }
-}
-
-/** 清理 WorkBuddy 配置 */
-async function clearWorkBuddyConfig() {
-  const ok = await gConfirm("确定要清除本机保存的 WorkBuddy 后台配置吗？")
-  if (!ok) return
-  Keychain.remove(WB_ENDPOINT_KEY)
-  Keychain.remove(WB_API_KEY)
-  await gAlert("已清除配置，WorkBuddy 卡片已恢复为默认演示数据。")
-}
+// WorkBuddy 已合并为单一「官方直连」数据源（见 configureWbDirect），
+// 旧的 workbuddy2api-panel 面板版配置入口已移除。
 
 // ═════════════════════════════════════════════════════════════════
 // 多账号通用管理
@@ -289,28 +250,34 @@ const ACCOUNT_SERVICE_LABELS: Record<string, string> = {
   workbuddy_direct: "WorkBuddy 直连",
 }
 
+/** 账号管理菜单里的「测试连接」项（服务级动作，与具体账号无关） */
+const TEST_CONNECTION_LABEL = "🔄 测试连接并查看结果"
+
 /**
  * 账号管理入口：选择账号 → 操作（启用/停用、设默认、重命名、删除）。
- * @param onAdd 该服务新增账号的引导函数
+ *
+ * 「测试连接」是**服务级**动作，必须由调用方通过 onTest 注入该服务自己的刷新与
+ * 报错文案。早期实现在这里写死了 WorkBuddy 直连的刷新与错误读取
+ * （refreshWbDirectData / getWbDirectLastError），导致管理 Codex / DeepSeek /
+ * Antigravity 时点「测试连接」，弹出的却是 **WorkBuddy** 的积分或报错 ——
+ * 即「管理 A 服务却弹出 B 服务结果」的串台缺陷。现在各服务各自注入实现。
+ *
+ * @param service   账号服务标识（accounts.ts 的 AccountService）
+ * @param onAdd     该服务新增账号的引导函数
  * @param onChanged 任一变更后的回调（通常触发刷新与重载）
+ * @param onTest    该服务的「测试连接」实现；缺省时不显示该菜单项
  */
 async function manageAccounts(
   service: string,
   onAdd: () => Promise<boolean>,
-  onChanged: () => Promise<void>
+  onChanged: () => Promise<void>,
+  onTest?: () => Promise<void>
 ) {
   const label = ACCOUNT_SERVICE_LABELS[service] || service
 
   while (true) {
     const accounts = listAccounts(service as any)
     const defaultId = getDefaultAccountId(service as any)
-
-    if (accounts.length === 0) {
-      const choice = await gActionSheet(`管理 ${label} 账号`, ["➕ 添加账号", "取消"])
-      if (choice !== "➕ 添加账号") return
-      if (await onAdd()) await onChanged()
-      return
-    }
 
     const rows = accounts.map((a) => {
       const marks: string[] = []
@@ -319,39 +286,27 @@ async function manageAccounts(
       return `${a.on ? "●" : "○"} ${a.label}${marks.length ? ` (${marks.join("·")})` : ""}`
     })
 
-    const choice = await gActionSheet(`管理 ${label} 账号（${accounts.length}）`, [
-      ...rows,
-      "➕ 添加账号",
-      "🔄 测试连接并查看结果",
-      "取消",
-    ])
-    if (choice === "取消") return
+    // 顶层菜单：账号列表 + 添加 + （可选）测试连接。取消即退出。
+    const showTest = !!onTest && accounts.length > 0
+    const menu = [...rows, "➕ 添加账号", ...(showTest ? [TEST_CONNECTION_LABEL] : []), "取消"]
+    const title =
+      accounts.length > 0 ? `管理 ${label} 账号（${accounts.length}）` : `管理 ${label} 账号`
 
-    if (choice === "🔄 测试连接并查看结果") {
-      const res = await refreshWbDirectData()
-      if (res) {
-        Widget.reloadAll()
-        await gAlert(
-          `✓ 连接成功\n\n积分剩余：${res.mainValue}\n已用：${res.subValue2}\n账号：${res.subValue1}`
-        )
-      } else {
-        await gAlert(
-          `✗ 拉取失败\n\n原因：${getWbDirectLastError() || "未知（无启用账号？）"}\n\n` +
-            `若提示网络错误，请确认设备可访问 WorkBuddy 官方接口；\n` +
-            `若提示 401/错误码，说明凭据已过期，请重新导入。`
-        )
-      }
-      await onChanged()
-      continue
-    }
+    const choice = await gActionSheet(title, menu)
+    if (choice === "取消") return
 
     if (choice === "➕ 添加账号") {
       if (await onAdd()) await onChanged()
       continue
     }
 
+    if (showTest && choice === TEST_CONNECTION_LABEL) {
+      await onTest!()
+      continue
+    }
+
     const idx = rows.indexOf(choice)
-    if (idx < 0) return
+    if (idx < 0) continue
     const acc = accounts[idx]
 
     const isDefault = acc.id === defaultId
@@ -396,7 +351,8 @@ async function manageAccounts(
 async function clearAllAccounts(
   service: string,
   cacheKeys: string[],
-  confirmText: string
+  confirmText: string,
+  filePaths: string[] = []
 ) {
   const ok = await gConfirm(confirmText)
   if (!ok) return
@@ -411,6 +367,12 @@ async function clearAllAccounts(
   for (const key of cacheKeys) {
     Storage.remove(key, { shared: true })
     Storage.remove(key)
+  }
+  // 同时清理 App Group 文件缓存，否则清除后卡片会从文件回落读到旧数据
+  for (const path of filePaths) {
+    try {
+      if (path && FileManager.existsSync(path)) FileManager.removeSync(path)
+    } catch {}
   }
 
   Widget.reloadAll()
@@ -995,6 +957,114 @@ async function configureGoldSettings() {
   }
 }
 
+/** 配置 GitHub 监控账号、可选 Token 与刷新间隔 */
+async function configureGitHubSettings() {
+  const currentUsername = loadGitHubUsername()
+  const currentToken = loadGitHubToken()
+  const currentInterval = loadGitHubInterval()
+
+  const action = await gActionSheet("GitHub 监控配置", [
+    `设置用户名 (当前: ${currentUsername})`,
+    currentToken ? "修改或清除 Token (已配置)" : "设置 Personal Access Token (可选)",
+    `设置刷新间隔 (当前: ${currentInterval} 分钟)`,
+    "测试连接并立即刷新",
+    "重置为默认账号",
+    "取消",
+  ])
+  if (!action || action === "取消") return
+
+  if (action.includes("设置用户名")) {
+    const input = await gPrompt("请输入要监控的 GitHub 用户名", currentUsername)
+    if (input && input.trim()) {
+      saveGitHubUsername(input.trim())
+      await refreshGitHubData()
+      Widget.reloadAll()
+      await gAlert(`✓ 已设置 GitHub 用户名：${input.trim()}`)
+    }
+  } else if (action.includes("Token")) {
+    const input = await gPrompt(
+      "请输入 GitHub Personal Access Token (可选，Bearer 认证，置空可清除)",
+      currentToken
+    )
+    if (input !== null) {
+      saveGitHubToken(input.trim())
+      await refreshGitHubData()
+      Widget.reloadAll()
+      await gAlert(input.trim() ? "✓ 已保存 GitHub Token" : "✓ 已清除 GitHub Token")
+    }
+  } else if (action.includes("刷新间隔")) {
+    const chosen = await gActionSheet("请选择数据缓存刷新间隔", [
+      "15 分钟",
+      "30 分钟 (默认)",
+      "60 分钟 (1 小时)",
+      "120 分钟 (2 小时)",
+      "取消",
+    ])
+    if (chosen && chosen !== "取消") {
+      const minutes = parseInt(chosen, 10) || 30
+      saveGitHubInterval(minutes)
+      await gAlert(`✓ 已设置刷新间隔：${minutes} 分钟`)
+    }
+  } else if (action === "测试连接并立即刷新") {
+    const res = await refreshGitHubData()
+    if (res && res.username) {
+      Widget.reloadAll()
+      await gAlert(
+        `✓ GitHub 数据获取成功！\n\n用户：${res.name} (@${res.username})\nFollowers：${res.followers} (${res.followersDelta >= 0 ? "+" : ""}${res.followersDelta})\nStars：${res.stars} (${res.starsDelta >= 0 ? "+" : ""}${res.starsDelta})\nForks：${res.forks} (${res.forksDelta >= 0 ? "+" : ""}${res.forksDelta})\n仓库数：${res.topRepos.length}`
+      )
+    } else {
+      await gAlert("获取 GitHub 数据失败，请检查网络或用户名。")
+    }
+  } else if (action === "重置为默认账号") {
+    saveGitHubUsername("TomCatXue")
+    saveGitHubToken("")
+    saveGitHubInterval(30)
+    await refreshGitHubData()
+    Widget.reloadAll()
+    await gAlert("已恢复默认配置 (TomCatXue)！")
+  }
+}
+
+/** 配置 Loon 监控订阅链接或 OpenAPI 接口 */
+async function configureLoonSettings() {
+  const currentUrl = loadLoonUrl()
+  const action = await gActionSheet("Loon 监控配置", [
+    currentUrl ? "修改订阅或 OpenAPI 链接" : "设置订阅或 OpenAPI 链接",
+    "测试连接并立即刷新",
+    "清除配置 (恢复默认)",
+    "取消",
+  ])
+  if (!action || action === "取消") return
+
+  if (action.includes("链接")) {
+    const input = await gPrompt(
+      "请输入 Loon 订阅链接或 OpenAPI 地址 (支持包含 subscription-userinfo 响应头的链接)",
+      currentUrl
+    )
+    if (input !== null) {
+      saveLoonUrl(input.trim())
+      await refreshLoonData()
+      Widget.reloadAll()
+      await gAlert(input.trim() ? "✓ 已保存 Loon 链接" : "✓ 已清除 Loon 链接")
+    }
+  } else if (action === "测试连接并立即刷新") {
+    const res = await refreshLoonData()
+    if (res) {
+      Widget.reloadAll()
+      await gAlert(
+        `✓ Loon 状态获取成功！\n\n累计下行：${res.downloadText}\n累计上行：${res.uploadText}\n剩余流量：${res.remainingText}\n运行模式：${res.runningMode}\n策略组数：${res.policyGroupCount}\n实时延迟：${res.delayText}\n总额：${res.totalText}`
+      )
+    } else {
+      await gAlert("获取 Loon 数据失败，请检查网络与链接。")
+    }
+  } else if (action === "清除配置 (恢复默认)") {
+    saveLoonUrl("")
+    await refreshLoonData()
+    Widget.reloadAll()
+    await gAlert("已恢复默认演示数据！")
+  }
+}
+
 /** BENTO 模块的展示名称 */
 const BENTO_MODULE_LABELS: Record<string, string> = {
   gold: "Au9999 金价",
@@ -1111,11 +1181,71 @@ async function configureFuelSettings() {
   }
 }
 
+// ── 各服务的「测试连接」实现（供 manageAccounts 的服务级菜单项调用）──────
+// 每个服务刷新自己并给出**自己的**结果/错误文案，绝不跨服务串台。
+
+/** WorkBuddy 直连：聚合积分；失败时列出逐账号诊断，便于定位「有账号却无数据」 */
+async function testWbDirectConnection() {
+  const res = await refreshWbDirectData()
+  Widget.reloadAll()
+  if (res) {
+    await gAlert(
+      `✓ 连接成功\n\n积分剩余：${res.mainValue}\n已用：${res.subValue2}\n账号：${res.subValue1}`
+    )
+  } else {
+    const diag = getWbDirectDiagnostics()
+    const detail = diag.length > 0 ? `\n\n逐账号诊断：\n${diag.slice(0, 8).join("\n")}` : ""
+    await gAlert(
+      `✗ 拉取失败\n\n原因：${getWbDirectLastError() || "未知（无启用账号？）"}${detail}\n\n` +
+        `若提示网络错误，请确认设备可访问 WorkBuddy 官方接口；\n` +
+        `若提示 401/错误码，说明凭据已过期，请重新导入。`
+    )
+  }
+}
+
+/** DeepSeek：余额 / 近 7 日消费 */
+async function testDeepSeekConnection() {
+  const res = await refreshDeepSeekData()
+  Widget.reloadAll()
+  if (res) {
+    await gAlert(
+      `✓ 连接成功\n\n账户余额：${res.prefix || "¥"}${res.mainValue}\n近7日消费：${res.subValue2 || "--"}\n累计消费：${res.totalCostText || "--"}`
+    )
+  } else {
+    await gAlert("✗ 拉取失败\n\n请检查账号 Token / API Key 是否有效，或稍后重试。")
+  }
+}
+
+/** Codex：5 小时 / 周额度 */
+async function testCodexConnection() {
+  const res = await refreshCodexData()
+  Widget.reloadAll()
+  if (res) {
+    await gAlert(
+      `✓ 连接成功\n\n5 小时额度：${formatPct(res.item1?.pct ?? 0)}%\n周额度：${formatPct(res.item2?.pct ?? 0)}%\n可重置：${res.stat1?.value || "0"}`
+    )
+  } else {
+    await gAlert("✗ 拉取失败\n\n请检查 Codex Token 是否有效，或稍后重试。")
+  }
+}
+
+/** Antigravity：Gemini / Claude 额度 */
+async function testAntigravityConnection() {
+  const res = await refreshAntigravityData()
+  Widget.reloadAll()
+  if (res) {
+    await gAlert(
+      `✓ 连接成功\n\nGemini 额度：${formatPct(res.item1?.pct ?? 0)}%\nClaude/GPT 额度：${formatPct(res.item2?.pct ?? 0)}%\nGem周：${res.stat1?.value || "--"} · C/G周：${res.stat2?.value || "--"}`
+    )
+  } else {
+    await gAlert("✗ 拉取失败\n\n请检查 Antigravity Token 是否有效，或稍后重试。")
+  }
+}
+
 export default function ConfigView() {
   const dismiss = Navigation.useDismiss()
   const hasMedia = hasMediaConfigured()
   const mediaType = getMediaType()
-  const hasWb = hasWbConfigured()
   const hasWbDirect = hasWbDirectConfigured()
   const hasDeepSeek = hasDeepSeekConfigured()
   const hasCodex = hasCodexConfigured()
@@ -1166,38 +1296,10 @@ export default function ConfigView() {
             <Image
               systemName="circle.fill"
               font={{ name: "system", size: 8 }}
-              foregroundStyle={hasWb ? "#10B981" : "#F59E0B"}
-            />
-            <Text font={14} fontWeight="medium">WorkBuddy (Panel)</Text>
-            <Spacer />
-            <Button
-              title={hasWb ? "已配置 · 修改" : "去配置"}
-              buttonStyle="bordered"
-              controlSize="mini"
-              action={async () => {
-                await configureWorkBuddy()
-              }}
-            />
-            {hasWb ? (
-              <Button
-                title="清除"
-                role="destructive"
-                buttonStyle="bordered"
-                controlSize="mini"
-                action={async () => {
-                  await clearWorkBuddyConfig()
-                }}
-              />
-            ) : null}
-          </HStack>
-          <HStack spacing={10} alignment="center">
-            <Image
-              systemName="circle.fill"
-              font={{ name: "system", size: 8 }}
               foregroundStyle={hasWbDirect ? "#10B981" : "#F59E0B"}
             />
             <Text font={14} fontWeight="medium">
-              WorkBuddy 直连{countAccounts("workbuddy_direct") > 1 ? ` · ${countAccounts("workbuddy_direct")} 个账号` : ""}
+              WorkBuddy{countAccounts("workbuddy_direct") > 1 ? ` · ${countAccounts("workbuddy_direct")} 个账号` : ""}
             </Text>
             <Spacer />
             <Button
@@ -1211,7 +1313,8 @@ export default function ConfigView() {
                   async () => {
                     await refreshWbDirectData()
                     Widget.reloadAll()
-                  }
+                  },
+                  testWbDirectConnection
                 )
               }}
             />
@@ -1225,7 +1328,8 @@ export default function ConfigView() {
                   await clearAllAccounts(
                     "workbuddy_direct",
                     [WB_DIRECT_CACHE_KEY, TREND_KEY_WB_DIRECT],
-                    "确定要清除 WorkBuddy 直连的全部账号与凭据吗？"
+                    "确定要清除 WorkBuddy 的全部账号与凭据吗？",
+                    [WB_DIRECT_FILE_CACHE_PATH]
                   )
                 }}
               />
@@ -1246,10 +1350,15 @@ export default function ConfigView() {
               buttonStyle="bordered"
               controlSize="mini"
               action={async () => {
-                await manageAccounts("deepseek", addDeepSeekAccount, async () => {
-                  await refreshDeepSeekData()
-                  Widget.reloadAll()
-                })
+                await manageAccounts(
+                  "deepseek",
+                  addDeepSeekAccount,
+                  async () => {
+                    await refreshDeepSeekData()
+                    Widget.reloadAll()
+                  },
+                  testDeepSeekConnection
+                )
               }}
             />
             {hasDeepSeek ? (
@@ -1283,10 +1392,15 @@ export default function ConfigView() {
               buttonStyle="bordered"
               controlSize="mini"
               action={async () => {
-                await manageAccounts("codex", addCodexAccount, async () => {
-                  await refreshCodexData()
-                  Widget.reloadAll()
-                })
+                await manageAccounts(
+                  "codex",
+                  addCodexAccount,
+                  async () => {
+                    await refreshCodexData()
+                    Widget.reloadAll()
+                  },
+                  testCodexConnection
+                )
               }}
             />
             {hasCodex ? (
@@ -1320,10 +1434,15 @@ export default function ConfigView() {
               buttonStyle="bordered"
               controlSize="mini"
               action={async () => {
-                await manageAccounts("antigravity", addAntigravityAccount, async () => {
-                  await refreshAntigravityData()
-                  Widget.reloadAll()
-                })
+                await manageAccounts(
+                  "antigravity",
+                  addAntigravityAccount,
+                  async () => {
+                    await refreshAntigravityData()
+                    Widget.reloadAll()
+                  },
+                  testAntigravityConnection
+                )
               }}
             />
             {hasAntigravity ? (
@@ -1449,6 +1568,40 @@ export default function ConfigView() {
               }}
             />
           </HStack>
+          <HStack spacing={10} alignment="center">
+            <Image
+              systemName="circle.fill"
+              font={{ name: "system", size: 8 }}
+              foregroundStyle="#38BDF8"
+            />
+            <Text font={14} fontWeight="medium">GitHub 监控 (账号/Token)</Text>
+            <Spacer />
+            <Button
+              title="配置账号"
+              buttonStyle="bordered"
+              controlSize="mini"
+              action={async () => {
+                await configureGitHubSettings()
+              }}
+            />
+          </HStack>
+          <HStack spacing={10} alignment="center">
+            <Image
+              systemName="circle.fill"
+              font={{ name: "system", size: 8 }}
+              foregroundStyle="#38BDF8"
+            />
+            <Text font={14} fontWeight="medium">Loon 监控 (订阅/OpenAPI)</Text>
+            <Spacer />
+            <Button
+              title="配置网络"
+              buttonStyle="bordered"
+              controlSize="mini"
+              action={async () => {
+                await configureLoonSettings()
+              }}
+            />
+          </HStack>
             <HStack spacing={10} alignment="center">
               <Image
                 systemName="square.grid.2x2.fill"
@@ -1497,7 +1650,6 @@ export default function ConfigView() {
               action={async () => {
                 try {
                   const tasks: Promise<any>[] = []
-                  if (hasWb) tasks.push(refreshWorkBuddyData().catch((e) => console.log("wb err:", e)))
                   if (hasWbDirect) tasks.push(refreshWbDirectData().catch((e) => console.log("wbd err:", e)))
                   if (hasMedia) tasks.push(refreshEmbyData().catch((e) => console.log("media err:", e)))
                   if (hasDeepSeek) tasks.push(refreshDeepSeekData().catch((e) => console.log("ds err:", e)))
@@ -1562,13 +1714,29 @@ export default function ConfigView() {
                   <Text font={15} fontWeight="bold" foregroundStyle={C_TITLE}>
                     {opt.name}
                   </Text>
-                  <Text
-                    font={11}
-                    fontWeight="medium"
-                    foregroundStyle="#6366F1"
+                  {/* 参数 ID 可点击直接复制，省去手动长按选中 */}
+                  <Button
+                    buttonStyle="plain"
+                    action={async () => {
+                      try {
+                        await Pasteboard.setString(opt.id)
+                        await gAlert(`已复制参数 ID：${opt.id}\n\n在桌面长按组件 →「编辑小组件」→ 参数栏粘贴即可。`)
+                      } catch (e: any) {
+                        await gAlert(`复制失败：${e?.message || e}\n请手动长按复制：${opt.id}`)
+                      }
+                    }}
                   >
-                    {`ID: ${opt.id}`}
-                  </Text>
+                    <HStack spacing={3} alignment="center">
+                      <Text font={11} fontWeight="medium" foregroundStyle="#6366F1">
+                        {`ID: ${opt.id}`}
+                      </Text>
+                      <Image
+                        systemName="doc.on.doc"
+                        font={{ name: "system", size: 10 }}
+                        foregroundStyle="#6366F1"
+                      />
+                    </HStack>
+                  </Button>
                 </HStack>
                 <Text font={12} foregroundStyle={C_SUBTITLE}>
                   {opt.desc}
@@ -1583,35 +1751,30 @@ export default function ConfigView() {
                   const paramOptions = Object.fromEntries(
                     WIDGET_OPTIONS.map((o) => [o.name, o.id])
                   )
-                  // 针对带账号的在线看板，在启动预览前触发一次数据准备
-                  if (opt.id === "antigravity") {
-                    await refreshAntigravityData().catch(() => null)
-                  } else if (opt.id === "codex") {
-                    await refreshCodexData().catch(() => null)
-                  } else if (opt.id === "deepseek") {
-                    await refreshDeepSeekData().catch(() => null)
-                  } else if (opt.id === "workbuddy") {
-                    await refreshWorkBuddyData().catch(() => null)
-                  } else if (opt.id === "workbuddy-direct") {
-                    await refreshWbDirectData().catch(() => null)
-                  } else if (opt.id === "cpamp") {
-                    await refreshCpampData().catch(() => null)
-                  } else if (opt.id === "vpn") {
-                    await refreshVpnData().catch(() => null)
-                  } else if (opt.id === "fuel") {
-                    await refreshFuelData().catch(() => null)
-                  } else if (opt.id === "media") {
-                    await refreshMediaData().catch(() => null)
-                  }
+                  // 针对带账号的在线看板，在启动预览前触发一次数据准备。
+                  // 用 withTimeout 限时：网络慢时不再拖住预览，先用现有缓存出图。
+                  const prep = (() => {
+                    if (opt.id === "antigravity") return refreshAntigravityData()
+                    if (opt.id === "codex") return refreshCodexData()
+                    if (opt.id === "deepseek") return refreshDeepSeekData()
+                    if (opt.id === "workbuddy") return refreshWbDirectData()
+                    if (opt.id === "cpamp") return refreshCpampData()
+                    if (opt.id === "vpn") return refreshVpnData()
+                    if (opt.id === "fuel") return refreshFuelData()
+                    if (opt.id === "media") return refreshMediaData()
+                    if (opt.id === "github") return refreshGitHubData()
+                    if (opt.id === "loon") return refreshLoonData()
+                    return null
+                  })()
+                  if (prep) await withTimeout(prep, 3000)
 
-                  // 保存当前预览卡片 ID 供预览渲染时优先读取
+                  // 保存当前预览卡片 ID 供预览渲染时优先读取。
+                  // 带时间戳：Widget 侧只在一小段时间内认这个值，过期即忽略，
+                  // 避免一次预览长期劫持所有未设参数的桌面组件。
                   try {
-                    Storage.set("dashboard_kit_preview_active_id", opt.id, { shared: true })
-                    Storage.set("dashboard_kit_preview_active_id", opt.id)
-                    FileManager.writeAsStringSync(
-                      FileManager.appGroupDocumentsDirectory + "/dashboard_kit_preview_active.txt",
-                      opt.id
-                    )
+                    const active = { id: opt.id, at: Date.now() }
+                    Storage.set("dashboard_kit_preview_active_id", active, { shared: true })
+                    Storage.set("dashboard_kit_preview_active_id", active)
                   } catch {}
 
                   let previewFamily = opt.defaultFamily as any

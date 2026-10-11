@@ -11,7 +11,9 @@ import {
   CpampSmallCard,
   DeepSeekSmallCard,
   FuelPriceCard,
+  GitHubMediumCard,
   GoldPriceCard,
+  LoonMediumCard,
   MediaNexusCard,
   VpnNodeCard,
   WaveformDashboardMediumCard,
@@ -25,27 +27,30 @@ import {
   getCpampData,
   getDeepSeekData,
   getFuelData,
+  getGitHubData,
   getGoldData,
+  getLoonData,
   getMediaNexusData,
   getVpnData,
-  getWorkBuddyData,
   getWbDirectData,
   hasAntigravityConfigured,
   hasCodexConfigured,
   hasCpampConfigured,
   hasDeepSeekConfigured,
+  hasGitHubConfigured,
+  hasLoonConfigured,
   hasMediaConfigured,
-  hasWbConfigured,
   hasWbDirectConfigured,
   refreshAntigravityData,
   refreshCodexData,
   refreshCpampData,
   refreshDeepSeekData,
   refreshFuelData,
+  refreshGitHubData,
   refreshGoldData,
+  refreshLoonData,
   refreshMediaData,
   refreshVpnData,
-  refreshWorkBuddyData,
   refreshWbDirectData,
 } from "./data"
 
@@ -82,7 +87,15 @@ export function peakLabel(
   if (vals.length === 0) return ""
   const peak = Math.max(...vals)
   if (peak === 0) return ""
-  const shown = peak >= 100 ? Math.round(peak).toLocaleString("en-US") : (Math.round(peak * 100) / 100).toString()
+  // 按量级自适应小数位，避免两类失真：
+  //   · 极小值（如 Token 用量 0.01M）被压成 "0"
+  //   · 大整数（如调用量 1500 次）出现冗长小数
+  const shown =
+    peak >= 100
+      ? Math.round(peak).toLocaleString("en-US")
+      : peak >= 1
+        ? (Math.round(peak * 100) / 100).toString()
+        : (Math.round(peak * 10000) / 10000).toString()
   return `峰值 ${prefix}${shown}${suffix}`
 }
 
@@ -132,18 +145,51 @@ function pickDefaultService(): string {
   try {
     const configured: [string, boolean][] = [
       ["deepseek", hasDeepSeekConfigured()],
-      // 面板版排在直连版之前，保持老用户的默认看板不变
-      ["workbuddy", hasWbConfigured()],
-      ["workbuddy-direct", hasWbDirectConfigured()],
+      // WorkBuddy 已合并为单一「官方直连」数据源
+      ["workbuddy", hasWbDirectConfigured()],
       ["codex", hasCodexConfigured()],
       ["antigravity", hasAntigravityConfigured()],
       ["cpamp", hasCpampConfigured()],
       ["media", hasMediaConfigured()],
+      ["github", hasGitHubConfigured()],
+      ["loon", hasLoonConfigured()],
     ]
     const hit = configured.find(([, ok]) => ok)
     if (hit) return hit[0]
   } catch {}
   return "deepseek"
+}
+
+/** 预览激活 ID 的有效期：超过这个时间就视为过期，不再影响真实桌面组件 */
+export const PREVIEW_ACTIVE_TTL_MS = 3 * 60 * 1000
+
+/**
+ * 读取「最近一次点击预览激活的组件 ID」。
+ *
+ * 背景：桌面组件参数为空时，曾无条件回落这个全局键。于是只要在 App 里点过
+ * 一次某个看板的「预览」，之后所有未设参数的桌面组件都会跟着变成那个看板
+ * —— 这正是「部分组件误显示 WorkBuddy 积分」的根因。
+ *
+ * 现在加时间戳：只在**预览刚点过的一小段时间内**生效（预览流程会立刻重新
+ * 渲染一次，读到即可），过期后一律忽略，让组件回到「按已配置服务自动选择」。
+ */
+function readActivePreviewId(): string {
+  try {
+    const raw =
+      Storage.get<any>("dashboard_kit_preview_active_id", { shared: true }) ??
+      Storage.get<any>("dashboard_kit_preview_active_id")
+    if (raw && typeof raw === "object") {
+      const ts = Number(raw.at)
+      const id = String(raw.id || "").trim().toLowerCase()
+      if (id && Number.isFinite(ts) && Date.now() - ts <= PREVIEW_ACTIVE_TTL_MS) return id
+      return ""
+    }
+    // 兼容旧格式（纯字符串，无时间戳）：无法判断新鲜度，保守起见忽略，
+    // 避免历史遗留值长期劫持所有组件。
+    return ""
+  } catch {
+    return ""
+  }
 }
 
 /**
@@ -164,21 +210,8 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
     } catch {}
   }
 
-  // 若仍为空，读取最近一次点击预览激活的组件 ID
-  if (!p) {
-    p = (
-      Storage.get<string>("dashboard_kit_preview_active_id", { shared: true }) ||
-      Storage.get<string>("dashboard_kit_preview_active_id") ||
-      ""
-    ).trim().toLowerCase()
-  }
-
-  const activePath = FileManager.appGroupDocumentsDirectory + "/dashboard_kit_preview_active.txt"
-  if (!p && FileManager.existsSync(activePath)) {
-    try {
-      p = (FileManager.readAsStringSync(activePath) || "").trim().toLowerCase()
-    } catch {}
-  }
+  // 若仍为空，读取最近一次点击预览激活的组件 ID（仅在有效期内生效）
+  if (!p) p = readActivePreviewId()
   const family = familyOverride || Widget.family
 
   let param = p
@@ -194,10 +227,12 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
   const target = param || p
   if (target.includes("antigravity") || target === "ag" || target.includes("anti-gravity")) param = "antigravity"
   else if (target.includes("codex")) param = "codex"
-  // 直连版必须排在面板版之前：'workbuddy-direct' 也包含 'workbuddy'
-  else if (target.includes("workbuddy-direct") || target.includes("wb-direct") || target === "wbd") param = "workbuddy-direct"
-  else if (target.includes("workbuddy") || target === "wb") param = "workbuddy"
+  // WorkBuddy 已合并为单一「官方直连」数据源；历史参数（含旧 workbuddy-direct /
+  // wbd）一律归一化到 workbuddy，保证老用户已添加到桌面的组件照常渲染。
+  else if (target.includes("workbuddy") || target.includes("wb-direct") || target === "wb" || target === "wbd") param = "workbuddy"
   else if (target.includes("deepseek") || target === "ds") param = "deepseek"
+  else if (target.includes("github") || target === "gh") param = "github"
+  else if (target.includes("loon")) param = "loon"
   else if (target.includes("media") || target.includes("moviepilot") || target.includes("emby") || target.includes("jellyfin")) param = "media"
   else if (target.includes("cpamp") || target.includes("cpa")) param = "cpamp"
   else if (target.includes("vpn") || target.includes("node") || target.includes("ip") || target.includes("节点")) param = "vpn"
@@ -222,29 +257,13 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
   //    金价 / 油价共用 MarketMediumTemplate（4 联卡片 + 30 日走势）。
   if (family === "systemMedium") {
     const mService = param || CONFIG.mediumStyle || pickDefaultService()
-    if (mService === "workbuddy-direct") {
-      const d = getWbDirectData()
-      return (
-        <WaveformDashboardMediumCard
-          props={{
-            brand: "WorkBuddy 直连",
-            iconImage: brandIcon("workbuddy"),
-            mainLabel: "积分剩余总量",
-            mainValue: d.mainValue || "0",
-            subTag1: `已用 ${d.subValue2 || "--"}`,
-            subTag2: `${d.subValue1 || "--"}${d.validDays != null ? ` · 有效期 ${d.validDays} 天` : ""}`,
-            chartTitle: "近7日已用积分",
-            // 峰值来源：d.trend7d（每日快照累积的已用积分）
-            peakText: peakLabel(d.trend7d, ""),
-            trendData: d.trend7d || [],
-            lineColor: "#6366F1",
-            gradient: ["#A5B4FC", "rgba(165,180,252,0)"],
-            updatedAt: d.updatedAt,
-          }}
-        />
-      )
+    if (mService === "github") {
+      return <GitHubMediumCard data={getGitHubData()} />
+    } else if (mService === "loon") {
+      return <LoonMediumCard data={getLoonData()} />
     } else if (mService === "workbuddy") {
-      const d = getWorkBuddyData()
+      // WorkBuddy 已合并为单一「官方直连」数据源
+      const d = getWbDirectData()
       return (
         <WaveformDashboardMediumCard
           props={{
@@ -253,9 +272,9 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
             mainLabel: "积分剩余总量",
             mainValue: d.mainValue || "0",
             subTag1: `已用 ${d.subValue2 || "--"}`,
-            subTag2: `已签 ${d.subValue1 || "--"}${d.validDays != null ? ` · 有效期 ${d.validDays} 天` : ""}`,
+            subTag2: `${d.subValue1 || "--"}${d.validDays != null ? ` · 有效期 ${d.validDays} 天` : ""}`,
             chartTitle: "近7日已用积分",
-            // 峰值来源：d.trend7d（WorkBuddy /api/overview 逐日快照累积的已用积分）
+            // 峰值来源：d.trend7d（每日快照累积的已用积分）
             peakText: peakLabel(d.trend7d, ""),
             trendData: d.trend7d || [],
             lineColor: "#6366F1",
@@ -293,13 +312,16 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
         "gemini"
       const isClaude = agMode === "claude"
 
-      const mainLabel = isClaude ? "Claude/GPT 冷却倒计时" : "Gemini 冷却倒计时"
-      const mainValue = isClaude ? (d.item2?.timer || "--") : (d.item1?.timer || "--")
-      const subTag1 = isClaude
-        ? `Gemini ${d.item1?.timer || "--"}`
-        : `Claude/GPT ${d.item2?.timer || "--"}`
-      const subTag2 = `Gem周 ${d.stat1?.value || "--"} · C/G周 ${d.stat2?.value || "--"}`
-      const chartTitle = isClaude ? "Claude可用额度" : "Gemini可用额度"
+      // 左侧主指标展示「周额度剩余」（与参考版式一致），
+      // 而不是把「额度重置倒计时」当作主数值 —— 后者才是之前观感不合理的根因。
+      const weekText = isClaude ? (d.stat2?.value || "--") : (d.stat1?.value || "--")
+      const otherWeekText = isClaude ? (d.stat1?.value || "--") : (d.stat2?.value || "--")
+      const fiveHourPct = isClaude ? (d.item2?.pct ?? 0) : (d.item1?.pct ?? 0)
+      const mainLabel = isClaude ? "Claude/GPT 周额度剩余" : "Gemini 周额度剩余"
+      const mainValue = weekText
+      const subTag1 = `5h 剩余 ${formatPct(fiveHourPct)}%`
+      const subTag2 = isClaude ? `Gem 周 ${otherWeekText}` : `C/G 周 ${otherWeekText}`
+      const chartTitle = isClaude ? "近7日 Claude 额度" : "近7日 Gemini 额度"
       // 切换后图表数据要真正随模式变化，而不是只换配色
       const modeTrend = d.trends?.[isClaude ? "claude" : "gemini"] || d.trend7d || []
 
@@ -416,10 +438,8 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
 
   // 3. 小型组件 (Small Widget)
   const sService = param || CONFIG.smallStyle || pickDefaultService()
-  if (sService === "workbuddy-direct") {
+  if (sService === "workbuddy") {
     return <WorkBuddySmallCard data={getWbDirectData()} />
-  } else if (sService === "workbuddy") {
-    return <WorkBuddySmallCard data={getWorkBuddyData()} />
   } else if (sService === "codex") {
     return <CodexSmallCard data={getCodexData()} />
   } else if (sService === "antigravity") {
@@ -445,30 +465,16 @@ async function main() {
   // 小组件唤醒执行时，后台轻量触发一次全局配额静默刷新（若有配置），拉取最新真实数据
   try {
     let p = (Widget.parameter || "").trim().toLowerCase()
-    if (!p) {
-      p = (
-        Storage.get<string>("dashboard_kit_preview_active_id", { shared: true }) ||
-        Storage.get<string>("dashboard_kit_preview_active_id") ||
-        ""
-      ).trim().toLowerCase()
-    }
-    const activePath = FileManager.appGroupDocumentsDirectory + "/dashboard_kit_preview_active.txt"
-    if (!p && FileManager.existsSync(activePath)) {
-      try {
-        p = (FileManager.readAsStringSync(activePath) || "").trim().toLowerCase()
-      } catch {}
-    }
+    if (!p) p = readActivePreviewId()
     if (p.includes("antigravity") || p === "ag" || p.includes("anti-gravity")) {
       await refreshAntigravityData().catch(() => null)
     } else if (p.includes("codex")) {
       await refreshCodexData().catch(() => null)
     } else if (p.includes("deepseek") || p === "ds") {
       await refreshDeepSeekData().catch(() => null)
-    } else if (p.includes("workbuddy-direct") || p.includes("wb-direct") || p === "wbd") {
-      // 直连版必须排在面板版之前，否则会被 'workbuddy' 抢先匹配
+    } else if (p.includes("workbuddy") || p.includes("wb-direct") || p === "wb" || p === "wbd") {
+      // WorkBuddy 已合并为单一「官方直连」数据源
       await refreshWbDirectData().catch(() => null)
-    } else if (p.includes("workbuddy") || p === "wb") {
-      await refreshWorkBuddyData().catch(() => null)
     } else if (p.includes("media") || p.includes("moviepilot") || p.includes("emby") || p.includes("jellyfin")) {
       await refreshMediaData().catch(() => null)
     } else if (p.includes("cpamp")) {
@@ -477,6 +483,10 @@ async function main() {
       await refreshVpnData().catch(() => null)
     } else if (p.includes("fuel") || p.includes("oil") || p.includes("油价")) {
       await refreshFuelData().catch(() => null)
+    } else if (p.includes("github") || p === "gh") {
+      await refreshGitHubData().catch(() => null)
+    } else if (p.includes("loon")) {
+      await refreshLoonData().catch(() => null)
     } else if (p.includes("gold") || p.includes("黄金") || p.includes("金价")) {
       await refreshGoldData().catch(() => null)
     } else {

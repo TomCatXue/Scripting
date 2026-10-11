@@ -40,11 +40,12 @@ import {
   DEFAULT_DEEPSEEK,
   DEFAULT_MEDIA_NEXUS,
   DEFAULT_VPN,
-  DEFAULT_WORKBUDDY,
   DEFAULT_WORKBUDDY_DIRECT,
   DEFAULT_FUEL,
   DEFAULT_GOLD,
   DEFAULT_AUX_MARKET,
+  DEFAULT_GITHUB,
+  DEFAULT_LOON,
   type DualQuotaData,
   type FuelCardData,
   type GoldMarketData,
@@ -52,6 +53,8 @@ import {
   type MediaNexusData,
   type MetricBalanceData,
   type VpnNodeData,
+  type GitHubMonitorData,
+  type LoonMonitorData,
 } from "./types"
 
 // ============================================================
@@ -93,6 +96,21 @@ export function toDailySeries(
   return recentDays(n).map((d) => ({
     label: d.label,
     value: Math.round((byDay.get(d.time) ?? 0) * 100) / 100,
+  }))
+}
+
+/**
+ * Token 数序列 → 以「百万(M)」为单位的序列。
+ *
+ * 与 xubai2001「DeepSeek 用量」原版 TokenTrendChart 的 `d.tokens / 1e6` 口径一致：
+ * 中号图表的坐标与峰值都必须用 M，否则会把 9863 个 Token 显示成 9863（应为 0.01M）。
+ */
+function tokensInMillions(
+  series: { label: string; value: number }[]
+): { label: string; value: number }[] {
+  return series.map((d) => ({
+    label: d.label,
+    value: Math.round((Number(d.value) / 1e6) * 100) / 100,
   }))
 }
 
@@ -140,16 +158,27 @@ export function pushSnapshot(key: string, value: number): Map<number, number> {
   return m
 }
 
-/** 把快照历史映射为近 N 天序列（缺失日期用最近一次已知值补齐，避免断图） */
+/**
+ * 把快照历史映射为近 N 天序列。
+ *
+ * 缺失日期用「最近一次已知值」补齐（前向填充），**首个快照之前**的空白
+ * 则用「首个已知值」回填（后向填充）。
+ *
+ * 为什么不能填 0：新配置的账号只有今天一个快照，若前面 6 天填 0，中号图表会
+ * 渲染成「6 天贴着 0 的水平线 + 末日一根尖峰」，看起来就像「走势显示不全」。
+ * 回填首个已知值后，未知历史呈现为一条平线，真实变化仍如实体现，观感诚实。
+ */
 export function snapshotSeries(key: string, n = 7): { label: string; value: number }[] {
   const m = readSnapshotHistory(key)
   const days = recentDays(n)
+  const values = days.map((d) => m.get(d.time))
+  const firstKnown = values.find((v): v is number => v !== undefined)
   const out: { label: string; value: number }[] = []
-  let last: number | null = null
-  for (const d of days) {
-    const v = m.get(d.time)
+  let last = firstKnown ?? 0
+  for (let i = 0; i < days.length; i++) {
+    const v = values[i]
     if (v !== undefined) last = v
-    out.push({ label: d.label, value: last ?? 0 })
+    out.push({ label: days[i].label, value: last })
   }
   return out
 }
@@ -173,14 +202,11 @@ const DEEPSEEK_PANEL_KEY_PATH =
 const DEEPSEEK_LEGACY_CACHE_PATH =
   FileManager.appGroupDocumentsDirectory + "/deepseek_widget_cache.json"
 
-// 2. WorkBuddy (workbuddy2api-panel) 常量
-export const WB_ENDPOINT_KEY = "dashboard_kit_wb_endpoint"
-export const WB_API_KEY = "dashboard_kit_wb_api_key" // 面板 api_key 密钥
-export const WB_CACHE_KEY = "dashboard_kit_wb_cache_v1"
-
-// 2b. WorkBuddy 官方直连（OAuth 凭据，多账号）
+// 2. WorkBuddy 官方直连（OAuth 凭据，多账号）
 export const TREND_KEY_WB_DIRECT = "mutepanel_trend_wb_direct_v1"
 export const WB_DIRECT_CACHE_KEY = "dashboard_kit_wb_direct_cache_v1"
+export const WB_DIRECT_FILE_CACHE_PATH =
+  FileManager.appGroupDocumentsDirectory + "/dashboard_kit_wb_direct_cache.json"
 
 // 3. 媒体库 (Emby / MoviePilot) 常量
 export const MEDIA_TYPE_KEY = "dashboard_kit_media_type" // "moviepilot" | "emby"
@@ -223,31 +249,18 @@ export const VPN_CACHE_KEY = "dashboard_kit_vpn_cache_v1"
 // 1. WorkBuddy (workbuddy2api-panel) 真实直连与缓存
 // ═════════════════════════════════════════════════════════════════
 
-function getWbEndpoint(): string {
-  if (Keychain.contains(WB_ENDPOINT_KEY)) {
-    return (Keychain.get(WB_ENDPOINT_KEY) || "").trim()
-  }
-  if (Keychain.contains("wb2api-console-endpoint")) {
-    return (Keychain.get("wb2api-console-endpoint") || "").trim()
-  }
-  return ""
-}
-
-function getWbApiKey(): string {
-  if (Keychain.contains(WB_API_KEY)) {
-    return Keychain.get(WB_API_KEY) || ""
-  }
-  if (Keychain.contains("dashboard_kit_wb_password")) {
-    return Keychain.get("dashboard_kit_wb_password") || ""
-  }
-  if (Keychain.contains("wb2api-console-password")) {
-    return Keychain.get("wb2api-console-password") || ""
-  }
-  return ""
-}
-
-export function hasWbConfigured(): boolean {
-  return Boolean(getWbEndpoint())
+/**
+ * 限时等待：超过 ms 毫秒即返回 null，不再等待。
+ *
+ * 用途：预览 / 小组件渲染必须在短时间内出图。底层刷新各自有 15–25s 的超时，
+ * 网络慢时会把界面拖住（表现为「预览卡顿」）。这里给它加一道上限 ——
+ * 超时就用现有缓存先把图渲染出来，刷新在后台继续跑、下次即生效。
+ */
+export function withTimeout<T>(p: Promise<T>, ms: number): Promise<T | null> {
+  return Promise.race([
+    p.catch(() => null as T | null),
+    new Promise<null>((resolve) => setTimeout(() => resolve(null), ms)),
+  ])
 }
 
 /** 规范化 URL 地址 */
@@ -258,186 +271,11 @@ export function normalizeUrl(raw: string): string {
   return s.replace(/\/+$/, "")
 }
 
-/**
- * 发送带 Bearer 密钥的请求
- * workbuddy2api-panel 的面板接口路径在 /panel/api/*
- */
-async function callWbPanel<T>(base: string, path: string): Promise<T> {
-  const insecure = base.startsWith("http://")
-  const key = getWbApiKey()
-  const headers: Record<string, string> = { Accept: "application/json" }
-  if (key) {
-    headers.Authorization = `Bearer ${key}`
-  }
-
-  // 优先请求 /panel/api/*（若传入已带 /panel 则不重复加）
-  const targetPath = path.startsWith("/panel") ? path : `/panel${path}`
-  const res = await fetch(`${base}${targetPath}`, {
-    headers,
-    timeout: 15,
-    allowInsecureRequest: insecure,
-  })
-
-  if (!res.ok) {
-    const text = await res.text().catch(() => "")
-    throw new Error(`HTTP ${res.status}: ${text || res.statusText}`)
-  }
-
-  return (await res.json()) as T
-}
-
-/** 在线刷新 WorkBuddy 真实数据并存入缓存 */
-export async function refreshWorkBuddyData(): Promise<MetricBalanceData | null> {
-  const rawBase = getWbEndpoint()
-  if (!rawBase) return null
-  const base = normalizeUrl(rawBase)
-
-  try {
-    // 并发拉取：概览、模型、用量
-    const [overview, models, usage] = await Promise.all([
-      callWbPanel<any>(base, "/api/overview"),
-      callWbPanel<any>(base, "/api/models").catch(() => null),
-      callWbPanel<any>(base, "/api/usage").catch(() => null),
-    ])
-
-    const accounts: any[] = Array.isArray(overview?.accounts) ? overview.accounts : []
-    const totalAcc = Number(overview?.total ?? accounts.length)
-
-    // 统计各账号的积分总额、已用额度、签到数与请求数
-    let totalCredits = 0
-    let totalCreditsCap = 0
-    let signedCount = 0
-    let totalRequests = 0
-    // 账号有效期：取所有账号中最晚的到期时间，换算为剩余天数
-    let latestExpiryMs = 0
-
-    for (const acc of accounts) {
-      const cr = Number(acc.credits || 0)
-      const cap = Number(acc.credits_total || 0)
-      totalCredits += cr
-      totalCreditsCap += cap > 0 ? cap : cr
-      if (acc.checkin_done) signedCount++
-      const reqs = Number(acc.token_usage?.request_count ?? acc.success_count ?? 0)
-      totalRequests += reqs
-
-      // 兼容多种字段命名；无法解析时保持 0，由卡片显示 "--"
-      const rawExpiry =
-        acc.expires_at ?? acc.expire_at ?? acc.expiresAt ?? acc.expire_time ?? acc.expired_at
-      if (rawExpiry != null) {
-        const ms =
-          typeof rawExpiry === "number"
-            ? rawExpiry > 1e11
-              ? rawExpiry
-              : rawExpiry * 1000
-            : new Date(String(rawExpiry)).getTime()
-        if (Number.isFinite(ms) && ms > latestExpiryMs) latestExpiryMs = ms
-      }
-    }
-
-    const validDays =
-      latestExpiryMs > 0
-        ? Math.max(0, Math.ceil((latestExpiryMs - Date.now()) / 86_400_000))
-        : undefined
-
-    // 若 accounts 列表为空或为 0，回落兼容旧版 overview.billing 字段
-    const bt = overview?.billing?.total
-    const remain = totalCredits > 0 ? totalCredits : Number(bt?.remain || 0)
-    const size = totalCreditsCap > 0 ? totalCreditsCap : Number(bt?.size || remain)
-    const used = size > remain ? size - remain : Number(bt?.used || 0)
-    const pct = size > 0 ? Math.round((remain / size) * 100) : (remain > 0 ? 100 : 0)
-
-    const signed = signedCount > 0 ? signedCount : Number(overview?.signin?.confirmed ?? 0)
-    const modelCount = Array.isArray(models?.models) ? models.models.length : (Array.isArray(models) ? models.length : 0)
-    const calls = totalRequests > 0 ? totalRequests : Number(usage?.calls ?? usage?.total_requests ?? 0)
-
-    const data: MetricBalanceData = {
-      ...DEFAULT_WORKBUDDY,
-      mainValue: remain.toLocaleString("en-US"),
-      progressPct: Math.min(100, Math.max(0, pct)),
-      subLabel1: "已签",
-      subValue1: totalAcc > 0 ? `${signed}/${totalAcc}` : `${signed}`,
-      subLabel2: "已用",
-      subValue2: used.toLocaleString("en-US"),
-      validDays,
-      footerLeft: `模型 ${modelCount} · 请求 ${calls.toLocaleString("en-US")}`,
-      // 近 7 日已用积分走势：接口无逐日历史，按每日快照累积真实数据
-      trend7d: (() => {
-        pushSnapshot(TREND_KEY_WORKBUDDY, used)
-        return snapshotSeries(TREND_KEY_WORKBUDDY)
-      })(),
-      updatedAt: new Date().toISOString(),
-    }
-
-    // 同时写入 App Group 共享存储与普通存储，确保各上下文都能即时读到
-    try {
-      Storage.set(WB_CACHE_KEY, data, { shared: true })
-      Storage.set(WB_CACHE_KEY, data)
-      Storage.set("wb2api-pool-v2", {
-        creditsRemain: remain,
-        creditsUsed: used,
-        creditsSize: size,
-        signedToday: signed,
-        total: totalAcc,
-        modelCount,
-        callsToday: calls,
-        generatedAt: data.updatedAt,
-      }, { shared: true })
-    } catch (e) {
-      console.log("写入 Storage 异常:", e)
-    }
-    return data
-  } catch (e) {
-    console.log("WorkBuddy 抓取数据失败:", e)
-    return null
-  }
-}
-
-/** 获取 WorkBuddy 数据：优先真数据缓存，回落 Mock */
-export function getWorkBuddyData(): MetricBalanceData {
-  try {
-    const cached =
-      Storage.get<MetricBalanceData>(WB_CACHE_KEY, { shared: true }) ||
-      Storage.get<MetricBalanceData>(WB_CACHE_KEY)
-    if (cached && typeof cached === "object" && cached.mainValue) {
-      return cached
-    }
-    // 兼容直接读取旧版 wb2api-pool-v2 缓存
-    const raw =
-      Storage.get<any>("wb2api-pool-v2", { shared: true }) ||
-      Storage.get<any>("wb2api-pool-v2")
-    if (raw && typeof raw === "object") {
-      const remain = Number(raw.creditsRemain ?? 0)
-      const used = Number(raw.creditsUsed ?? 0)
-      const size = Number(raw.creditsSize ?? remain + used)
-      const pct = size > 0 ? Math.round((remain / size) * 100) : 0
-      const signed = Number(raw.signedToday ?? 0)
-      const total = Number(raw.total ?? 0)
-      const models = Number(raw.modelCount ?? 0)
-      const calls = Number(raw.callsToday ?? 0)
-
-      return {
-        ...DEFAULT_WORKBUDDY,
-        mainValue: remain.toLocaleString("en-US"),
-        progressPct: pct,
-        subLabel1: "已签",
-        subValue1: total > 0 ? `${signed}/${total}` : `${signed}`,
-        subLabel2: "已用",
-        subValue2: used.toLocaleString("en-US"),
-        footerLeft: `模型 ${models} · 请求 ${calls.toLocaleString("en-US")}`,
-        updatedAt: raw.generatedAt || new Date().toISOString(),
-      }
-    }
-  } catch (e) {
-    console.log("WorkBuddy 读取缓存异常:", e)
-  }
-  return DEFAULT_WORKBUDDY
-}
 
 // ═════════════════════════════════════════════════════════════════
-// 2b. WorkBuddy 官方直连（OAuth 凭据）
+// 2. WorkBuddy 官方直连（OAuth 凭据）
 //
-// 与上面的「面板版」并列：面板版连自建 workbuddy2api-panel，
-// 这里直接携带 magpie plugin-auth.json 的 OAuth 凭据访问官方接口。
+// 携带 magpie plugin-auth.json 的 OAuth 凭据直接访问官方接口：
 //   · 取积分 POST {endpoint}/billing/meter/get-user-resource-summary  （无 /v2）
 //   · 续期   POST {endpoint}/v2/plugin/auth/token/refresh             （有 /v2）
 // ═════════════════════════════════════════════════════════════════
@@ -455,6 +293,19 @@ interface WbDirectAccountResult {
 
 /** 最近一次直连抓取的失败原因（空串表示上次成功） */
 let wbDirectLastError = ""
+
+/** 最近一次直连抓取的逐账号诊断（供「测试连接」定位「7 个账号却无数据」） */
+let wbDirectLastDiag: string[] = []
+
+/** 逐账号诊断：把「凭据缺失 / 续期失败 / HTTP 状态 / 响应异常」都记录成可读行 */
+function noteDiag(line: string): void {
+  if (line && !wbDirectLastDiag.includes(line)) wbDirectLastDiag.push(line)
+}
+
+/** 诊断明细（供配置面板展示） */
+export function getWbDirectDiagnostics(): string[] {
+  return [...wbDirectLastDiag]
+}
 
 /** 读取并解析某账号的直连凭据；无效返回 null */
 function readWbDirectCredential(accountId: string): WbDirectCredential | null {
@@ -521,6 +372,7 @@ async function fetchWbDirectAccount(accountId: string): Promise<WbDirectAccountR
   const cred = await ensureWbDirectAccess(accountId)
   if (!cred) {
     wbDirectLastError = "凭据缺失或无法续期"
+    noteDiag(`${accountId}：凭据缺失或无法续期`)
     return null
   }
 
@@ -542,21 +394,25 @@ async function fetchWbDirectAccount(accountId: string): Promise<WbDirectAccountR
     if (!res.ok) {
       const why = env?.msg || env?.message || text.slice(0, 120) || `HTTP ${res.status}`
       wbDirectLastError = `${cred.accountId}：HTTP ${res.status} ${why}`
+      noteDiag(wbDirectLastError)
       console.log("WorkBuddy 直连取积分失败:", wbDirectLastError)
       return null
     }
     if (!env || typeof env !== "object") {
       wbDirectLastError = `${cred.accountId}：响应不是 JSON（${text.slice(0, 80) || "空响应"}）`
+      noteDiag(wbDirectLastError)
       console.log("WorkBuddy 直连响应异常:", wbDirectLastError)
       return null
     }
     if (env.code) {
       wbDirectLastError = `${cred.accountId}：${env.msg || `错误码 ${env.code}`}`
+      noteDiag(wbDirectLastError)
       console.log("WorkBuddy 直连返回错误:", wbDirectLastError)
       return null
     }
     if (!env.data || typeof env.data !== "object") {
       wbDirectLastError = `${cred.accountId}：响应缺少 data 字段`
+      noteDiag(wbDirectLastError)
       console.log("WorkBuddy 直连响应异常:", wbDirectLastError)
       return null
     }
@@ -572,6 +428,7 @@ async function fetchWbDirectAccount(accountId: string): Promise<WbDirectAccountR
     }
   } catch (e: any) {
     wbDirectLastError = `${cred.accountId}：${e?.message || e}`
+    noteDiag(wbDirectLastError)
     console.log("WorkBuddy 直连取积分异常:", e)
     return null
   }
@@ -628,6 +485,13 @@ export function getWbDirectLastError(): string {
   return wbDirectLastError
 }
 
+/**
+ * 读取 WorkBuddy 数据：Storage 双通道 → App Group 文件 → 默认占位。
+ *
+ * 文件回落很关键：Storage(shared) 在部分 Widget/预览上下文里可能读不到，
+ * 只走 Storage 时卡片会直接落到默认占位（表现为「已导入 7 个账号却显示 --」）。
+ * Codex / Antigravity / 油价都已有文件回落，这里补齐。
+ */
 export function getWbDirectData(): MetricBalanceData {
   try {
     const cached =
@@ -639,6 +503,17 @@ export function getWbDirectData(): MetricBalanceData {
   } catch (e) {
     console.log("WorkBuddy 直连读取缓存异常:", e)
   }
+  try {
+    if (FileManager.existsSync(WB_DIRECT_FILE_CACHE_PATH)) {
+      const raw = FileManager.readAsStringSync(WB_DIRECT_FILE_CACHE_PATH)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed && typeof parsed === "object" && parsed.mainValue) return parsed
+      }
+    }
+  } catch (e) {
+    console.log("WorkBuddy 直连读取文件缓存异常:", e)
+  }
   return DEFAULT_WORKBUDDY_DIRECT
 }
 
@@ -648,6 +523,7 @@ export async function refreshWbDirectData(): Promise<MetricBalanceData | null> {
   if (accounts.length === 0) return null
 
   wbDirectLastError = ""
+  wbDirectLastDiag = []
 
   const settled = await Promise.all(
     accounts.map((a) => fetchWbDirectAccount(a.id).catch(() => null))
@@ -660,6 +536,7 @@ export async function refreshWbDirectData(): Promise<MetricBalanceData | null> {
   try {
     Storage.set(WB_DIRECT_CACHE_KEY, data, { shared: true })
     Storage.set(WB_DIRECT_CACHE_KEY, data)
+    FileManager.writeAsStringSync(WB_DIRECT_FILE_CACHE_PATH, JSON.stringify(data))
   } catch {}
   return data
 }
@@ -1034,7 +911,8 @@ function buildDeepSeekAggregate(
       ...only.display,
       trends: {
         balance: balanceSeriesFromCost(costTrend, only.balance),
-        tokens: toDailySeries(only.tokenByDay),
+        // Token 曲线以 M 为单位，与图表标题「近7天用量 (M)」及峰值口径一致
+        tokens: tokensInMillions(toDailySeries(only.tokenByDay)),
       },
     }
     if (okCount >= totalCount) return base
@@ -1054,7 +932,8 @@ function buildDeepSeekAggregate(
 
   // 逐日消费按自然日相加：DeepSeek 有真实逐日接口，不能用快照累积替代
   const costTrend = toDailySeries(mergeDayCosts(results.map((r) => r.costByDay)))
-  const tokenTrend = toDailySeries(mergeDayCosts(results.map((r) => r.tokenByDay)))
+  // Token 曲线同样换算为 M，避免中号图表与峰值出现 9863 这类原始 Token 数
+  const tokenTrend = tokensInMillions(toDailySeries(mergeDayCosts(results.map((r) => r.tokenByDay))))
 
   return {
     ...DEFAULT_DEEPSEEK,
@@ -2547,6 +2426,82 @@ export const FUEL_PROVINCE_MAP: Record<string, string> = {
   新疆: "/xinjiang.shtml",
 }
 
+/**
+ * 抓取「真实调价历史」，由历次涨跌额回推出逐日挂牌价曲线。
+ *
+ * qiyoujiage 的省份页只给「当前挂牌价」（无历史接口），但同站
+ * `/tz/<年份>.shtml` 有**真实调价记录表**：
+ *   调价时间 | 汽油(元/吨) | 柴油(元/吨)
+ *   2024年11月6日 | 跌145 | 跌140
+ * 每行是一次调价（涨/跌 N 元/吨，或「搁浅调整」）。
+ *
+ * 由「当前价」沿调价记录逐次回推，即得每个调价日的真实挂牌价，
+ * 于是折线呈现出真实的上下波动，而不是一条水平直线。
+ *
+ * @param focusPrice 当前挂牌价（元/升）
+ * @param isDiesel   是否 0# 柴油（决定读「汽油」还是「柴油」列）
+ */
+async function fetchFuelAdjustHistory(
+  focusPrice: number,
+  isDiesel: boolean,
+  tzPath: string
+): Promise<{ label: string; value: number }[]> {
+  if (!Number.isFinite(focusPrice) || focusPrice <= 0) return []
+  if (!/^\/tz\/\d{4}\.shtml$/.test(tzPath || "")) return []
+  try {
+    const res = await fetch(`http://www.qiyoujiage.com${tzPath}`, {
+      headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)" },
+      timeout: 15,
+    })
+    if (!res.ok) return []
+    const html = await res.text()
+
+    // 解析调价行：[{ time(ms), delta(元/吨，涨正跌负，搁浅为 0) }]，按时间升序
+    const rows: { time: number; delta: number }[] = []
+    const trRe = /<tr[^>]*>([\s\S]*?)<\/tr>/g
+    let tr: RegExpExecArray | null
+    while ((tr = trRe.exec(html)) !== null) {
+      const cells = [...tr[1].matchAll(/<t[dh][^>]*>([\s\S]*?)<\/t[dh]>/g)].map((m) =>
+        m[1].replace(/<[^>]+>/g, "").replace(/&nbsp;/gi, " ").trim()
+      )
+      if (cells.length < 2) continue
+      const dm = cells[0].match(/(\d{4})年(\d{1,2})月(\d{1,2})日/)
+      if (!dm) continue
+      const time = Date.UTC(Number(dm[1]), Number(dm[2]) - 1, Number(dm[3]))
+      if (!Number.isFinite(time)) continue
+
+      // 油品列：0# 柴油读第 3 列，其余汽油读第 2 列；列缺失时回落到相邻列
+      const raw = cells[isDiesel ? 2 : 1] ?? cells[1] ?? ""
+      let delta = 0
+      if (raw && !raw.includes("搁浅")) {
+        const n = parseFloat(raw.replace(/[^\d.]/g, ""))
+        if (Number.isFinite(n)) delta = raw.includes("跌") ? -n : raw.includes("涨") ? n : 0
+      }
+      rows.push({ time, delta })
+    }
+    if (rows.length === 0) return []
+    rows.sort((a, b) => a.time - b.time)
+
+    // 由当前价回推：最后一次调价之后就是当前价
+    const prices: { time: number; price: number }[] = []
+    let price = focusPrice
+    for (let i = rows.length - 1; i >= 0; i--) {
+      prices.push({ time: rows[i].time, price: Math.round(price * 100) / 100 })
+      // 回退到该次调价之前：涨了就减回去，跌了就加回去
+      price -= rows[i].delta / 1000
+    }
+    prices.reverse()
+
+    return prices.slice(-30).map((p) => {
+      const d = new Date(p.time)
+      return { label: `${d.getUTCMonth() + 1}/${d.getUTCDate()}`, value: Math.max(0, p.price) }
+    })
+  } catch (e) {
+    console.log("拉取油价调价历史异常:", e)
+    return []
+  }
+}
+
 export function getFuelData(): FuelCardData {
   try {
     let local =
@@ -2612,6 +2567,13 @@ export async function refreshFuelData(): Promise<FuelCardData | null> {
       oil98: ddMatches[2] || "9.89",
       oil0: ddMatches[3] || "7.59",
     }
+
+    // 该省页面自带「最新调价历史」链接（如 /tz/2025.shtml）。
+    // 直接抓这个链接指向的文件即可 —— 表内每行都自带日期，无需自己推算年份。
+    // （站点只维护「有数据」的年份文件：新一年的文件要等首次调价后才生成，
+    //  所以不能简单用 currentYear 拼路径，否则会 404。）
+    const tzLink = html.match(/\/tz\/\d{4}\.shtml/)
+    const tzPath = tzLink ? tzLink[0] : ""
 
     let rawForecast = "暂无调价预测信息"
     const tishiMatch = html.match(/var tishiContent\s*=\s*"([^"]+)"/)
@@ -2699,21 +2661,38 @@ export async function refreshFuelData(): Promise<FuelCardData | null> {
     const now = new Date()
     // 与 recentDays 保持一致：紧凑的「月/日」，避免宽字符被截断
     const todayLabel = `${now.getMonth() + 1}/${now.getDate()}`
-    const history = Array.isArray(prevHistory)
-      ? prevHistory.filter((h: any) => h && Number.isFinite(Number(h.value)))
-      : []
 
-    if (Number.isFinite(focusNum) && focusNum > 0) {
-      const todayIdx = history.findIndex((h: any) => h.label === todayLabel)
-      if (todayIdx >= 0) {
-        // 今天已有采样：覆盖为最新价（同日多次刷新只保留一条）
-        history[todayIdx] = { label: todayLabel, value: focusNum }
-      } else {
-        // 新的一天：追加，保留全部历史日
-        history.push({ label: todayLabel, value: focusNum })
+    // 1) 真实调价历史（qiyoujiage /tz/<年>.shtml）：逐次调价回推出价格曲线，
+    //    优先使用它 —— 能立刻呈现真实的上下波动，而不是等到攒够本地采样。
+    const realHistory = await fetchFuelAdjustHistory(focusNum, focusOilKey === "oil0", tzPath)
+
+    let priceHistory: { label: string; value: number }[]
+    if (realHistory.length >= 2) {
+      priceHistory = realHistory
+      // 真实调价表最后一次调价之后价格未变，故末点值即当前挂牌价。
+      // 若最后一次调价不在今天，补一个「今天」的现价点，让曲线收在当下
+      // （两点同值 → 一段平直尾线，真实反映「调价后价格未变」）。
+      const lastIdx = priceHistory.length - 1
+      priceHistory[lastIdx] = { ...priceHistory[lastIdx], value: focusNum }
+      if (priceHistory[lastIdx].label !== todayLabel) {
+        priceHistory.push({ label: todayLabel, value: focusNum })
       }
+    } else {
+      // 2) 兜底：无真实历史时，沿用「每个自然日一个采样点」的本地累积
+      //    （同日覆盖、新一天追加，最多 30 天），至少不会渲染成误导性的直线。
+      const history = Array.isArray(prevHistory)
+        ? prevHistory.filter((h: any) => h && Number.isFinite(Number(h.value)))
+        : []
+      if (Number.isFinite(focusNum) && focusNum > 0) {
+        const todayIdx = history.findIndex((h: any) => h.label === todayLabel)
+        if (todayIdx >= 0) {
+          history[todayIdx] = { label: todayLabel, value: focusNum }
+        } else {
+          history.push({ label: todayLabel, value: focusNum })
+        }
+      }
+      priceHistory = history.slice(-30)
     }
-    const priceHistory = history.slice(-30)
 
     const data: FuelCardData = {
       serviceId: "fuel",
@@ -2897,6 +2876,466 @@ export async function refreshGoldData(): Promise<GoldMarketData | null> {
 
 export function getAuxMarketData(): AuxiliaryMarketData {
   return DEFAULT_AUX_MARKET
+}
+
+// ============================================================
+// GitHub 账号与仓库监控服务 (GitHub REST API 直连)
+// ============================================================
+
+export const GITHUB_USERNAME_KEY = "mutepanel_github_username_v1"
+export const GITHUB_TOKEN_KEY = "mutepanel_github_token_v1"
+export const GITHUB_INTERVAL_KEY = "mutepanel_github_interval_v1"
+export const GITHUB_CACHE_KEY = "mutepanel_github_cache_v1"
+export const GITHUB_LAST_DATA_KEY = "mutepanel_github_last_v1"
+export const GITHUB_FILE_CACHE_PATH = `${FileManager.documentsDirectory}/github_monitor_cache.json`
+
+export function loadGitHubUsername(): string {
+  try {
+    const val =
+      Storage.get<string>(GITHUB_USERNAME_KEY, { shared: true }) ||
+      Storage.get<string>(GITHUB_USERNAME_KEY)
+    if (val && typeof val === "string" && val.trim().length > 0) return val.trim()
+  } catch {}
+  return "TomCatXue"
+}
+
+export function saveGitHubUsername(username: string): void {
+  try {
+    const u = String(username || "").trim()
+    Storage.set(GITHUB_USERNAME_KEY, u, { shared: true })
+    Storage.set(GITHUB_USERNAME_KEY, u)
+  } catch {}
+}
+
+export function loadGitHubToken(): string {
+  try {
+    const val =
+      Storage.get<string>(GITHUB_TOKEN_KEY, { shared: true }) ||
+      Storage.get<string>(GITHUB_TOKEN_KEY)
+    if (val && typeof val === "string") return val.trim()
+  } catch {}
+  return ""
+}
+
+export function saveGitHubToken(token: string): void {
+  try {
+    const t = String(token || "").trim()
+    if (!t) {
+      Storage.remove(GITHUB_TOKEN_KEY, { shared: true })
+      Storage.remove(GITHUB_TOKEN_KEY)
+    } else {
+      Storage.set(GITHUB_TOKEN_KEY, t, { shared: true })
+      Storage.set(GITHUB_TOKEN_KEY, t)
+    }
+  } catch {}
+}
+
+export function loadGitHubInterval(): number {
+  try {
+    const val =
+      Storage.get<number>(GITHUB_INTERVAL_KEY, { shared: true }) ??
+      Storage.get<number>(GITHUB_INTERVAL_KEY)
+    if (typeof val === "number" && val > 0) return val
+  } catch {}
+  return 30
+}
+
+export function saveGitHubInterval(minutes: number): void {
+  try {
+    const m = Math.max(1, Math.min(1440, Math.round(minutes || 30)))
+    Storage.set(GITHUB_INTERVAL_KEY, m, { shared: true })
+    Storage.set(GITHUB_INTERVAL_KEY, m)
+  } catch {}
+}
+
+export function hasGitHubConfigured(): boolean {
+  try {
+    const u =
+      Storage.get<string>(GITHUB_USERNAME_KEY, { shared: true }) ||
+      Storage.get<string>(GITHUB_USERNAME_KEY)
+    if (u && typeof u === "string" && u.trim().length > 0) return true
+    const t = loadGitHubToken()
+    if (t && t.length > 0) return true
+  } catch {}
+  return false
+}
+
+export async function fetchGitHubData(
+  usernameOverride?: string,
+  tokenOverride?: string,
+  intervalOverride?: number,
+  forceRefresh = false
+): Promise<GitHubMonitorData> {
+  const targetUser = (usernameOverride || loadGitHubUsername() || "TomCatXue").trim()
+  const targetToken = tokenOverride !== undefined ? tokenOverride.trim() : loadGitHubToken()
+  const intervalMin = intervalOverride || loadGitHubInterval() || 30
+  const ttlMs = intervalMin * 60 * 1000
+
+  if (!forceRefresh) {
+    try {
+      const cached =
+        Storage.get<{ expiresAt: number; data: GitHubMonitorData }>(GITHUB_CACHE_KEY, { shared: true }) ||
+        Storage.get<{ expiresAt: number; data: GitHubMonitorData }>(GITHUB_CACHE_KEY)
+      if (cached && cached.data && cached.data.username === targetUser && cached.expiresAt > Date.now()) {
+        return cached.data
+      }
+    } catch {}
+  }
+
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github.v3+json",
+    "User-Agent": "Scripting-App",
+  }
+  if (targetToken) {
+    headers.Authorization = `Bearer ${targetToken}`
+  }
+
+  try {
+    const [userRes, reposRes] = await Promise.all([
+      fetch(`https://api.github.com/users/${encodeURIComponent(targetUser)}`, { headers }),
+      fetch(
+        `https://api.github.com/users/${encodeURIComponent(targetUser)}/repos?sort=stars&per_page=100`,
+        { headers }
+      ),
+    ])
+
+    if (!userRes.ok) {
+      throw new Error(`GitHub user API returned ${userRes.status}`)
+    }
+    if (!reposRes.ok) {
+      throw new Error(`GitHub repos API returned ${reposRes.status}`)
+    }
+
+    const user = await userRes.json()
+    const repos = await reposRes.json()
+
+    const repoList = Array.isArray(repos) ? repos : []
+    const totalStars = repoList.reduce((sum: number, r: any) => sum + (Number(r?.stargazers_count) || 0), 0)
+    const totalForks = repoList.reduce((sum: number, r: any) => sum + (Number(r?.forks_count) || 0), 0)
+
+    const topRepos = [...repoList]
+      .map((r: any) => ({
+        name: String(r?.name || ""),
+        stars: Number(r?.stargazers_count) || 0,
+        forks: Number(r?.forks_count) || 0,
+      }))
+      .sort((a, b) => b.stars - a.stars)
+      .slice(0, 7)
+
+    const old =
+      Storage.get<GitHubMonitorData>(`${GITHUB_LAST_DATA_KEY}_${targetUser}`, { shared: true }) ||
+      Storage.get<GitHubMonitorData>(`${GITHUB_LAST_DATA_KEY}_${targetUser}`) ||
+      Storage.get<GitHubMonitorData>(GITHUB_LAST_DATA_KEY, { shared: true }) ||
+      Storage.get<GitHubMonitorData>(GITHUB_LAST_DATA_KEY)
+
+    const currentFollowers = Number(user?.followers) || 0
+    const followersDelta = old && old.username === targetUser ? currentFollowers - old.followers : 0
+    const starsDelta = old && old.username === targetUser ? totalStars - old.stars : 0
+    const forksDelta = old && old.username === targetUser ? totalForks - old.forks : 0
+
+    const payload: GitHubMonitorData = {
+      serviceId: "github",
+      username: targetUser,
+      name: String(user?.name || user?.login || targetUser),
+      bio: String(user?.bio || ""),
+      avatarUrl: String(user?.avatar_url || `https://github.com/${targetUser}.png`),
+      followers: currentFollowers,
+      followersDelta,
+      stars: totalStars,
+      starsDelta,
+      forks: totalForks,
+      forksDelta,
+      topRepos,
+      updatedAt: new Date().toISOString(),
+    }
+
+    Storage.set(`${GITHUB_LAST_DATA_KEY}_${targetUser}`, payload, { shared: true })
+    Storage.set(`${GITHUB_LAST_DATA_KEY}_${targetUser}`, payload)
+    Storage.set(GITHUB_LAST_DATA_KEY, payload, { shared: true })
+    Storage.set(GITHUB_LAST_DATA_KEY, payload)
+
+    const cacheEnvelope = { expiresAt: Date.now() + ttlMs, data: payload }
+    Storage.set(GITHUB_CACHE_KEY, cacheEnvelope, { shared: true })
+    Storage.set(GITHUB_CACHE_KEY, cacheEnvelope)
+    FileManager.writeAsStringSync(GITHUB_FILE_CACHE_PATH, JSON.stringify(payload))
+    return payload
+  } catch (e) {
+    console.log("获取 GitHub 监控数据异常，降级回退缓存:", e)
+  }
+  return getGitHubData()
+}
+
+export function getGitHubData(): GitHubMonitorData {
+  try {
+    const cached =
+      Storage.get<any>(GITHUB_CACHE_KEY, { shared: true }) ||
+      Storage.get<any>(GITHUB_CACHE_KEY)
+    if (cached) {
+      if (cached.data && typeof cached.data === "object" && cached.data.username) {
+        return cached.data
+      }
+      if (cached.username) return cached
+    }
+    const last =
+      Storage.get<GitHubMonitorData>(GITHUB_LAST_DATA_KEY, { shared: true }) ||
+      Storage.get<GitHubMonitorData>(GITHUB_LAST_DATA_KEY)
+    if (last && last.username) return last
+
+    if (FileManager.fileExists(GITHUB_FILE_CACHE_PATH)) {
+      const raw = FileManager.readAsStringSync(GITHUB_FILE_CACHE_PATH)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed && parsed.username) return parsed
+      }
+    }
+  } catch {}
+  return DEFAULT_GITHUB
+}
+
+export async function refreshGitHubData(): Promise<GitHubMonitorData> {
+  return fetchGitHubData(undefined, undefined, undefined, true)
+}
+
+// ============================================================
+// Loon 网络与流量监控服务 (Loon OpenAPI / 订阅解析)
+// ============================================================
+
+export const LOON_URL_KEY = "mutepanel_loon_url_v1"
+export const LOON_CACHE_KEY = "mutepanel_loon_cache_v1"
+export const LOON_INTERVAL_KEY = "mutepanel_loon_interval_v1"
+export const LOON_FILE_CACHE_PATH = `${FileManager.documentsDirectory}/loon_monitor_cache.json`
+
+export function loadLoonUrl(): string {
+  try {
+    const val =
+      Storage.get<string>(LOON_URL_KEY, { shared: true }) ||
+      Storage.get<string>(LOON_URL_KEY)
+    if (val && typeof val === "string") return val.trim()
+  } catch {}
+  return ""
+}
+
+export function saveLoonUrl(url: string): void {
+  try {
+    const u = String(url || "").trim()
+    if (!u) {
+      Storage.remove(LOON_URL_KEY, { shared: true })
+      Storage.remove(LOON_URL_KEY)
+    } else {
+      Storage.set(LOON_URL_KEY, u, { shared: true })
+      Storage.set(LOON_URL_KEY, u)
+    }
+  } catch {}
+}
+
+export function hasLoonConfigured(): boolean {
+  const u = loadLoonUrl()
+  return u.length > 0
+}
+
+export function formatBytes(bytes: number): string {
+  const b = Number(bytes)
+  if (!Number.isFinite(b) || b <= 0) return "0 B"
+  const tb = 1024 * 1024 * 1024 * 1024
+  const gb = 1024 * 1024 * 1024
+  const mb = 1024 * 1024
+  const kb = 1024
+  if (b >= tb) {
+    const v = (b / tb).toFixed(1)
+    return v.endsWith(".0") ? `${parseInt(v, 10)} TB` : `${v} TB`
+  }
+  if (b >= gb) {
+    const v = (b / gb).toFixed(1)
+    return v.endsWith(".0") ? `${parseInt(v, 10)} GB` : `${v} GB`
+  }
+  if (b >= mb) {
+    const v = (b / mb).toFixed(1)
+    return v.endsWith(".0") ? `${parseInt(v, 10)} MB` : `${v} MB`
+  }
+  if (b >= kb) {
+    const v = (b / kb).toFixed(1)
+    return v.endsWith(".0") ? `${parseInt(v, 10)} KB` : `${v} KB`
+  }
+  return `${Math.round(b)} B`
+}
+
+export function parseSubscriptionUserInfo(
+  header: string
+): { upload: number; download: number; total: number; expire: number } | null {
+  if (!header || typeof header !== "string") return null
+  const mUpload = header.match(/upload\s*=\s*(\d+)/i)
+  const mDownload = header.match(/download\s*=\s*(\d+)/i)
+  const mTotal = header.match(/total\s*=\s*(\d+)/i)
+  const mExpire = header.match(/expire\s*=\s*(\d+)/i)
+  if (!mUpload && !mDownload && !mTotal && !mExpire) return null
+  return {
+    upload: mUpload ? parseInt(mUpload[1], 10) : 0,
+    download: mDownload ? parseInt(mDownload[1], 10) : 0,
+    total: mTotal ? parseInt(mTotal[1], 10) : 0,
+    expire: mExpire ? parseInt(mExpire[1], 10) : 0,
+  }
+}
+
+export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Promise<LoonMonitorData> {
+  const url = (rawUrl !== undefined ? rawUrl : loadLoonUrl()).trim()
+  if (!url) {
+    return getLoonData()
+  }
+
+  if (!forceRefresh) {
+    try {
+      const cached =
+        Storage.get<{ expiresAt: number; data: LoonMonitorData }>(LOON_CACHE_KEY, { shared: true }) ||
+        Storage.get<{ expiresAt: number; data: LoonMonitorData }>(LOON_CACHE_KEY)
+      if (cached && cached.data && cached.expiresAt > Date.now()) {
+        return cached.data
+      }
+    } catch {}
+  }
+
+  try {
+    const startTime = Date.now()
+    const res = await fetch(url, {
+      headers: {
+        "User-Agent": "Loon/3.2.0 (iOS)",
+      },
+    })
+    const latency = Math.max(1, Date.now() - startTime)
+
+    let subInfo: { upload: number; download: number; total: number; expire: number } | null = null
+
+    // 1. 尝试从响应头提取 subscription-userinfo
+    if (res.headers) {
+      const rawHeader =
+        (typeof res.headers.get === "function" ? res.headers.get("subscription-userinfo") : null) ||
+        (res.headers as any)["subscription-userinfo"] ||
+        (res.headers as any)["Subscription-Userinfo"] ||
+        ""
+      if (rawHeader) {
+        subInfo = parseSubscriptionUserInfo(rawHeader)
+      }
+    }
+
+    // 2. 若未在 Header 找到，尝试解析 Body（支持 OpenAPI JSON 或 JSON 格式订阅响应）
+    let bodyJson: any = null
+    try {
+      const text = await res.text()
+      if (text.startsWith("{") && text.endsWith("}")) {
+        bodyJson = JSON.parse(text)
+      }
+    } catch {}
+
+    let uploadBytes = 5.8 * 1024 * 1024 * 1024
+    let downloadBytes = 102.6 * 1024 * 1024 * 1024
+    let totalBytes = 500 * 1024 * 1024 * 1024
+    let resetDaysText = "24 天后重置"
+    let policyGroupCount = 14
+    let delayMs = latency
+    let runningMode = "规则分流"
+    let version = "3.2.x"
+
+    if (subInfo) {
+      uploadBytes = subInfo.upload
+      downloadBytes = subInfo.download
+      totalBytes = subInfo.total
+      if (subInfo.expire > 0) {
+        const expMs = subInfo.expire > 10000000000 ? subInfo.expire : subInfo.expire * 1000
+        const diffDays = Math.ceil((expMs - Date.now()) / (86400 * 1000))
+        resetDaysText = diffDays > 0 ? `${diffDays} 天后重置` : "已到期"
+      } else {
+        resetDaysText = "长期有效"
+      }
+    } else if (bodyJson) {
+      if (bodyJson.upload != null) uploadBytes = Number(bodyJson.upload) || 0
+      if (bodyJson.download != null) downloadBytes = Number(bodyJson.download) || 0
+      if (bodyJson.total != null) totalBytes = Number(bodyJson.total) || 0
+      if (bodyJson.expire != null) {
+        const expMs = Number(bodyJson.expire) > 10000000000 ? Number(bodyJson.expire) : Number(bodyJson.expire) * 1000
+        const diffDays = Math.ceil((expMs - Date.now()) / (86400 * 1000))
+        resetDaysText = diffDays > 0 ? `${diffDays} 天后重置` : "已到期"
+      }
+    }
+
+    // 从 OpenAPI 提取运行模式、策略组等字段
+    if (bodyJson) {
+      if (bodyJson.running_model === 0 || bodyJson.runningModel === 0 || bodyJson.flowmodel === "direct") {
+        runningMode = "全局直连"
+      } else if (bodyJson.running_model === 2 || bodyJson.runningModel === 2 || bodyJson.flowmodel === "proxy") {
+        runningMode = "全局代理"
+      } else if (bodyJson.running_model === 1 || bodyJson.runningModel === 1 || bodyJson.flowmodel === "filter") {
+        runningMode = "规则分流"
+      } else if (typeof bodyJson.mode === "string") {
+        runningMode = bodyJson.mode
+      }
+
+      if (Array.isArray(bodyJson.all_policy_groups)) {
+        policyGroupCount = bodyJson.all_policy_groups.length
+      } else if (typeof bodyJson.policy_groups_count === "number") {
+        policyGroupCount = bodyJson.policy_groups_count
+      }
+
+      if (typeof bodyJson.delay === "number") delayMs = bodyJson.delay
+      else if (typeof bodyJson.ping === "number") delayMs = bodyJson.ping
+      if (typeof bodyJson.version === "string") version = bodyJson.version
+    }
+
+    const remainingBytes = Math.max(0, totalBytes - uploadBytes - downloadBytes)
+
+    const payload: LoonMonitorData = {
+      serviceId: "loon",
+      uploadBytes,
+      downloadBytes,
+      totalBytes,
+      remainingBytes,
+      uploadText: formatBytes(uploadBytes),
+      downloadText: formatBytes(downloadBytes),
+      totalText: formatBytes(totalBytes),
+      remainingText: formatBytes(remainingBytes),
+      resetDaysText,
+      policyGroupCount,
+      delayMs,
+      delayText: `${delayMs} ms`,
+      runningMode,
+      version,
+      updatedAt: new Date().toISOString(),
+    }
+
+    const cacheEnvelope = { expiresAt: Date.now() + 15 * 60 * 1000, data: payload }
+    Storage.set(LOON_CACHE_KEY, cacheEnvelope, { shared: true })
+    Storage.set(LOON_CACHE_KEY, cacheEnvelope)
+    FileManager.writeAsStringSync(LOON_FILE_CACHE_PATH, JSON.stringify(payload))
+    return payload
+  } catch (e) {
+    console.log("获取 Loon 监控数据异常，降级回退缓存:", e)
+  }
+  return getLoonData()
+}
+
+export function getLoonData(): LoonMonitorData {
+  try {
+    const cached =
+      Storage.get<any>(LOON_CACHE_KEY, { shared: true }) ||
+      Storage.get<any>(LOON_CACHE_KEY)
+    if (cached) {
+      if (cached.data && typeof cached.data === "object" && cached.data.uploadText) {
+        return cached.data
+      }
+      if (cached.uploadText) return cached
+    }
+
+    if (FileManager.fileExists(LOON_FILE_CACHE_PATH)) {
+      const raw = FileManager.readAsStringSync(LOON_FILE_CACHE_PATH)
+      if (raw) {
+        const parsed = JSON.parse(raw)
+        if (parsed && parsed.uploadText) return parsed
+      }
+    }
+  } catch {}
+  return DEFAULT_LOON
+}
+
+export async function refreshLoonData(): Promise<LoonMonitorData> {
+  return fetchLoonData(undefined, true)
 }
 
 

@@ -6,8 +6,9 @@ import {
   refreshCpampData,
   refreshDeepSeekData,
   refreshEmbyData,
+  refreshGitHubData,
+  refreshLoonData,
   refreshVpnData,
-  refreshWorkBuddyData,
   refreshWbDirectData,
 } from "./data"
 
@@ -19,7 +20,6 @@ export const RefreshWidgetIntent = AppIntentManager.register({
     try {
       console.log("[DashBoard-Kit] Widget refresh triggered")
       await Promise.all([
-        refreshWorkBuddyData().catch(() => null),
         refreshWbDirectData().catch(() => null),
         refreshEmbyData().catch(() => null),
         refreshDeepSeekData().catch(() => null),
@@ -27,6 +27,8 @@ export const RefreshWidgetIntent = AppIntentManager.register({
         refreshAntigravityData().catch(() => null),
         refreshCpampData().catch(() => null),
         refreshVpnData().catch(() => null),
+        refreshGitHubData().catch(() => null),
+        refreshLoonData().catch(() => null),
       ])
     } finally {
       Widget.reloadAll()

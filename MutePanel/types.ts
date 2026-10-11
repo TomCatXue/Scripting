@@ -158,7 +158,7 @@ export const DEFAULT_WORKBUDDY: MetricBalanceData = {
 export const DEFAULT_WORKBUDDY_DIRECT: MetricBalanceData = {
   ...DEFAULT_WORKBUDDY,
   serviceId: "workbuddy-direct",
-  brandTitle: "WorkBuddy 直连",
+  brandTitle: "WorkBuddy",
   mainLabel: "积分剩余",
   subLabel1: "账号",
   subValue1: "--",
@@ -290,12 +290,13 @@ export const WIDGET_OPTIONS = [
   { id: "deepseek", name: "DeepSeek", desc: "小号余额与模型延迟看板", defaultFamily: "systemSmall" },
   { id: "codex", name: "Codex", desc: "小号双周期额度与重置看板", defaultFamily: "systemSmall" },
   { id: "antigravity", name: "Antigravity", desc: "小号 Gemini/Claude 配额看板", defaultFamily: "systemSmall" },
-  { id: "workbuddy", name: "WorkBuddy", desc: "小号账号池积分剩余看板", defaultFamily: "systemSmall" },
-  { id: "workbuddy-direct", name: "WorkBuddy 直连", desc: "官方 OAuth 直连多账号积分聚合看板", defaultFamily: "systemSmall" },
+  { id: "workbuddy", name: "WorkBuddy", desc: "官方 OAuth 直连多账号积分聚合看板", defaultFamily: "systemSmall" },
   { id: "cpamp", name: "CPAMP", desc: "小号今日调用与 Token 看板", defaultFamily: "systemSmall" },
   { id: "vpn", name: "VPN 节点", desc: "小号出口 IP 与风险检测看板", defaultFamily: "systemSmall" },
   { id: "fuel", name: "今日油价", desc: "自适应油价行情（小号 Shell 高光 / 中号 4联卡片）", defaultFamily: "systemSmall" },
   { id: "gold", name: "黄金行情", desc: "上海黄金交易所 Au9999 与品牌金参考价", defaultFamily: "systemMedium" },
+  { id: "github", name: "GitHub 监控", desc: "中号 GitHub 账号指标与热门仓库排行", defaultFamily: "systemMedium" },
+  { id: "loon", name: "Loon 监控", desc: "中号网络流量、策略组与运行状态", defaultFamily: "systemMedium" },
   { id: "bento", name: "BENTO大号看板", desc: "金价/DeepSeek/汇率/油价 可自定义聚合微应用栅格", defaultFamily: "systemLarge" },
 ]
 
@@ -387,4 +388,90 @@ export const DEFAULT_AUX_MARKET: AuxiliaryMarketData = {
     changeRate: "+0.86%",
     isUp: true,
   },
+}
+
+// ── GitHub 账号与仓库监控数据模型 ─────────────────────────
+export interface GitHubRepoItem {
+  name: string
+  stars: number
+  forks: number
+}
+
+export interface GitHubMonitorData {
+  serviceId: "github"
+  username: string
+  name: string
+  bio: string
+  avatarUrl: string
+  followers: number
+  followersDelta: number
+  stars: number
+  starsDelta: number
+  forks: number
+  forksDelta: number
+  topRepos: GitHubRepoItem[]
+  updatedAt: string
+}
+
+export const DEFAULT_GITHUB: GitHubMonitorData = {
+  serviceId: "github",
+  username: "TomCatXue",
+  name: "TomCatXue",
+  bio: "Code · Learn · Build · Share",
+  avatarUrl: "https://github.com/TomCatXue.png",
+  followers: 120,
+  followersDelta: 0,
+  stars: 575,
+  starsDelta: 0,
+  forks: 87,
+  forksDelta: 0,
+  topRepos: [
+    { name: "wxread", stars: 186, forks: 42 },
+    { name: "Scripting", stars: 124, forks: 21 },
+    { name: "Loon-Scripts", stars: 89, forks: 12 },
+    { name: "BoxJs-Hub", stars: 68, forks: 8 },
+    { name: "Qinglong-Tools", stars: 52, forks: 3 },
+    { name: "Airplay.App", stars: 34, forks: 1 },
+    { name: "MyCookieCenter", stars: 22, forks: 0 },
+  ],
+  updatedAt: new Date().toISOString(),
+}
+
+// ── Loon 网络与流量监控数据模型 ───────────────────────────
+export interface LoonMonitorData {
+  serviceId: "loon"
+  uploadBytes: number
+  downloadBytes: number
+  totalBytes: number
+  remainingBytes: number
+  uploadText: string
+  downloadText: string
+  totalText: string
+  remainingText: string
+  resetDaysText: string
+  policyGroupCount: number
+  delayMs: number
+  delayText: string
+  runningMode: string
+  version: string
+  updatedAt: string
+}
+
+export const DEFAULT_LOON: LoonMonitorData = {
+  serviceId: "loon",
+  uploadBytes: 5.8 * 1024 * 1024 * 1024,
+  downloadBytes: 102.6 * 1024 * 1024 * 1024,
+  totalBytes: 500 * 1024 * 1024 * 1024,
+  remainingBytes: 391.6 * 1024 * 1024 * 1024,
+  uploadText: "5.8 GB",
+  downloadText: "102.6 GB",
+  totalText: "500 GB",
+  remainingText: "391.6 GB",
+  resetDaysText: "24 天后重置",
+  policyGroupCount: 14,
+  delayMs: 412,
+  delayText: "412 ms",
+  runningMode: "规则分流",
+  version: "3.2.x",
+  updatedAt: new Date().toISOString(),
 }

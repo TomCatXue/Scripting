@@ -38,9 +38,12 @@ async function testTsModulesLoad(): Promise<void> {
         "hasDeepSeekConfigured", "getDeepSeekData", "refreshDeepSeekData",
         "hasCodexConfigured", "getCodexData", "refreshCodexData",
         "hasAntigravityConfigured", "getAntigravityData", "refreshAntigravityData",
-        "hasWbConfigured", "getWorkBuddyData", "refreshWorkBuddyData",
     ]) {
         assert.equal(typeof (data as any)[fn], "function", `data.ts 保留 ${fn}`);
+    }
+    // WorkBuddy 已合并为单一「官方直连」：面板版实现应被彻底移除
+    for (const fn of ["hasWbConfigured", "getWorkBuddyData", "refreshWorkBuddyData"]) {
+        assert.equal((data as any)[fn], undefined, `data.ts 不应再导出面板版 ${fn}`);
     }
 
     assert.equal(typeof accounts.listAccounts, "function", "accounts 导出 listAccounts");

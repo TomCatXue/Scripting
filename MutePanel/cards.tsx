@@ -35,6 +35,8 @@ import {
   VpnNodeData,
   DEEPSEEK_WHALE_SVG,
   CPAMP_LOGO_SVG,
+  GitHubMonitorData,
+  LoonMonitorData,
 } from "./types"
 
 // ── 品牌图标渲染（支持 SVG、UIImage、本地图片、SF Symbol）──
@@ -901,12 +903,11 @@ export function GoldPriceCard({ data, family }: { data: GoldMarketData; family?:
 export function WorkBuddySmallCard({ data }: { data: MetricBalanceData }) {
   const iconColor = { light: "#6366F1", dark: "#818CF8" } as any
   const validDays = String(data.validDays ?? "").trim()
-  // 面板版与直连版共用本卡片，副指标标签由数据层给出
-  const isDirect = data.serviceId === "workbuddy-direct"
-  const thirdLabel = data.subLabel1 || (isDirect ? "账号" : "已签")
+  // WorkBuddy 已合并为单一数据源；副指标标签由数据层给出（缺省「账号」）
+  const thirdLabel = data.subLabel1 || "账号"
   return (
     <AiSmallTemplate
-      brand={isDirect ? "WorkBuddy 直连" : "WorkBuddy"}
+      brand="WorkBuddy"
       iconImage={data.iconImage || brandIcon("workbuddy")}
       cells={[
         { icon: "circle.grid.3x3.fill", iconColor, label: "积分剩余", value: data.mainValue || "0" },
@@ -1317,6 +1318,308 @@ export function BentoLargeGridCard({
           {ri < rows.length - 1 ? <Spacer minLength={10} /> : null}
         </VStack>
       ))}
+    </VStack>
+  )
+}
+
+/**
+ * GitHub 监控中号小组件 (参考图 1 风格)
+ * 左侧展示用户头像、用户名、简介及 Followers、Stars、Forks 三项核心指标及其增量变化
+ * 右侧展示按 Stars 降序排列的前 7 个热门仓库
+ */
+export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
+  const top7 = (Array.isArray(data.topRepos) ? data.topRepos : []).slice(0, 7)
+  const formatDelta = (d: number) => (d > 0 ? `+${d}` : d < 0 ? `${d}` : "+0")
+  const deltaColor = (d: number) => (d > 0 ? "#22C55E" : d < 0 ? "#EF4444" : "#6E7681")
+
+  return (
+    <HStack
+      spacing={12}
+      alignment="center"
+      padding={{ top: 12, bottom: 12, leading: 14, trailing: 14 }}
+      widgetBackground="#0D1117"
+      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+    >
+      {/* 左侧栏：用户信息与三大指标 */}
+      <VStack alignment="leading" spacing={10} frame={{ width: 146 }}>
+        {/* 用户头像与信息 */}
+        <HStack spacing={8} alignment="center">
+          <Image
+            imageUrl={data.avatarUrl || `https://github.com/${data.username}.png`}
+            clipShape="circle"
+            resizable={true}
+            scaleToFit={true}
+            frame={{ width: 44, height: 44 }}
+            border={{ color: "rgba(255,255,255,0.18)", width: 1.5 }}
+          />
+          <VStack alignment="leading" spacing={1} frame={{ maxWidth: "infinity" }}>
+            <Text font={14} fontWeight="bold" foregroundStyle="#FFFFFF" lineLimit={1}>
+              {data.name || data.username}
+            </Text>
+            <Text font={10.5} foregroundStyle="#8B949E" lineLimit={1}>
+              @{data.username}
+            </Text>
+            <Text font={9} foregroundStyle="#8B949E" lineLimit={1}>
+              {data.bio || "Code · Learn · Build · Share"}
+            </Text>
+          </VStack>
+        </HStack>
+
+        {/* 三大指标横向排布 */}
+        <HStack spacing={8} alignment="center">
+          {/* Followers */}
+          <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
+            <HStack spacing={2} alignment="center">
+              <Image systemName="person.2.fill" font={10} foregroundStyle="#38BDF8" />
+              <Text font={12.5} fontWeight="bold" foregroundStyle="#FFFFFF">
+                {String(data.followers)}
+              </Text>
+              <Text font={8} fontWeight="semibold" foregroundStyle={deltaColor(data.followersDelta)}>
+                {formatDelta(data.followersDelta)}
+              </Text>
+            </HStack>
+            <Text font={8.5} foregroundStyle="#8B949E">
+              Followers
+            </Text>
+          </VStack>
+
+          {/* Stars */}
+          <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
+            <HStack spacing={2} alignment="center">
+              <Text font={11} foregroundStyle="#F59E0B">
+                ★
+              </Text>
+              <Text font={12.5} fontWeight="bold" foregroundStyle="#FFFFFF">
+                {String(data.stars)}
+              </Text>
+              <Text font={8} fontWeight="semibold" foregroundStyle={deltaColor(data.starsDelta)}>
+                {formatDelta(data.starsDelta)}
+              </Text>
+            </HStack>
+            <Text font={8.5} foregroundStyle="#8B949E">
+              Stars
+            </Text>
+          </VStack>
+
+          {/* Forks */}
+          <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
+            <HStack spacing={2} alignment="center">
+              <Text font={10.5} foregroundStyle="#A855F7">
+                ⑂
+              </Text>
+              <Text font={12.5} fontWeight="bold" foregroundStyle="#FFFFFF">
+                {String(data.forks)}
+              </Text>
+              <Text font={8} fontWeight="semibold" foregroundStyle={deltaColor(data.forksDelta)}>
+                {formatDelta(data.forksDelta)}
+              </Text>
+            </HStack>
+            <Text font={8.5} foregroundStyle="#8B949E">
+              Forks
+            </Text>
+          </VStack>
+        </HStack>
+      </VStack>
+
+      {/* 竖向分隔线 */}
+      <RoundedRectangle
+        cornerRadius={1}
+        fill="rgba(255,255,255,0.08)"
+        frame={{ width: 1, maxHeight: "infinity" }}
+      />
+
+      {/* 右侧栏：Top 7 热门仓库列表 */}
+      <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
+        <HStack alignment="center" spacing={4}>
+          <Image
+            systemName="chevron.left.forwardslash.chevron.right"
+            font={10.5}
+            foregroundStyle="#38BDF8"
+          />
+          <Text font={11} fontWeight="semibold" foregroundStyle="#C9D1D9">
+            热门仓库
+          </Text>
+          <Spacer />
+          <Text font={8.5} foregroundStyle="#6E7681">
+            Star 降序
+          </Text>
+          <RefreshButton />
+        </HStack>
+
+        <VStack alignment="leading" spacing={2.5} frame={{ maxWidth: "infinity" }}>
+          {top7.map((repo, i) => (
+            <HStack key={repo.name || String(i)} alignment="center" spacing={3}>
+              <Text
+                font={8.5}
+                fontWeight="bold"
+                foregroundStyle={i < 3 ? "#F59E0B" : "#6E7681"}
+                frame={{ width: 10 }}
+              >
+                {String(i + 1)}
+              </Text>
+              <Text font={9.5} fontWeight="medium" foregroundStyle="#F0F6FC" lineLimit={1}>
+                {repo.name}
+              </Text>
+              <Spacer />
+              <HStack alignment="center" spacing={2}>
+                <Text font={8.5} foregroundStyle="#F59E0B">
+                  ★
+                </Text>
+                <Text font={8.5} fontWeight="medium" foregroundStyle="#8B949E">
+                  {String(repo.stars)}
+                </Text>
+              </HStack>
+              <HStack alignment="center" spacing={1}>
+                <Text font={7.5} foregroundStyle="#A855F7">
+                  ⑂
+                </Text>
+                <Text font={7.5} foregroundStyle="#6E7681">
+                  {String(repo.forks)}
+                </Text>
+              </HStack>
+            </HStack>
+          ))}
+        </VStack>
+      </VStack>
+    </HStack>
+  )
+}
+
+/**
+ * Loon 监控中号小组件 (参考图 2 风格)
+ * 顶部 Loon 标题与刷新；中部累计下行与累计上行核心大指标（纵向分割线）；
+ * 次级策略组数、实时延迟、剩余流量、运行模式四列网格；底部订阅统计与总额信息
+ */
+export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
+  return (
+    <VStack
+      alignment="leading"
+      spacing={7}
+      padding={{ top: 12, bottom: 10, leading: 16, trailing: 16 }}
+      widgetBackground="#111622"
+      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+    >
+      {/* 顶部标题栏 */}
+      <HStack alignment="center" spacing={6}>
+        <Image systemName="paperplane.fill" font={13} foregroundStyle="#38BDF8" />
+        <Text font={14} fontWeight="bold" foregroundStyle="#FFFFFF">
+          Loon
+        </Text>
+        <Spacer />
+        <Text font={11} foregroundStyle="#94A3B8">
+          {`更新 ${formatTime(data.updatedAt)}`}
+        </Text>
+        <Button intent={RefreshWidgetIntent}>
+          <Image systemName="arrow.clockwise" font={12} foregroundStyle="#38BDF8" />
+        </Button>
+      </HStack>
+
+      {/* 中部核心流量指标 (双指标 + 纵向分割线) */}
+      <HStack alignment="center" spacing={0} frame={{ maxWidth: "infinity" }}>
+        {/* 累计下行 */}
+        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
+          <HStack alignment="center" spacing={4}>
+            <Image systemName="arrow.down.circle.fill" font={13} foregroundStyle="#10B981" />
+            <Text font={12} foregroundStyle="#CBD5E1">
+              累计下行
+            </Text>
+          </HStack>
+          <Text font={23} fontWeight="bold" foregroundStyle="#FFFFFF" lineLimit={1}>
+            {data.downloadText}
+          </Text>
+        </VStack>
+
+        {/* 分割线 */}
+        <RoundedRectangle
+          cornerRadius={1}
+          fill="rgba(255,255,255,0.12)"
+          frame={{ width: 1, height: 38 }}
+        />
+
+        {/* 累计上行 */}
+        <VStack
+          alignment="leading"
+          spacing={3}
+          padding={{ leading: 14 }}
+          frame={{ maxWidth: "infinity" }}
+        >
+          <HStack alignment="center" spacing={4}>
+            <Image systemName="arrow.up.circle.fill" font={13} foregroundStyle="#F59E0B" />
+            <Text font={12} foregroundStyle="#CBD5E1">
+              累计上行
+            </Text>
+          </HStack>
+          <Text font={23} fontWeight="bold" foregroundStyle="#FFFFFF" lineLimit={1}>
+            {data.uploadText}
+          </Text>
+        </VStack>
+      </HStack>
+
+      {/* 次级 4 列指标网格 */}
+      <HStack alignment="center" spacing={4} frame={{ maxWidth: "infinity" }}>
+        {/* 策略组数 */}
+        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
+          <HStack alignment="center" spacing={3}>
+            <Image systemName="square.stack.3d.up.fill" font={10} foregroundStyle="#38BDF8" />
+            <Text font={10} foregroundStyle="#94A3B8">
+              策略组数
+            </Text>
+          </HStack>
+          <Text font={14} fontWeight="bold" foregroundStyle="#FFFFFF">
+            {String(data.policyGroupCount)}
+          </Text>
+        </VStack>
+
+        {/* 实时延迟 */}
+        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
+          <HStack alignment="center" spacing={3}>
+            <Image systemName="bolt.horizontal.fill" font={10} foregroundStyle="#38BDF8" />
+            <Text font={10} foregroundStyle="#94A3B8">
+              实时延迟
+            </Text>
+          </HStack>
+          <Text font={14} fontWeight="bold" foregroundStyle="#FFFFFF">
+            {data.delayText}
+          </Text>
+        </VStack>
+
+        {/* 剩余流量 */}
+        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
+          <HStack alignment="center" spacing={3}>
+            <Image systemName="globe" font={10} foregroundStyle="#38BDF8" />
+            <Text font={10} foregroundStyle="#94A3B8">
+              剩余流量
+            </Text>
+          </HStack>
+          <Text font={14} fontWeight="bold" foregroundStyle="#FFFFFF">
+            {data.remainingText}
+          </Text>
+        </VStack>
+
+        {/* 运行模式 */}
+        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
+          <HStack alignment="center" spacing={3}>
+            <Image systemName="dial.low.fill" font={10} foregroundStyle="#38BDF8" />
+            <Text font={10} foregroundStyle="#94A3B8">
+              运行模式
+            </Text>
+          </HStack>
+          <Text font={14} fontWeight="bold" foregroundStyle="#FFFFFF" lineLimit={1}>
+            {data.runningMode}
+          </Text>
+        </VStack>
+      </HStack>
+
+      {/* 底部状态栏 */}
+      <HStack alignment="center" spacing={0} frame={{ maxWidth: "infinity" }}>
+        <Text font={10} foregroundStyle="#94A3B8">
+          {`订阅统计 · ${data.resetDaysText}`}
+        </Text>
+        <Spacer />
+        <Text font={10} foregroundStyle="#94A3B8">
+          {`Loon ${data.version} · 总额 ${data.totalText}`}
+        </Text>
+      </HStack>
     </VStack>
   )
 }
