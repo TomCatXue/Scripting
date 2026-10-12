@@ -805,11 +805,24 @@ function testAiMetricCellFixedHeight(): void {
 
 // ── 25. 小组件字号收敛：小号模板不得超过 17pt ───────────────────────
 // 回归：小号组件曾用 21pt 数值 + 15pt 品牌名，在 systemSmall 上明显过大。
+// 字号统一走 theme.ts 的 HIG_FONT token 后，测试改为解析 token 实际值。
 function testSmallWidgetFontSizes(): void {
+    const themeSrc = src("../theme.ts");
+    const tokenSizes = new Map<string, number>();
+    for (const m of themeSrc.matchAll(/^\s*(\w+):\s*(\d+(?:\.\d+)?)\s*,/gm)) {
+        tokenSizes.set(m[1], Number(m[2]));
+    }
+    const body =
+        functionBody(templatesSrc, "AiSmallTemplate") +
+        functionBody(templatesSrc, "AiMetricCell");
     const sizes = [
-        ...functionBody(templatesSrc, "AiSmallTemplate").matchAll(/font=\{(\d+(?:\.\d+)?)\}/g),
-        ...functionBody(templatesSrc, "AiMetricCell").matchAll(/font=\{(\d+(?:\.\d+)?)\}/g),
+        ...body.matchAll(/font=\{(\d+(?:\.\d+)?)\}/g),
     ].map((m) => Number(m[1]));
+    for (const m of body.matchAll(/font=\{HIG_FONT\.(\w+)\}/g)) {
+        const v = tokenSizes.get(m[1]);
+        assert.ok(v !== undefined, `HIG_FONT.${m[1]} 需在 theme.ts 中定义`);
+        sizes.push(v!);
+    }
 
     assert.ok(sizes.length > 0, "小号模板应包含字号声明");
     const max = Math.max(...sizes);

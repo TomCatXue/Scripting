@@ -36,7 +36,7 @@ import {
   VStack,
   ZStack,
 } from "scripting"
-import { THEME, formatDateCompact, formatTime, remainColor, softTint } from "./theme"
+import { THEME, HIG_FONT, formatDateCompact, formatTime, remainColor, softTint } from "./theme"
 import { SetWidgetSubModeIntent } from "./app_intents"
 
 // ── 通用常量与工具 ───────────────────────────────────────────────
@@ -80,6 +80,8 @@ export function signedText(value: number, digits = 2, suffix = ""): string {
  * 这里选一个「最长价格也能完整放下」的字号，并给价格一个固定宽度，
  * 两张卡片的数字实际渲染尺寸因此完全相同。
  */
+// 26pt 是「最长价格（904.48）也能完整放下」的实测值；直接复用
+// HIG_FONT.heroNumber(28) 会在小屏上挤压涨跌列，故此处保留独立常量。
 export const PRICE_FONT_SIZE = 26
 /**
  * 价格行不设固定列宽，改用「弹性价格 + 固定涨跌列」。
@@ -160,11 +162,11 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
       <HStack spacing={5} alignment="center">
         <Image
           systemName={trendSymbol(props.isUp)}
-          font={{ name: "system", size: 13 }}
+          font={{ name: "system", size: HIG_FONT.smallTitle }}
           foregroundStyle={color}
         />
         <Text
-          font={17}
+          font={HIG_FONT.smallTitle}
           fontWeight="semibold"
           foregroundStyle={THEME.text}
           lineLimit={1}
@@ -176,7 +178,7 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
         <Spacer minLength={4} />
         {props.tagText ? (
           <Text
-            font={10}
+            font={HIG_FONT.caption}
             fontWeight="semibold"
             foregroundStyle={color}
             lineLimit={1}
@@ -192,8 +194,8 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
         ) : null}
       </HStack>
       <Text
-        font={11}
-        fontWeight="semibold"
+        font={HIG_FONT.subhead}
+        fontWeight="medium"
         foregroundStyle={THEME.dim}
         lineLimit={1}
         allowsTightening={true}
@@ -221,7 +223,7 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
           padding={{ top: 1, bottom: 1 }}
         >
           <Spacer />
-          <Text font={10} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.8}>
+          <Text font={HIG_FONT.caption} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.8}>
             累积走势中 · 需 2 天以上
           </Text>
           <Spacer />
@@ -261,9 +263,10 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
           frame={{ width: PRICE_CHANGE_COLUMN_WIDTH }}
         >
           <Text
-            font={12}
+            font={HIG_FONT.subhead}
             fontWeight="semibold"
             monospacedDigit
+            fontWidth="compressed"
             foregroundStyle={color}
             lineLimit={1}
             allowsTightening={true}
@@ -273,9 +276,10 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
             {props.changeText}
           </Text>
           <Text
-            font={12}
+            font={HIG_FONT.subhead}
             fontWeight="semibold"
             monospacedDigit
+            fontWidth="compressed"
             foregroundStyle={color}
             lineLimit={1}
             allowsTightening={true}
@@ -289,7 +293,7 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
 
       {props.footnote ? (
         <Text
-          font={11}
+          font={HIG_FONT.subhead}
           foregroundStyle={THEME.dim}
           lineLimit={1}
           minScaleFactor={0.8}
@@ -355,11 +359,11 @@ export function AiMetricCell({ cell }: { cell: AiSmallCell }) {
       <HStack spacing={4} alignment="center" frame={{ maxWidth: "infinity", height: 14 }}>
         <Image
           systemName={cell.icon}
-          font={{ name: "system", size: 10 }}
+          font={{ name: "system", size: HIG_FONT.caption }}
           foregroundStyle={cell.iconColor}
         />
         <Text
-          font={10}
+          font={HIG_FONT.caption}
           foregroundStyle={THEME.dim}
           lineLimit={1}
           allowsTightening={true}
@@ -374,7 +378,7 @@ export function AiMetricCell({ cell }: { cell: AiSmallCell }) {
         frame={{ maxWidth: "infinity", height: 21, alignment: "leading" }}
       >
         <Text
-          font={17}
+          font={HIG_FONT.statMedium}
           fontWeight="heavy"
           fontWidth="compressed"
           foregroundStyle={cell.valueColor || THEME.text}
@@ -386,7 +390,7 @@ export function AiMetricCell({ cell }: { cell: AiSmallCell }) {
           {cell.value}
         </Text>
         {cell.suffix ? (
-          <Text font={11} fontWeight="bold" foregroundStyle={THEME.text} lineLimit={1}>
+          <Text font={HIG_FONT.subhead} fontWeight="bold" foregroundStyle={THEME.text} lineLimit={1}>
             {cell.suffix}
           </Text>
         ) : null}
@@ -424,12 +428,12 @@ export function AiSmallTemplate(props: AiSmallTemplateProps) {
         {!props.svgCode && !props.iconImage && props.iconName ? (
           <Image
             systemName={props.iconName}
-            font={{ name: "system", size: 15 }}
+            font={{ name: "system", size: HIG_FONT.smallTitle }}
             foregroundStyle={props.iconColor || THEME.blue}
           />
         ) : null}
         <Text
-          font={13}
+          font={HIG_FONT.smallTitle}
           fontWeight="heavy"
           foregroundStyle={props.titleColor || THEME.text}
           lineLimit={1}
@@ -475,17 +479,17 @@ export function AiSmallTemplate(props: AiSmallTemplateProps) {
       ) : (
         <HStack alignment="center" frame={{ maxWidth: "infinity", height: 14 }}>
           <Text
-            font={10}
+            font={HIG_FONT.caption}
             foregroundStyle={THEME.dim}
             lineLimit={1}
             allowsTightening={true}
-            minScaleFactor={0.7}
+            minScaleFactor={0.65}
           >
             {props.footerLeft || ""}
           </Text>
           <Spacer />
           <Text
-            font={10}
+            font={HIG_FONT.caption}
             foregroundStyle={props.footerRightColor || THEME.dim}
             monospacedDigit
             lineLimit={1}
@@ -555,7 +559,7 @@ export function ModeSwitch({
             buttonStyle="plain"
           >
             <Text
-              font={10}
+              font={HIG_FONT.caption}
               fontWeight={active ? "semibold" : "regular"}
               foregroundStyle={active ? "#FFFFFF" : THEME.dim}
               padding={{ horizontal: 7, vertical: 3 }}
@@ -644,12 +648,12 @@ export function WaveformMediumTemplate(props: WaveformMediumTemplateProps) {
           {!props.svgCode && !props.iconImage ? (
             <Image
               systemName={props.iconName || "circle.fill"}
-              font={{ name: "system", size: 15 }}
+              font={{ name: "system", size: HIG_FONT.smallTitle }}
               foregroundStyle={props.iconColor || THEME.blue}
             />
           ) : null}
           <Text
-            font={13}
+            font={HIG_FONT.smallTitle}
             fontWeight="heavy"
             foregroundStyle={props.titleColor || THEME.text}
             lineLimit={1}
@@ -660,7 +664,7 @@ export function WaveformMediumTemplate(props: WaveformMediumTemplateProps) {
         </HStack>
 
         {/* 主指标标题 */}
-        <Text font={11} fontWeight="semibold" foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.7}>
+        <Text font={HIG_FONT.subhead} fontWeight="medium" foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.65}>
           {props.mainLabel}
         </Text>
 
@@ -672,18 +676,20 @@ export function WaveformMediumTemplate(props: WaveformMediumTemplateProps) {
         >
           {props.symbol ? (
             <Text
-              font={18}
+              font={HIG_FONT.statLarge}
               fontWeight="heavy"
               fontWidth="compressed"
               foregroundStyle={THEME.text}
               lineLimit={1}
+              allowsTightening={true}
+              minScaleFactor={0.6}
               layoutPriority={1}
             >
               {props.symbol}
             </Text>
           ) : null}
           <Text
-            font={32}
+            font={HIG_FONT.mediumHero}
             fontWeight="heavy"
             fontWidth="compressed"
             foregroundStyle={THEME.text}
@@ -697,15 +703,15 @@ export function WaveformMediumTemplate(props: WaveformMediumTemplateProps) {
         </HStack>
 
         {/* 明细两行 */}
-        <Text font={10} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.7}>
+        <Text font={HIG_FONT.caption} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.65}>
           {props.subTag1}
         </Text>
-        <Text font={10} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.7}>
+        <Text font={HIG_FONT.caption} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.65}>
           {props.subTag2}
         </Text>
 
         {/* 更新时间 */}
-        <Text font={11} foregroundStyle={THEME.dim} monospacedDigit>
+        <Text font={HIG_FONT.caption} foregroundStyle={THEME.dim} monospacedDigit>
           {`更新于 ${formatTime(props.updatedAt)}`}
         </Text>
       </VStack>
@@ -716,7 +722,7 @@ export function WaveformMediumTemplate(props: WaveformMediumTemplateProps) {
         {/* 标题行：标题居中，右侧放模式切换胶囊（与原版一致） */}
         <HStack alignment="center">
           <Text
-            font={10}
+            font={HIG_FONT.caption}
             fontWeight="semibold"
             foregroundStyle={THEME.dim}
             frame={{ maxWidth: "infinity", alignment: "center" }}
@@ -727,7 +733,7 @@ export function WaveformMediumTemplate(props: WaveformMediumTemplateProps) {
         </HStack>
         {/* 峰值标签单独一行，避免挤压标题与胶囊 */}
         {props.peakText ? (
-          <Text font={11} fontWeight="bold" foregroundStyle={props.lineColor} lineLimit={1}>
+          <Text font={HIG_FONT.subhead} fontWeight="bold" foregroundStyle={props.lineColor} lineLimit={1}>
             {props.peakText}
           </Text>
         ) : null}
@@ -773,10 +779,10 @@ export function WaveformMediumTemplate(props: WaveformMediumTemplateProps) {
             const node = (
               <Text
                 key={`axis-${i}`}
-                font={10}
+                font={HIG_FONT.caption}
                 foregroundStyle={THEME.dim}
                 lineLimit={1}
-                minScaleFactor={0.75}
+                minScaleFactor={0.7}
               >
                 {v}
               </Text>
@@ -856,20 +862,20 @@ export function MarketMediumTemplate(props: MarketMediumTemplateProps) {
         <HStack alignment="center" spacing={4}>
           <Image
             systemName={props.iconName}
-            font={{ name: "system", size: 14 }}
+            font={{ name: "system", size: HIG_FONT.title }}
             foregroundStyle={props.iconColor}
           />
-          <Text font={14} fontWeight="bold" foregroundStyle={THEME.text} lineLimit={1} minScaleFactor={0.8}>
+          <Text font={HIG_FONT.title} fontWeight="semibold" foregroundStyle={THEME.text} lineLimit={1} minScaleFactor={0.75}>
             {props.title}
           </Text>
           {props.badgeText ? (
             <Text
-              font={11}
+              font={HIG_FONT.subhead}
               fontWeight="semibold"
               foregroundStyle={props.badgeColor}
               lineLimit={1}
               allowsTightening={true}
-              minScaleFactor={0.9}
+              minScaleFactor={0.85}
               padding={{ top: 3, bottom: 3, leading: 8, trailing: 8 }}
               background={props.badgeBg}
               clipShape="capsule"
@@ -879,7 +885,7 @@ export function MarketMediumTemplate(props: MarketMediumTemplateProps) {
           ) : null}
         </HStack>
         <Spacer />
-        <Text font={10} foregroundStyle={THEME.dim} monospacedDigit>
+        <Text font={HIG_FONT.caption} foregroundStyle={THEME.dim} monospacedDigit>
           {formatDateCompact(props.updatedAt)}
         </Text>
       </HStack>
@@ -893,7 +899,7 @@ export function MarketMediumTemplate(props: MarketMediumTemplateProps) {
             {/* 品类标签：统一胶囊几何（垂直 3 / 水平 7、真胶囊端），
                 与顶部涨跌徽章、GitHub 切换胶囊保持同一视觉语言。 */}
             <Text
-              font={11}
+              font={HIG_FONT.subhead}
               fontWeight="semibold"
               foregroundStyle={item.textColor as any}
               lineLimit={1}
@@ -917,7 +923,7 @@ export function MarketMediumTemplate(props: MarketMediumTemplateProps) {
             >
               <Spacer />
               <Text
-                font={15}
+                font={HIG_FONT.title}
                 fontWeight="heavy"
                 fontWidth="compressed"
                 foregroundStyle={THEME.text}
@@ -976,7 +982,7 @@ export function MarketMediumTemplate(props: MarketMediumTemplateProps) {
           frame={{ maxWidth: "infinity", height: 46 }}
           padding={{ leading: 4, trailing: 4 }}
         >
-          <Text font={10} foregroundStyle={THEME.dim} lineLimit={1}>
+          <Text font={HIG_FONT.caption} foregroundStyle={THEME.dim} lineLimit={1}>
             暂无历史走势数据
           </Text>
           <Spacer />

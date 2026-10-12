@@ -175,12 +175,14 @@ export function formatPct(v: number): string {
  * 严格遵循 iOS Dynamic Type 比例尺与统一边距，全面清除 < 10pt 亚像素微字
  */
 export const HIG_FONT = {
-  heroNumber: 28,      // 仪表盘核心大数值 (原 34pt 缩小避免在小屏溢出并留白)
-  statLarge: 20,       // 中号卡片关键看板数字
-  title: 15,           // 卡片主标题 / 关键分类名
-  headline: 13,        // 次级标题 / 栏目标题 / 榜单标题
-  body: 13,            // 常规说明文本 / 数据副标签
-  subhead: 12,         // 紧凑标签与说明
-  caption: 11,         // 次要信息 / 辅助指标数值 (Apple HIG 标准底线字号)
-  captionSmall: 10,    // 极紧凑状态标识 / 时间戳 (严禁低于 10pt)
-}
+  heroNumber: 28,      // 小号核心数值：配合 fontWidth=compressed 防止溢出
+  mediumHero: 32,      // 中号核心数值
+  statLarge: 20,       // 中号关键看板数字
+  statMedium: 16,      // 次级看板数字
+  title: 15,           // 中号卡片主标题
+  smallTitle: 13,      // 小号卡片 / 品牌标题
+  headline: 13,        // 栏目标题 / 榜单标题
+  body: 12,            // 常规说明与数据副标签
+  subhead: 11,         // 紧凑标签与说明
+  caption: 10,         // 状态 / 时间 / 极紧凑标签，最低显示字号
+} as const
