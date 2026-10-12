@@ -26,8 +26,8 @@ function mockResponse(body: any, headersRecord: Record<string, string> = {}, sta
 // ── 1. 配置项读写与探测 ─────────────────────────────────────────
 function testLoonConfigAccessors(): void {
     resetGlobals();
-    assert.equal(data.loadLoonUrl(), "", "默认 Loon URL 为空");
-    assert.equal(data.hasLoonConfigured(), false, "未配置时 hasLoonConfigured 为 false");
+    assert.equal(data.loadLoonUrl(), "http://loon.box/api/monitor", "默认 Loon URL 为虚拟直连地址");
+    assert.equal(data.hasLoonConfigured(), true, "默认开启直连，hasLoonConfigured 为 true");
 
     data.saveLoonUrl("https://sub.example.com/api/v1/client/subscribe?token=xyz");
     assert.equal(

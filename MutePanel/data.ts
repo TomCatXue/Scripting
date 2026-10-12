@@ -3297,14 +3297,19 @@ export const LOON_CACHE_KEY = "mutepanel_loon_cache_v1"
 export const LOON_INTERVAL_KEY = "mutepanel_loon_interval_v1"
 export const LOON_FILE_CACHE_PATH = `${FileManager.documentsDirectory}/loon_monitor_cache.json`
 
+export const DEFAULT_LOON_URL = "http://loon.box/api/monitor"
+
 export function loadLoonUrl(): string {
   try {
     const val =
       Storage.get<string>(LOON_URL_KEY, { shared: true }) ||
       Storage.get<string>(LOON_URL_KEY)
-    if (val && typeof val === "string") return val.trim()
+    if (val && typeof val === "string") {
+      const trimmed = val.trim()
+      if (trimmed.length > 0) return trimmed
+    }
   } catch {}
-  return ""
+  return DEFAULT_LOON_URL
 }
 
 export function saveLoonUrl(url: string): void {
@@ -3536,7 +3541,7 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
       return {
         ...fallback,
         configured: false,
-        errorText: `Loon 数据获取失败：${(e as any)?.message || e}`,
+        errorText: `Loon 数据获取失败：未连接到插件 (请确保已安装 LoonMonitor 插件且开启 Loon)`,
       }
     }
     return fallback

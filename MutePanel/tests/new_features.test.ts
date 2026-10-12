@@ -54,7 +54,7 @@ function testLoonPluginArtifacts(): void {
     assert.ok(fs.existsSync(scriptPath), "loon_monitor.js 脚本文件存在");
 
     const pluginContent = fs.readFileSync(pluginPath, "utf-8");
-    assert.ok(pluginContent.includes("loon.local/api/monitor"), "插件包含本地虚拟 API 拦截规则");
+    assert.ok(pluginContent.includes("loon.box") && pluginContent.includes("monitor"), "插件包含本地虚拟 API 拦截规则");
     assert.ok(pluginContent.includes("subscription"), "插件包含订阅捕获规则");
 
     const scriptContent = fs.readFileSync(scriptPath, "utf-8");

@@ -1051,10 +1051,10 @@ async function configureLoonSettings() {
   if (!action || action === "取消") return
 
   if (action === "使用 Loon 本地插件直连 (推荐)") {
-    saveLoonUrl("http://loon.local/api/monitor")
+    saveLoonUrl("http://loon.box/api/monitor")
     await refreshLoonData()
     Widget.reloadAll()
-    await gAlert("✓ 已切换为 Loon 本地插件直连模式！\n\n地址：http://loon.local/api/monitor\n请确保已在 Loon 安装 LoonMonitor 插件。")
+    await gAlert("✓ 已切换为 Loon 本地插件直连模式！\n\n地址：http://loon.box/api/monitor\n请确保已在 Loon 安装 LoonMonitor 插件。")
   } else if (action.includes("链接")) {
     const input = await gPrompt(
       "请输入 Loon 订阅链接或 OpenAPI 地址 (支持包含 subscription-userinfo 响应头的链接)",
