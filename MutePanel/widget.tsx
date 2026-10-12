@@ -4,6 +4,7 @@ import { Script, Widget } from "scripting"
 import { CPAMP_LOGO_SVG, DEEPSEEK_WHALE_SVG } from "./types"
 import { brandIcon } from "./icons"
 import { ModeSwitch } from "./templates"
+import { getLargeModules } from "./bento_config"
 import {
   AntigravitySmallCard,
   BentoLargeGridCard,
@@ -55,15 +56,6 @@ import {
   withTimeout,
 } from "./data"
 
-/** BENTO 模块顺序的存储键（App 内配置 / Widget 读取共享） */
-export const LARGE_MODULES_KEY = "mutepanel_large_modules_v1"
-
-/** 可选的 BENTO 模块 id（顺序即默认展示顺序） */
-export const LARGE_MODULE_IDS = ["gold", "deepseek", "fx", "oil", "stock"] as const
-
-/** BENTO 默认模块顺序 */
-export const DEFAULT_LARGE_MODULES = ["gold", "deepseek", "fx", "oil"]
-
 /**
  * 由真实走势数据计算「峰值」标签。
  *
@@ -98,33 +90,6 @@ export function peakLabel(
         ? (Math.round(peak * 100) / 100).toString()
         : (Math.round(peak * 10000) / 10000).toString()
   return `峰值 ${prefix}${shown}${suffix}`
-}
-
-/** 读取用户自定义的 BENTO 模块顺序，未配置时返回默认四模块 */
-export function getLargeModules(): string[] {
-  try {
-    const saved =
-      Storage.get<string[]>(LARGE_MODULES_KEY, { shared: true }) ||
-      Storage.get<string[]>(LARGE_MODULES_KEY)
-    if (Array.isArray(saved)) {
-      const valid = saved
-        .map((m) => String(m || "").trim().toLowerCase())
-        .filter((m) => (LARGE_MODULE_IDS as readonly string[]).includes(m))
-      if (valid.length > 0) return valid.slice(0, 4)
-    }
-  } catch {}
-  return [...DEFAULT_LARGE_MODULES]
-}
-
-/** 保存 BENTO 模块顺序 */
-export function saveLargeModules(ids: string[]): void {
-  try {
-    const valid = (Array.isArray(ids) ? ids : [])
-      .map((m) => String(m || "").trim().toLowerCase())
-      .filter((m) => (LARGE_MODULE_IDS as readonly string[]).includes(m))
-    Storage.set(LARGE_MODULES_KEY, valid, { shared: true })
-    Storage.set(LARGE_MODULES_KEY, valid)
-  } catch {}
 }
 
 /** 全局小组件配置与偏好 */
@@ -524,6 +489,16 @@ const REFRESH_TIMEOUT_MS = 1500
  */
 const PREVIEW_REFRESH_TIMEOUT_MS = 800
 
+/**
+ * 本文件是否真的在「小组件宿主」里成功渲染过。
+ *
+ * widget.tsx 是入口文件，但设置页会从它导入共享常量——一旦被当成普通模块
+ * 求值，底部的 main() 就会在 App 进程里跑，Widget.present 不存在而抛错，
+ * 随后 catch 里的 Script.exit() 会把正在用的 App 页面一起关掉。
+ * 因此「是否成功渲染」必须作为结束脚本的前提条件。
+ */
+let presentedInWidgetHost = false
+
 async function refreshForWidget(p: string, timeoutMs: number): Promise<void> {
   const jobs: Promise<any>[] = []
   if (p.includes("antigravity") || p === "ag" || p.includes("anti-gravity")) {
@@ -570,12 +545,25 @@ async function main() {
 
   const view = getWidgetView()
   // 设置 15 分钟系统 timeline 自动刷新（reloadPolicy: { policy: "after" }）
-  Widget.present(view, {
-    reloadPolicy: {
-      policy: "after",
-      date: new Date(Date.now() + 15 * 60 * 1000),
-    },
-  })
+  try {
+    Widget.present(view, {
+      reloadPolicy: {
+        policy: "after",
+        date: new Date(Date.now() + 15 * 60 * 1000),
+      },
+    })
+    presentedInWidgetHost = true
+  } catch (e) {
+    // 当前宿主没有实现 Widget.present —— 说明 widget.tsx 被当成普通模块在
+    // App 进程里求值了（典型场景：设置页从 "./widget" 导入共享常量）。
+    // 这种情况下**绝不能**结束脚本，否则正在展示的 App 页面会被一起关掉。
+    const msg = String((e as any)?.message || e || "")
+    if (/not implemented/i.test(msg)) {
+      console.log("Widget.present 在当前宿主不可用，跳过渲染:", msg)
+      return
+    }
+    throw e
+  }
 
   // App 内「预览」会把 widget.tsx 跑在 App 宿主进程里，此时主动结束脚本会
   // 连带关掉预览浮层——表现为「点预览闪一下就回到设置页」。
@@ -589,6 +577,9 @@ async function main() {
 
 main().catch((e) => {
   console.log("Widget render error:", e)
+  // 只有「确实成功渲染过小组件」才结束脚本。App 进程里本文件可能被当成普通
+  // 模块求值（此时 Widget.present 不存在），结束脚本会把正在用的页面一起关掉。
+  if (!presentedInWidgetHost) return
   // 预览流程里同样不能 exit（会连带关闭预览浮层）
   if (isPreviewSession()) return
   try {

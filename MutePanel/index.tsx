@@ -22,7 +22,7 @@ import {
   LARGE_MODULE_IDS,
   getLargeModules,
   saveLargeModules,
-} from "./widget"
+} from "./bento_config"
 import {
   GOLD_SOURCE_KEY,
   formatPct,

@@ -114,12 +114,44 @@ const MODULES: Record<string, string> = {
     "./templates": "../templates.tsx",
     "./icons": "../icons.ts",
     "./widget": "../widget.tsx",
+    "./bento_config": "../bento_config.ts",
+    "./app_intents": "../app_intents.tsx",
 };
 
 const CONSUMERS = [
     "../data.ts", "../accounts.ts", "../aggregate.ts", "../wb_direct.ts", "../oauth.ts",
     "../widget.tsx", "../index.tsx", "../cards.tsx", "../templates.tsx", "../app_intents.tsx",
 ];
+
+/**
+ * 入口文件不得被其它模块导入。
+ *
+ * widget.tsx / index.tsx 这类「宿主入口」在文件底部会直接执行宿主逻辑。一旦被
+ * import（哪怕只想复用里面的常量），它们就会在**当前宿主**里跑起来：
+ * 设置页导入 "./widget" 时，Widget.present 在 App 进程里并不存在，
+ * 抛 "not implemented method" 后 catch 里的 Script.exit() 会把设置页一起关掉。
+ * 共享状态必须放在 bento_config.ts 这种普通模块里。
+ *
+ * 注意 app_intents.tsx 不在禁止之列：它只做 Intent 注册，按官方约定就是被
+ * widget / cards 导入使用的共享模块。
+ */
+function testEntryFilesAreNotImported(): void {
+    const ENTRY_FILES = ["../widget.tsx", "../index.tsx"];
+    const problems: string[] = [];
+
+    for (const rel of CONSUMERS) {
+        if (ENTRY_FILES.includes(rel)) continue; // 入口之间互不导入即可
+        const text = src(rel);
+        for (const { from } of collectImports(text)) {
+            const target = MODULES[from];
+            if (target && ENTRY_FILES.includes(target)) {
+                problems.push(`${rel} 导入了入口文件 ${target}（会连带执行其宿主逻辑）`);
+            }
+        }
+    }
+
+    assert.deepEqual(problems, [], `存在对入口文件的导入:\n  ${problems.join("\n  ")}`);
+}
 
 function testNamedImportsResolve(): void {
     // 预读各模块导出集合
@@ -162,6 +194,7 @@ const tests: [string, () => Promise<void> | void][] = [
     [".ts 模块可加载", testTsModulesLoad],
     ["具名导入全部可解析", testNamedImportsResolve],
     ["入口引用直连服务", testEntriesReferenceDirect],
+    ["入口文件不被其它模块导入", testEntryFilesAreNotImported],
 ];
 
 let passed = 0;
