@@ -101,6 +101,16 @@ function testLoonPluginArtifacts(): void {
         pluginContent.includes("cdn.jsdelivr.net"),
         "脚本路径走 jsDelivr 镜像，保证手机能下载到脚本"
     );
+    // jsDelivr 的 @main 别名会在边缘节点间返回旧副本（实测同一分钟内新旧交替），
+    // 因此脚本地址必须固定到不可变 commit，否则「插件已更新但脚本还是坏的」。
+    assert.ok(
+        /cdn\.jsdelivr\.net\/gh\/TomCatXue\/MyCookieCenter@[0-9a-f]{7}\//.test(pluginContent),
+        "脚本地址固定到 commit，避免 @main 别名返回过期脚本"
+    );
+    assert.ok(
+        !/@main\/scripts\/tools\/loon/.test(pluginContent),
+        "不得再使用 @main 引用脚本"
+    );
 
     const scriptContent = fs.readFileSync(scriptPath, "utf-8");
     assert.ok(scriptContent.includes("serveMonitorData"), "脚本包含本地虚拟 API 响应函数");
