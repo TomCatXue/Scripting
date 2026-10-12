@@ -967,13 +967,13 @@ export function GoldPriceSmallCard({ data }: { data: GoldMarketData }) {
     { label: "10-01", value: 895 },
     { label: "10-05", value: 898 },
     { label: "10-08", value: 892 },
-    { label: "10-09", value: 904.48 },
+    { label: "10-12", value: 902.40 },
   ]
   const close = Number(data.focusPrice) || marks[marks.length - 1]?.value || 0
-  const prev = marks[marks.length - 2]?.value ?? close
-  const dif = close - prev
-  const rate = prev !== 0 ? (dif / prev) * 100 : 0
-  const isUp = data.isUp
+  const isUp = Boolean(data.isUp)
+  // 严格使用数据源自身算好的涨跌文本，绝不跨品种拿当前源减日K前值
+  const changeText = data.changeValue || (isUp ? "+0.00" : "-0.00")
+  const rateText = data.changeRate || (isUp ? "+0.00%" : "-0.00%")
 
   return (
     <TrendSmallTemplate
@@ -981,26 +981,33 @@ export function GoldPriceSmallCard({ data }: { data: GoldMarketData }) {
       subtitle={data.subTitle || "上金所实时价"}
       data={marks}
       priceText={close.toFixed(2)}
-      changeText={signedText(dif)}
-      rateText={signedText(rate, 2, "%")}
+      changeText={changeText}
+      rateText={rateText}
       isUp={isUp}
     />
   )
 }
 
-/** 中号黄金组件：参考今日油价 4 联卡片设计（Au9999 / 黄金T+D / 周大福 / 招行/浙商金价） + 底部上金所折线图 */
+/** 中号黄金组件：参考今日油价 4 联卡片设计（Au9999 / 黄金T+D / 周大福 / 银行积存金） + 底部上金所折线图 */
 export function GoldPriceMediumCard({ data }: { data: GoldMarketData }) {
+  // 根据当前关注源动态适配银行积存金标签与数值，避免浙商数据被短路隐藏
+  const isZs = data.sourceId === "zs"
+  const bankName = isZs ? "浙商积存" : "招商积存"
+  const bankPrice = isZs
+    ? (data.prices?.zsPrice || "898.54")
+    : (data.prices?.cmbBuy || "901.27")
+
   const items = [
-    { name: "Au9999", price: data.prices?.au9999 || "904.48", textColor: "#E5933A", tagBg: "rgba(229, 147, 58, 0.18)" },
-    { name: "黄金T+D", price: data.prices?.autd || "904.20", textColor: "#E6674E", tagBg: "rgba(230, 103, 78, 0.18)" },
-    { name: "周大福", price: data.prices?.chowTaiFook || "1045", textColor: "#E05268", tagBg: "rgba(224, 82, 104, 0.18)" },
-    { name: "招行/浙商", price: data.prices?.cmbBuy || data.prices?.zsPrice || "905.97", textColor: "#34C759", tagBg: "rgba(52, 199, 89, 0.18)" },
+    { name: "Au9999", price: data.prices?.au9999 || "902.40", textColor: "#E5933A", tagBg: "rgba(229, 147, 58, 0.18)" },
+    { name: "黄金T+D", price: data.prices?.autd || "898.50", textColor: "#E6674E", tagBg: "rgba(230, 103, 78, 0.18)" },
+    { name: "周大福", price: data.prices?.chowTaiFook || "1042", textColor: "#E05268", tagBg: "rgba(224, 82, 104, 0.18)" },
+    { name: bankName, price: bankPrice, textColor: "#34C759", tagBg: "rgba(52, 199, 89, 0.18)" },
   ]
   const marks = data.history30d?.length > 0 ? data.history30d : [
     { label: "10-01", value: 895 },
     { label: "10-05", value: 898 },
     { label: "10-08", value: 892 },
-    { label: "10-09", value: 904.48 },
+    { label: "10-12", value: 902.40 },
   ]
   const color = data.isUp
     ? ({ light: "#FF3B30", dark: "#FF453A" } as any)

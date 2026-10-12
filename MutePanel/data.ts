@@ -2827,8 +2827,16 @@ export async function refreshGoldData(): Promise<GoldMarketData | null> {
   const currentSource = (Storage.get<string>(GOLD_SOURCE_KEY, { shared: true }) || Storage.get<string>(GOLD_SOURCE_KEY) || "sge_au9999")
 
   try {
-    // 并发拉取上金所官方日K线历史与最新真实行情 (与 EastMoney 118.AU9999 实时同步)
-    const [sgeRes, cmbRes, zsRes] = await Promise.all([
+    // 并发拉取东方财富盘中实时行情 (Au9999 / Au(T+D))、上金所官方日K线历史与银行积存金
+    const [emAuRes, emAutdRes, sgeRes, cmbRes, zsRes] = await Promise.all([
+      fetch("https://push2.eastmoney.com/api/qt/stock/get?secid=118.AU9999&fields=f43,f44,f45,f46,f58,f60,f169,f170", {
+        headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://quote.eastmoney.com/" },
+        timeout: 6,
+      }).then((r) => r.json()).catch(() => null),
+      fetch("https://push2.eastmoney.com/api/qt/stock/get?secid=118.AUTD&fields=f43,f44,f45,f46,f58,f60,f169,f170", {
+        headers: { "User-Agent": "Mozilla/5.0", "Referer": "https://quote.eastmoney.com/" },
+        timeout: 6,
+      }).then((r) => r.json()).catch(() => null),
       fetch("https://www.sge.com.cn/graph/Dailyhq?instid=Au99.99", {
         headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)" },
         timeout: 8,
@@ -2845,23 +2853,54 @@ export async function refreshGoldData(): Promise<GoldMarketData | null> {
       }).then((r) => r.json()).catch(() => null),
     ])
 
-    let au9999Price = 904.48
-    let autdPrice = 904.20
-    let difVal = 12.48
-    let difRate = 1.40
+    let au9999Price = 902.40
+    let autdPrice = 898.50
+    let difVal = -0.50
+    let difRate = -0.06
+    let autdDif = -3.99
+    let autdRate = -0.44
     let history30d: { label: string; value: number }[] = []
     let minPrice = 888.0
     let maxPrice = 918.0
 
+    // 1. 优先解析 EastMoney Au9999 实时成交行情
+    const emAu = emAuRes?.data
+    if (emAu && typeof emAu.f43 === "number" && emAu.f43 > 0) {
+      au9999Price = Number((emAu.f43 / 100).toFixed(2))
+      if (typeof emAu.f169 === "number") {
+        difVal = Number((emAu.f169 / 100).toFixed(2))
+      }
+      if (typeof emAu.f170 === "number") {
+        difRate = Number((emAu.f170 / 100).toFixed(2))
+      }
+    }
+
+    // 2. 优先解析 EastMoney Au(T+D) 真实独立行情（非假差价）
+    const emAutd = emAutdRes?.data
+    if (emAutd && typeof emAutd.f43 === "number" && emAutd.f43 > 0) {
+      autdPrice = Number((emAutd.f43 / 100).toFixed(2))
+      if (typeof emAutd.f169 === "number") {
+        autdDif = Number((emAutd.f169 / 100).toFixed(2))
+      }
+      if (typeof emAutd.f170 === "number") {
+        autdRate = Number((emAutd.f170 / 100).toFixed(2))
+      }
+    }
+
+    // 3. 上金所官方 30 日日K线（用于平滑面积折线图与实时接口失效时的平滑回退）
     if (sgeRes && Array.isArray(sgeRes.time) && sgeRes.time.length > 0) {
       const rawItems = sgeRes.time.slice(-30)
       const last = rawItems[rawItems.length - 1]
       const prev = rawItems[rawItems.length - 2]
-      au9999Price = Number(last[2]) || au9999Price
-      autdPrice = Number(last[2]) ? Number((last[2] - 0.28).toFixed(2)) : autdPrice
-      if (prev) {
-        difVal = Number((au9999Price - Number(prev[2])).toFixed(2))
-        difRate = Number(((difVal / Number(prev[2])) * 100).toFixed(2))
+      if (!emAu || typeof emAu.f43 !== "number") {
+        au9999Price = Number(last[2]) || au9999Price
+        if (prev) {
+          difVal = Number((au9999Price - Number(prev[2])).toFixed(2))
+          difRate = Number(((difVal / Number(prev[2])) * 100).toFixed(2))
+        }
+      }
+      if (!emAutd || typeof emAutd.f43 !== "number") {
+        autdPrice = Number(last[2]) ? Number((Number(last[2]) - 4.0).toFixed(2)) : autdPrice
       }
       history30d = rawItems.map((item: any) => {
         const dateParts = String(item[0]).split("-")
@@ -2873,31 +2912,47 @@ export async function refreshGoldData(): Promise<GoldMarketData | null> {
       maxPrice = Math.max(...vals)
     }
 
-    // 招商银行金价
+    // 4. 招商银行金价
     const cmbInfo = cmbRes?.data?.FQAMBPRCZ1 || {}
-    const cmbBuy = cmbInfo.zBuyPrc ? String(cmbInfo.zBuyPrc) : "905.97"
+    const cmbBuy = cmbInfo.zBuyPrc ? String(cmbInfo.zBuyPrc) : "901.27"
+    const cmbDif = typeof cmbInfo.zPrcDif !== "undefined" ? Number(cmbInfo.zPrcDif) : 0
+    const cmbRate = typeof cmbInfo.zDvlCur !== "undefined" ? Number(cmbInfo.zDvlCur) : 0
 
-    // 浙商银行积存金
-    const zsPrice = zsRes?.resultData?.datas?.price ? String(zsRes.resultData.datas.price) : "903.22"
+    // 5. 浙商银行积存金 (京东金融)
+    const zsData = zsRes?.resultData?.datas || {}
+    const zsPrice = zsData.price ? String(zsData.price) : "898.54"
+    const zsDif = typeof zsData.upAndDownAmt !== "undefined" ? Number(zsData.upAndDownAmt) : 0
+    const zsRate = typeof zsData.upAndDownRate !== "undefined"
+      ? parseFloat(String(zsData.upAndDownRate).replace("%", "")) || 0
+      : 0
 
-    // 品牌零售金计算
+    // 6. 品牌零售金计算 (以上金所现货基准 + 工艺品牌溢价估算)
     const ctf = String(Math.round(au9999Price * 1.155))
     const lfx = String(Math.round(au9999Price * 1.152))
 
-    // 根据当前选定数据源决定主展示数值
+    // 7. 根据当前选定数据源决定主展示数值与涨跌
     let focusPrice = au9999Price.toFixed(2)
+    let curDif = difVal
+    let curRate = difRate
     let sourceName = "上金所 Au9999"
     let subTitle = "Au9999 实时价"
+
     if (currentSource === "cmb") {
       focusPrice = cmbBuy
+      curDif = cmbDif
+      curRate = cmbRate
       sourceName = "招商银行金价"
       subTitle = "积存金买入价"
     } else if (currentSource === "zs") {
       focusPrice = zsPrice
+      curDif = zsDif
+      curRate = zsRate
       sourceName = "浙商银行金价"
       subTitle = "积存金实时价"
     } else if (currentSource === "sge_autd") {
       focusPrice = autdPrice.toFixed(2)
+      curDif = autdDif
+      curRate = autdRate
       sourceName = "黄金延期 Au(T+D)"
       subTitle = "连续现货合约"
     }
@@ -2908,9 +2963,9 @@ export async function refreshGoldData(): Promise<GoldMarketData | null> {
       sourceName,
       subTitle,
       focusPrice,
-      changeValue: (difVal >= 0 ? "+" : "") + difVal.toFixed(2),
-      changeRate: (difRate >= 0 ? "+" : "") + difRate.toFixed(2) + "%",
-      isUp: difVal >= 0,
+      changeValue: (curDif >= 0 ? "+" : "") + curDif.toFixed(2),
+      changeRate: (curRate >= 0 ? "+" : "") + curRate.toFixed(2) + "%",
+      isUp: curDif >= 0,
       prices: {
         au9999: au9999Price.toFixed(2),
         autd: autdPrice.toFixed(2),
