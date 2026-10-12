@@ -463,9 +463,11 @@ function buildWbDirectAggregate(
     mainValue: remain.toLocaleString("en-US"),
     progressPct: Math.min(100, Math.max(0, pct)),
     subLabel1: "账号",
-    // 账号区域显示「已签入账号数量」：成功签入的个数即有效账号数，
-    // 全部失败时回落为 0，避免把不可用账号也算成已签入。
-    subValue1: `${Math.max(0, Math.floor(okCount))}`,
+    // 账号区域显示「已签/账号总数」：例如「6/7」或「7/7」，
+    // 若未配置或全部失败则回落安全数字，避免显示空值。
+    subValue1: totalCount > 0
+      ? `${Math.max(0, Math.floor(okCount))}/${Math.max(0, Math.floor(totalCount))}`
+      : `${Math.max(0, Math.floor(okCount))}`,
     subLabel2: "已用",
     subValue2: used.toLocaleString("en-US"),
     validDays,
@@ -3541,7 +3543,7 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
       return {
         ...fallback,
         configured: false,
-        errorText: `Loon 数据获取失败：未连接到插件 (请确保已安装 LoonMonitor 插件且开启 Loon)`,
+        errorText: `Loon 数据获取失败：未连接到 LoonMonitor 插件 (请在 Loon 启用插件，或配置订阅链接)`,
       }
     }
     return fallback

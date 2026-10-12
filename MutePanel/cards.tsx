@@ -877,7 +877,7 @@ export function FuelPriceSmallCard({ data }: { data: FuelCardData }) {
       changeText={changeText || "--"}
       rateText={rateText || "--"}
       isUp={isUp}
-      footnote={hasTrend ? data.cleanDateText || undefined : "累积走势中"}
+      tagText={data.cleanDateText || "近期调价"}
     />
   )
 }
@@ -1513,36 +1513,37 @@ export function GitHubMediumCard({
       frame={{ maxWidth: "infinity", alignment: "leading" }}
     >
       <HStack spacing={2} alignment="center" frame={{ maxWidth: "infinity", height: 15 }}>
-        <Image systemName={icon} font={9} foregroundStyle={iconColor} />
+        <Image systemName={icon} font={10} foregroundStyle={iconColor} />
         <Text
-          font={12}
+          font={13}
           fontWeight="bold"
           foregroundStyle={THEME.text}
           monospacedDigit
           lineLimit={1}
           allowsTightening={true}
-          minScaleFactor={0.6}
+          minScaleFactor={0.65}
         >
           {String(value)}
         </Text>
         <Text
-          font={9}
+          font={10}
           fontWeight="semibold"
           foregroundStyle={deltaColor(delta)}
           monospacedDigit
           lineLimit={1}
           allowsTightening={true}
-          minScaleFactor={0.6}
+          minScaleFactor={0.65}
         >
           {formatDelta(delta)}
         </Text>
       </HStack>
       <Text
-        font={9}
+        font={10}
+        fontWeight="medium"
         foregroundStyle={THEME.dim}
         lineLimit={1}
         allowsTightening={true}
-        minScaleFactor={0.6}
+        minScaleFactor={0.65}
         frame={{ maxWidth: "infinity", height: 12, alignment: "leading" }}
       >
         {label}
@@ -1553,8 +1554,8 @@ export function GitHubMediumCard({
   return (
     <HStack
       spacing={12}
-      alignment="center"
-      padding={{ top: 12, bottom: 12, leading: 14, trailing: 14 }}
+      alignment="top"
+      padding={{ top: 11, bottom: 11, leading: 14, trailing: 14 }}
       // frame 必须在 widgetBackground 之前：SwiftUI 修饰符是「从内向外」叠加，
       // frame 写在后面会让背景只铺满内容自然尺寸，多出来的区域透出系统底色，
       // 看起来就是「同一条边一侧白、一侧灰」。
@@ -1562,9 +1563,9 @@ export function GitHubMediumCard({
       widgetBackground={THEME.cardBg}
     >
       {/* 左侧栏：用户信息与三大指标 */}
-      <VStack alignment="leading" spacing={10} frame={{ width: 146 }}>
+      <VStack alignment="leading" spacing={10} frame={{ width: 148 }}>
         {/* 用户头像与信息 */}
-        <HStack spacing={8} alignment="center">
+        <HStack spacing={9} alignment="center">
           <Image
             imageUrl={data.avatarUrl || `https://github.com/${data.username}.png`}
             clipShape="circle"
@@ -1572,9 +1573,9 @@ export function GitHubMediumCard({
             scaleToFit={true}
             frame={{ width: 44, height: 44 }}
           />
-          <VStack alignment="leading" spacing={1} frame={{ maxWidth: "infinity" }}>
+          <VStack alignment="leading" spacing={1.5} frame={{ maxWidth: "infinity" }}>
             <Text
-              font={14}
+              font={15}
               fontWeight="bold"
               foregroundStyle={THEME.text}
               lineLimit={1}
@@ -1583,7 +1584,8 @@ export function GitHubMediumCard({
               {data.name || data.username}
             </Text>
             <Text
-              font={11}
+              font={12}
+              fontWeight="medium"
               foregroundStyle={THEME.dim}
               lineLimit={1}
               minScaleFactor={0.75}
@@ -1591,7 +1593,7 @@ export function GitHubMediumCard({
               @{data.username}
             </Text>
             <Text
-              font={10}
+              font={11}
               foregroundStyle={THEME.dim}
               lineLimit={1}
               minScaleFactor={0.75}
@@ -1618,15 +1620,16 @@ export function GitHubMediumCard({
 
       {/* 右侧栏：Top 7 热门仓库列表 / 贡献热力图切换 */}
       <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
-        <HStack alignment="center" spacing={4}>
+        {/* 顶栏：上移对齐，与左侧顶端齐平 */}
+        <HStack alignment="center" spacing={4} frame={{ height: 20 }}>
           <Image
             systemName={isHeatmap ? "calendar" : "chevron.left.forwardslash.chevron.right"}
             font={11}
             foregroundStyle={THEME.blue}
           />
           <Text
-            font={11}
-            fontWeight="semibold"
+            font={12}
+            fontWeight="bold"
             foregroundStyle={THEME.text}
             lineLimit={1}
             minScaleFactor={0.8}
@@ -1639,8 +1642,8 @@ export function GitHubMediumCard({
             buttonStyle="plain"
           >
             <Text
-              font={9}
-              fontWeight="semibold"
+              font={10}
+              fontWeight="medium"
               foregroundStyle={THEME.blue}
               padding={{ horizontal: 5, vertical: 2 }}
               background={{ light: "rgba(0,122,255,0.08)", dark: "rgba(10,132,255,0.16)" } as any}
@@ -1703,14 +1706,14 @@ export function GitHubMediumCard({
             </HStack>
           </VStack>
         ) : (
-          <VStack alignment="leading" spacing={2.5} frame={{ maxWidth: "infinity" }}>
+          <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
             {top7.map((repo, i) => (
-              <HStack key={repo.name || String(i)} alignment="center" spacing={3}>
+              <HStack key={repo.name || String(i)} alignment="center" spacing={4}>
                 <Text
-                  font={10}
+                  font={11}
                   fontWeight="bold"
                   foregroundStyle={i < 3 ? THEME.orange : THEME.dim}
-                  frame={{ width: 10 }}
+                  frame={{ width: 12 }}
                 >
                   {String(i + 1)}
                 </Text>
@@ -1726,11 +1729,9 @@ export function GitHubMediumCard({
                 </Text>
                 <Spacer />
                 <HStack alignment="center" spacing={2}>
-                  <Text font={10} foregroundStyle={THEME.orange}>
-                    ★
-                  </Text>
+                  <Image systemName="star.fill" font={9.5} foregroundStyle={THEME.orange} />
                   <Text
-                    font={10}
+                    font={11}
                     fontWeight="medium"
                     foregroundStyle={THEME.dim}
                     monospacedDigit
@@ -1738,11 +1739,14 @@ export function GitHubMediumCard({
                     {String(repo.stars)}
                   </Text>
                 </HStack>
-                <HStack alignment="center" spacing={1}>
-                  <Text font={10} foregroundStyle={THEME.purple}>
-                    ⑂
-                  </Text>
-                  <Text font={10} foregroundStyle={THEME.dim} monospacedDigit>
+                <HStack alignment="center" spacing={2}>
+                  <Image systemName="arrow.triangle.branch" font={9.5} foregroundStyle={THEME.purple} />
+                  <Text
+                    font={11}
+                    fontWeight="medium"
+                    foregroundStyle={THEME.dim}
+                    monospacedDigit
+                  >
                     {String(repo.forks)}
                   </Text>
                 </HStack>

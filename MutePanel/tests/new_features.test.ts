@@ -89,11 +89,65 @@ async function testLoonMediumVpnDisplay(): Promise<void> {
 }
 
 // ── 执行 ───────────────────────────────────────────────────────
+
+// ── 5. 油价模块：右上角调价标签与黄金组件排版对齐 ─────────────
+async function testFuelSmallTagAlignment(): Promise<void> {
+    resetGlobals();
+    assert.ok(
+        cardsSrc.includes('tagText={data.cleanDateText || "近期调价"}'),
+        "FuelPriceSmallCard 调价提示已移至右上角 tagText"
+    );
+    const fuelCardSlice = cardsSrc.slice(
+        cardsSrc.indexOf("export function FuelPriceSmallCard"),
+        cardsSrc.indexOf("export function FuelPriceMediumCard")
+    );
+    assert.ok(
+        !fuelCardSlice.includes("footnote="),
+        "FuelPriceSmallCard 底部移除 footnote，保证价格与黄金模块对齐"
+    );
+}
+
+// ── 6. GitHub 中号监控：左侧字号放大、刷新按钮上移、仓库样式统一 ─
+async function testGitHubMediumRefinements(): Promise<void> {
+    resetGlobals();
+    const ghCardSlice = cardsSrc.slice(cardsSrc.indexOf("export function GitHubMediumCard"));
+    assert.ok(
+        ghCardSlice.includes('alignment="top"'),
+        "GitHubMediumCard 整体卡片顶端对齐"
+    );
+    assert.ok(
+        ghCardSlice.includes("star.fill") && ghCardSlice.includes("arrow.triangle.branch"),
+        "GitHubMediumCard 仓库列表使用统一 SF Symbols 图标"
+    );
+    assert.ok(
+        ghCardSlice.includes('font={15}') && ghCardSlice.includes('font={12}'),
+        "GitHubMediumCard 左侧用户昵称与用户名采用放大字号提升可读性"
+    );
+}
+
+// ── 7. WorkBuddy 小号组件：账号展示「已签/总数」 ──────────────
+async function testWorkBuddySignedRatio(): Promise<void> {
+    resetGlobals();
+    const d = await import("../data.ts");
+    assert.ok(
+        typeof d.refreshWbDirectData === "function",
+        "WorkBuddy 数据服务可调用"
+    );
+    const dSrc = fs.readFileSync(path.resolve(__dirname, "../data.ts"), "utf-8");
+    assert.ok(
+        dSrc.includes("${Math.max(0, Math.floor(okCount))}/${Math.max(0, Math.floor(totalCount))}"),
+        "WorkBuddy 账号格式为「已签/账号总数」"
+    );
+}
+
 const tests: [string, () => Promise<void> | void][] = [
     ["油价小号百分比显示", testFuelSmallPercentage],
     ["GitHub 头像无灰框且支持热力图", testGitHubAvatarAndHeatmap],
     ["Loon 插件文件与规则校验", testLoonPluginArtifacts],
     ["Loon 中号组件展示 VPN 地址", testLoonMediumVpnDisplay],
+    ["油价右上角调价与黄金对齐", testFuelSmallTagAlignment],
+    ["GitHub 字体放大与刷新上移", testGitHubMediumRefinements],
+    ["WorkBuddy 账号已签/总数比率", testWorkBuddySignedRatio],
 ];
 
 let passed = 0;

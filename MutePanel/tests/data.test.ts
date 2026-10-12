@@ -253,7 +253,7 @@ async function testWbDirectMultiAccount(): Promise<void> {
     assert.equal(r.subValue2, "20", "已用为两账号之和");
     assert.equal(r.serviceId, "workbuddy-direct", "服务 id");
     // 账号区域展示「已签入（成功）账号数量」：两个账号都成功 → 2
-    assert.equal(r.subValue1, "2", "账号区域显示已签入账号数量");
+    assert.equal(r.subValue1, "2/2", "账号区域显示已签入/账号总数");
 }
 
 async function testWbDirectUnconfigured(): Promise<void> {

@@ -85,6 +85,8 @@ export interface TrendSmallTemplateProps {
   rateText: string
   /** 是否上涨（决定配色与三角方向） */
   isUp: boolean
+  /** 右上角标签提示（可选，如「10月15日调价」） */
+  tagText?: string
   /** 底部补充说明（可选） */
   footnote?: string
 }
@@ -118,7 +120,7 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
       frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
       widgetBackground={{ light: "#FFFFFF", dark: "#161719" }}
     >
-      {/* Header：涨跌三角 + 标题 */}
+      {/* Header：涨跌三角 + 标题 + 右上角调价标签 */}
       <HStack spacing={5} alignment="center">
         <Image
           systemName={trendSymbol(props.isUp)}
@@ -135,6 +137,22 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
           {props.title}
         </Text>
         <Spacer />
+        {props.tagText ? (
+          <HStack
+            padding={{ leading: 5, trailing: 5, top: 1.5, bottom: 1.5 }}
+            widgetBackground={{ light: "rgba(0,0,0,0.05)", dark: "rgba(255,255,255,0.08)" }}
+            cornerRadius={4}
+          >
+            <Text
+              font={10}
+              fontWeight="medium"
+              foregroundStyle={THEME.dim}
+              lineLimit={1}
+            >
+              {props.tagText}
+            </Text>
+          </HStack>
+        ) : null}
       </HStack>
       <Text
         font={11}

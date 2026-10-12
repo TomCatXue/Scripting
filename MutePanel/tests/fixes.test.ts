@@ -843,8 +843,8 @@ function testWbAccountCountDisplayed(): void {
     const body = functionBody(dataSrc, "buildWbDirectAggregate");
 
     assert.ok(
-        body.includes("subValue1: `${Math.max(0, Math.floor(okCount))}`"),
-        "账号区域显示已签入（成功）账号数量"
+        body.includes("subValue1: totalCount > 0") && body.includes("Math.floor(okCount)") && body.includes("Math.floor(totalCount)"),
+        "账号区域显示已签入/账号总数"
     );
     assert.ok(
         body.includes('subLabel1: "账号"'),
