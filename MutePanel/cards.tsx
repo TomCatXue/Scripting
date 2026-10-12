@@ -1876,7 +1876,7 @@ export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
         iconImage={brandIcon("loon")}
         title="Loon 监控"
         message={data.errorText || "尚未配置 Loon 订阅或 OpenAPI"}
-        hint="在「哑巴面板」设置页填入 Loon 订阅链接或 OpenAPI 地址后即可显示流量"
+        hint="在「哑巴面板」设置页开启 Loon 本地插件直连并配置机场订阅链接即可双通道展示"
       />
     )
   }

@@ -146,6 +146,167 @@ async function testUnconfiguredShowsEmptyState(): Promise<void> {
     );
 }
 
+// ── 8. 双通道显式融合：Loon 插件规则分流 + 机场订阅流量 ─────────
+async function testFetchLoonFusionDirect(): Promise<void> {
+    resetGlobals();
+    const pluginUrl = "http://127.0.0.1:9090/api/monitor";
+    const subUrl = "https://sub.example.com/subscribe";
+
+    const upBytes = Math.round(5.8 * 1024 * 1024 * 1024);
+    const downBytes = Math.round(102.6 * 1024 * 1024 * 1024);
+    const totBytes = 500 * 1024 * 1024 * 1024;
+    const expireSec = Math.floor((Date.now() + 24 * 86400 * 1000) / 1000);
+
+    const pluginBody = {
+        running_model: 1,
+        runningMode: "规则分流",
+        all_policy_groups: ["节点选择", "国外媒体", "Final"],
+        delay: 38,
+        vpnIp: "103.152.220.1",
+        vpnLocation: "中国香港",
+        nodeName: "🇭🇰 香港 IEPL 01",
+    };
+
+    setMockFetch(async (url: string) => {
+        if (url.startsWith(pluginUrl)) {
+            return mockResponse(pluginBody);
+        }
+        if (url.startsWith(subUrl)) {
+            return mockResponse("PROXIES...", {
+                "subscription-userinfo": `upload=${upBytes}; download=${downBytes}; total=${totBytes}; expire=${expireSec}`,
+            });
+        }
+        throw new Error(`Unexpected url: ${url}`);
+    });
+
+    const res = await data.fetchLoonData(pluginUrl, true, subUrl);
+    assert.equal(res.serviceId, "loon");
+    // 规则分流与运行节点来自 Loon 插件
+    assert.equal(res.runningMode, "规则分流", "运行模式融合自 Loon 插件");
+    assert.equal(res.nodeName, "🇭🇰 香港 IEPL 01", "当前节点融合自 Loon 插件");
+    assert.equal(res.policyGroupCount, 3, "策略组数量融合自 Loon 插件");
+    assert.equal(res.delayMs, 38, "实时延迟融合自 Loon 插件");
+    assert.equal(res.vpnIp, "103.152.220.1", "出口 IP 融合自 Loon 插件");
+    assert.equal(res.vpnLocation, "中国香港", "归属地融合自 Loon 插件");
+
+    // 上下行与剩余流量来自机场订阅
+    assert.equal(res.uploadText, "5.8 GB", "上传流量融合自机场订阅");
+    assert.equal(res.downloadText, "102.6 GB", "下载流量融合自机场订阅");
+    assert.equal(res.totalText, "500 GB", "总额融合自机场订阅");
+    assert.equal(res.remainingText, "391.6 GB", "剩余流量融合自机场订阅");
+    assert.ok(res.resetDaysText.includes("24 天后重置"), "到期重置天数融合自机场订阅");
+    assert.equal(res.hasTrafficData, true, "标记已拥有真实流量");
+    assert.equal(res.isFused, true, "双通道融合标记为 true");
+}
+
+// ── 9. Storage 持久化双通道融合与 refreshLoonData ────────────────
+async function testFetchLoonFusionFromStorage(): Promise<void> {
+    resetGlobals();
+    const pluginUrl = "http://loon.box/api/monitor";
+    const subUrl = "https://my-airport.io/api/v1/client/subscribe?token=secret123";
+
+    data.saveLoonPluginUrl(pluginUrl);
+    data.saveLoonSubUrl(subUrl);
+
+    assert.equal(data.loadLoonPluginUrl(), pluginUrl);
+    assert.equal(data.loadLoonSubUrl(), subUrl);
+
+    const upBytes = 1024 * 1024 * 1024 * 2;
+    const downBytes = 1024 * 1024 * 1024 * 20;
+    const totBytes = 1024 * 1024 * 1024 * 100;
+
+    setMockFetch(async (url: string) => {
+        if (url.includes("loon.box")) {
+            return mockResponse({
+                running_model: 1,
+                runningMode: "规则分流",
+                all_policy_groups: ["Proxy", "Media"],
+                delay: 42,
+                nodeName: "日本 01",
+            });
+        }
+        if (url.includes("my-airport.io")) {
+            return mockResponse("NODES...", {
+                "subscription-userinfo": `upload=${upBytes}; download=${downBytes}; total=${totBytes}; expire=1800000000`,
+            });
+        }
+        throw new Error(`Unexpected url: ${url}`);
+    });
+
+    const res = await data.refreshLoonData();
+    assert.equal(res.runningMode, "规则分流");
+    assert.equal(res.nodeName, "日本 01");
+    assert.equal(res.policyGroupCount, 2);
+    assert.equal(res.uploadText, "2 GB");
+    assert.equal(res.downloadText, "20 GB");
+    assert.equal(res.totalText, "100 GB");
+    assert.equal(res.remainingText, "78 GB");
+    assert.equal(res.isFused, true);
+}
+
+// ── 10. 历史单主键存入订阅链接时平滑兼容并自动直连插件 ─────────
+async function testLegacySubscriptionInMainKeyAutoFusion(): Promise<void> {
+    resetGlobals();
+    const subUrl = "https://legacy-sub.net/subscribe?token=abc";
+    // 模拟旧版本用户直接在 LOON_URL_KEY 填入订阅链接的情形
+    data.saveLoonUrl(subUrl);
+
+    assert.equal(data.loadLoonSubUrl(), subUrl, "历史订阅链接自动识别为 subUrl");
+    assert.equal(data.loadLoonPluginUrl(), data.DEFAULT_LOON_URL, "插件通道默认自动回退至本地直连");
+
+    setMockFetch(async (url: string) => {
+        if (url.includes("loon.box")) {
+            return mockResponse({
+                running_model: 1,
+                runningMode: "规则分流",
+                nodeName: "新加坡 IPLC",
+            });
+        }
+        if (url.includes("legacy-sub.net")) {
+            return mockResponse("SUB...", {
+                "subscription-userinfo": "upload=1073741824; download=10737418240; total=107374182400; expire=0",
+            });
+        }
+        throw new Error(`Unexpected url: ${url}`);
+    });
+
+    const res = await data.refreshLoonData();
+    assert.equal(res.runningMode, "规则分流", "平滑兼容下依然获取到规则分流");
+    assert.equal(res.nodeName, "新加坡 IPLC", "平滑兼容下依然获取到节点");
+    assert.equal(res.uploadText, "1 GB", "平滑兼容下依然获取到上行用量");
+    assert.equal(res.downloadText, "10 GB", "平滑兼容下依然获取到下行用量");
+    assert.equal(res.isFused, true);
+}
+
+// ── 11. 单边离线容灾：Loon 插件离线时仍可展示订阅流量 ───────────
+async function testPartialOfflineGraceful(): Promise<void> {
+    resetGlobals();
+    data.saveLoonPluginUrl("http://loon.box/api/monitor");
+    data.saveLoonSubUrl("https://airport.com/sub");
+
+    // 模拟手机未开启 Loon VPN（loon.box 超时/拒绝连接），但网络正常可拉取机场订阅
+    setMockFetch(async (url: string) => {
+        if (url.includes("loon.box")) {
+            throw new Error("Connection refused (Loon not running)");
+        }
+        if (url.includes("airport.com")) {
+            return mockResponse("SUB...", {
+                "subscription-userinfo": "upload=1073741824; download=5368709120; total=53687091200; expire=0",
+            });
+        }
+        throw new Error(`Unexpected url: ${url}`);
+    });
+
+    const res = await data.refreshLoonData();
+    assert.equal(res.configured, true, "订阅成功拉取时组件保持配置生效状态");
+    assert.equal(res.hasTrafficData, true, "流量数据正常保留");
+    assert.equal(res.uploadText, "1 GB");
+    assert.equal(res.downloadText, "5 GB");
+    assert.equal(res.nodeName, "未连接", "插件离线时节点标记未连接");
+    assert.equal(res.runningMode, "--", "插件离线时运行模式标记未知占位");
+    assert.equal(res.isFused, false, "单边成功时不标记为完整双通道融合");
+}
+
 // ── 执行 ───────────────────────────────────────────────────────
 const tests: [string, () => Promise<void> | void][] = [
     ["配置项读写与探测", testLoonConfigAccessors],
@@ -155,6 +316,10 @@ const tests: [string, () => Promise<void> | void][] = [
     ["OpenAPI JSON 格式解析", testFetchLoonOpenApi],
     ["异常降级兜底", testFallbackOnError],
     ["未配置显示空状态", testUnconfiguredShowsEmptyState],
+    ["双通道显式融合：规则分流+机场订阅", testFetchLoonFusionDirect],
+    ["Storage 双通道持久化与 refreshLoonData", testFetchLoonFusionFromStorage],
+    ["历史单主键存入订阅平滑兼容", testLegacySubscriptionInMainKeyAutoFusion],
+    ["单边离线优雅容灾", testPartialOfflineGraceful],
 ];
 
 let passed = 0;

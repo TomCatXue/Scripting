@@ -76,6 +76,11 @@ import {
   hasGitHubConfigured,
   loadLoonUrl,
   saveLoonUrl,
+  loadLoonPluginUrl,
+  saveLoonPluginUrl,
+  loadLoonSubUrl,
+  saveLoonSubUrl,
+  DEFAULT_LOON_URL,
   refreshLoonData,
   hasLoonConfigured,
 } from "./data"
@@ -1038,20 +1043,45 @@ async function configureGitHubSettings() {
   }
 }
 
-/** 配置 Loon 监控订阅链接或 OpenAPI 接口 */
+/** 配置 Loon 监控（Loon 插件规则分流 + 机场订阅流量双通道结合） */
 async function configureLoonSettings() {
-  const currentUrl = loadLoonUrl()
-  const action = await gActionSheet("Loon 监控配置", [
-    "使用 Loon 本地插件直连 (推荐)",
-    currentUrl ? "修改自定义订阅或 OpenAPI 链接" : "设置自定义订阅或 OpenAPI 链接",
-    "测试连接并立即刷新",
-    "清除配置 (恢复默认)",
-    "取消",
-  ])
+  const pluginUrl = loadLoonPluginUrl()
+  const subUrl = loadLoonSubUrl()
+
+  const subSummary = subUrl ? "已配置" : "未配置 (无上下行用量)"
+  const pluginSummary = pluginUrl ? (pluginUrl === DEFAULT_LOON_URL ? "本地默认直连" : "已自定义") : "未配置"
+
+  const action = await gActionSheet(
+    `Loon 监控双通道配置\n• Loon 插件：${pluginSummary} (提供规则分流/节点/延迟)\n• 机场订阅：${subSummary} (提供上下行流量/总额)`,
+    [
+      "配置机场订阅链接 (提供累计上下行与剩余流量)",
+      "使用 Loon 本地插件直连 (推荐)",
+      "自定义 Loon 插件 / OpenAPI 地址",
+      "测试双通道连接并立即刷新",
+      "清除机场订阅链接",
+      "清除配置 (恢复默认)",
+      "取消",
+    ]
+  )
   if (!action || action === "取消") return
 
-  if (action === "使用 Loon 本地插件直连 (推荐)") {
-    saveLoonUrl("http://loon.box/api/monitor")
+  if (action === "配置机场订阅链接 (提供累计上下行与剩余流量)") {
+    const input = await gPrompt(
+      "请输入机场节点订阅链接 (支持包含 subscription-userinfo 响应头的 URL)：\n\n小组件将拉取此链接展示累计上行、下行与剩余流量，并与 Loon 插件的规则分流结合。",
+      subUrl
+    )
+    if (input !== null) {
+      saveLoonSubUrl(input.trim())
+      await refreshLoonData()
+      Widget.reloadAll()
+      await gAlert(
+        input.trim()
+          ? "✓ 已保存机场订阅链接！\n小组件将自动把订阅流量与 Loon 插件的规则分流/节点结合展示。"
+          : "✓ 已清除订阅链接"
+      )
+    }
+  } else if (action === "使用 Loon 本地插件直连 (推荐)") {
+    saveLoonPluginUrl(DEFAULT_LOON_URL)
     await refreshLoonData()
     Widget.reloadAll()
     await gAlert(
@@ -1059,20 +1089,20 @@ async function configureLoonSettings() {
         "地址：http://loon.box/api/monitor\n\n" +
         "请先在 Loon 导入 LoonMonitor 插件（插件 → 右上角 + → URL 导入）：\n" +
         "https://cdn.jsdelivr.net/gh/TomCatXue/MyCookieCenter@142f10d/loon/LoonMonitor.plugin\n\n" +
-        "导入后点下方「测试连接并立即刷新」确认已接通。"
+        "导入后点下方「测试双通道连接并立即刷新」确认已接通。"
     )
-  } else if (action.includes("链接")) {
+  } else if (action === "自定义 Loon 插件 / OpenAPI 地址") {
     const input = await gPrompt(
-      "请输入 Loon 订阅链接或 OpenAPI 地址 (支持包含 subscription-userinfo 响应头的链接)",
-      currentUrl
+      "请输入自定义 Loon OpenAPI 或监控插件地址：",
+      pluginUrl || DEFAULT_LOON_URL
     )
     if (input !== null) {
-      saveLoonUrl(input.trim())
+      saveLoonPluginUrl(input.trim())
       await refreshLoonData()
       Widget.reloadAll()
-      await gAlert(input.trim() ? "✓ 已保存 Loon 链接" : "✓ 已清除 Loon 链接")
+      await gAlert(input.trim() ? "✓ 已保存 Loon 插件接口地址" : "✓ 已恢复默认直连地址")
     }
-  } else if (action === "测试连接并立即刷新") {
+  } else if (action === "测试双通道连接并立即刷新") {
     const res = await refreshLoonData()
     // refreshLoonData 永远返回对象，失败时会带上 errorText（即使有历史缓存
     // 也会标记本次刷新失败）。早期只用 `if (res)` 判断，插件没接通时也弹
@@ -1080,25 +1110,45 @@ async function configureLoonSettings() {
     const fresh = res.configured && !res.errorText
     if (fresh) {
       Widget.reloadAll()
+      const fusionText = res.isFused
+        ? "【双通道融合成功】已同时接通 Loon 规则分流与机场订阅流量！"
+        : res.hasTrafficData
+          ? "【订阅流量已获取】但未连接 Loon 插件（规则分流暂未接通）"
+          : "【Loon 插件已接通】规则分流正常，未配置机场订阅链接（上下行流量待配置）"
       await gAlert(
-        `✓ Loon 状态获取成功！\n\nVPN 出口：${res.vpnIp || "--"}\n节点归属：${res.vpnLocation || "--"}\n累计下行：${res.downloadText}\n累计上行：${res.uploadText}\n剩余流量：${res.remainingText}\n运行模式：${res.runningMode}\n策略组数：${res.policyGroupCount}\n实时延迟：${res.delayText}\n总额：${res.totalText}`
+        `✓ Loon 状态获取成功！\n\n` +
+          `${fusionText}\n\n` +
+          `• 运行模式：${res.runningMode}\n` +
+          `• VPN 节点：${res.nodeName || "--"}\n` +
+          `• VPN 出口：${res.vpnIp || "--"} (${res.vpnLocation || "--"})\n` +
+          `• 实时延迟：${res.delayText}\n` +
+          `• 策略组数：${res.policyGroupCount}\n` +
+          `• 累计下行：${res.downloadText}\n` +
+          `• 累计上行：${res.uploadText}\n` +
+          `• 剩余流量：${res.remainingText}\n` +
+          `• 总额：${res.totalText}\n` +
+          `• 订阅到期：${res.resetDaysText}`
       )
     } else {
       await gAlert(
         "✗ 未能接通 Loon 监控数据\n\n" +
           `原因：${res.errorText || "LoonMonitor 插件未返回数据"}\n\n` +
-          "排查顺序：\n" +
-          "0. 直连地址必须是 http://loon.box/api/monitor（明文 HTTP）；\n" +
-          "1. Loon 已开启且 LoonMonitor 插件处于启用状态；\n" +
-          "2. 插件已更新到最新版（v1.3.0+），旧版拦截规则不同；\n" +
-          "3. 在 Loon 中刷新一次机场订阅，以便捕获流量配额。"
+          "排查说明：\n" +
+          "1. 规则分流未显示：请确认 Loon 已开启并启用了 LoonMonitor 插件（直连地址 http://loon.box/api/monitor）；\n" +
+          "2. 插件安装地址：https://cdn.jsdelivr.net/gh/TomCatXue/MyCookieCenter@142f10d/loon/LoonMonitor.plugin\n" +
+          "3. 上下行流量未显示：请在菜单中点击「配置机场订阅链接」填入机场订阅地址。"
       )
     }
+  } else if (action === "清除机场订阅链接") {
+    saveLoonSubUrl("")
+    await refreshLoonData()
+    Widget.reloadAll()
+    await gAlert("已清除机场订阅链接！")
   } else if (action === "清除配置 (恢复默认)") {
     saveLoonUrl("")
     await refreshLoonData()
     Widget.reloadAll()
-    await gAlert("已恢复默认演示数据！")
+    await gAlert("已恢复默认配置！")
   }
 }
 
@@ -1628,7 +1678,7 @@ export default function ConfigView() {
               font={{ name: "system", size: 8 }}
               foregroundStyle="#38BDF8"
             />
-            <Text font={14} fontWeight="medium">Loon 监控 (订阅/OpenAPI)</Text>
+            <Text font={14} fontWeight="medium">Loon 监控 (分流+订阅融合)</Text>
             <Spacer />
             <Button
               title="配置网络"

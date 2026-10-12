@@ -3291,30 +3291,54 @@ export async function refreshGitHubData(): Promise<GitHubMonitorData> {
 }
 
 // ============================================================
-// Loon 网络与流量监控服务 (Loon OpenAPI / 订阅解析)
+// Loon 网络与流量监控服务 (Loon 本地插件规则分流 + 机场订阅流量双通道融合)
 // ============================================================
 
 export const LOON_URL_KEY = "mutepanel_loon_url_v1"
+export const LOON_SUB_URL_KEY = "mutepanel_loon_sub_url_v1"
 export const LOON_CACHE_KEY = "mutepanel_loon_cache_v1"
 export const LOON_INTERVAL_KEY = "mutepanel_loon_interval_v1"
 export const LOON_FILE_CACHE_PATH = `${FileManager.documentsDirectory}/loon_monitor_cache.json`
 
 export const DEFAULT_LOON_URL = "http://loon.box/api/monitor"
 
-export function loadLoonUrl(): string {
+/**
+ * 判断 URL 是否为机场订阅链接（非 Loon 本地短路/虚拟域名，通常用于拉取 subscription-userinfo）
+ */
+export function isSubscriptionUrl(url: string): boolean {
+  if (!url || typeof url !== "string") return false
+  const trimmed = url.trim()
+  if (!/^https?:\/\//i.test(trimmed)) return false
+  // 排除 loon 本地短路虚拟域名、本地 IP 及明确的 OpenAPI config/monitor 接口
+  if (/(?:loon\.(?:box|local)|198\.18\.0\.1|127\.0\.0\.1|localhost)/i.test(trimmed)) {
+    return false
+  }
+  if (/(?:api\/v\d+\/config|\/monitor)/i.test(trimmed)) {
+    return false
+  }
+  return true
+}
+
+/**
+ * 读取 Loon 插件 / OpenAPI 接口地址（默认使用本地直连 http://loon.box/api/monitor）
+ */
+export function loadLoonPluginUrl(): string {
   try {
     const val =
       Storage.get<string>(LOON_URL_KEY, { shared: true }) ||
       Storage.get<string>(LOON_URL_KEY)
     if (val && typeof val === "string") {
       const trimmed = val.trim()
-      if (trimmed.length > 0) return trimmed
+      // 若原先存入的是机场订阅链接，插件通道回退至默认直连，避免插件地址失效
+      if (trimmed.length > 0 && !isSubscriptionUrl(trimmed)) {
+        return trimmed
+      }
     }
   } catch {}
   return DEFAULT_LOON_URL
 }
 
-export function saveLoonUrl(url: string): void {
+export function saveLoonPluginUrl(url: string): void {
   try {
     const u = String(url || "").trim()
     if (!u) {
@@ -3327,9 +3351,70 @@ export function saveLoonUrl(url: string): void {
   } catch {}
 }
 
+/**
+ * 读取机场订阅链接（提供上下行用量、剩余流量与总额）
+ */
+export function loadLoonSubUrl(): string {
+  try {
+    const subVal =
+      Storage.get<string>(LOON_SUB_URL_KEY, { shared: true }) ||
+      Storage.get<string>(LOON_SUB_URL_KEY)
+    if (subVal && typeof subVal === "string") {
+      const trimmed = subVal.trim()
+      if (trimmed.length > 0) return trimmed
+    }
+    // 兼容历史配置：若 LOON_URL_KEY 存放的是机场订阅链接，平滑作为订阅源读取
+    const legacyVal =
+      Storage.get<string>(LOON_URL_KEY, { shared: true }) ||
+      Storage.get<string>(LOON_URL_KEY)
+    if (legacyVal && typeof legacyVal === "string") {
+      const trimmed = legacyVal.trim()
+      if (isSubscriptionUrl(trimmed)) return trimmed
+    }
+  } catch {}
+  return ""
+}
+
+export function saveLoonSubUrl(url: string): void {
+  try {
+    const u = String(url || "").trim()
+    if (!u) {
+      Storage.remove(LOON_SUB_URL_KEY, { shared: true })
+      Storage.remove(LOON_SUB_URL_KEY)
+    } else {
+      Storage.set(LOON_SUB_URL_KEY, u, { shared: true })
+      Storage.set(LOON_SUB_URL_KEY, u)
+    }
+  } catch {}
+}
+
+export function loadLoonUrl(): string {
+  const sub = loadLoonSubUrl()
+  if (sub) return sub
+  const plugin = loadLoonPluginUrl()
+  if (plugin && plugin !== DEFAULT_LOON_URL) return plugin
+  return DEFAULT_LOON_URL
+}
+
+export function saveLoonUrl(url: string): void {
+  try {
+    const u = String(url || "").trim()
+    if (!u) {
+      saveLoonPluginUrl("")
+      saveLoonSubUrl("")
+    } else if (isSubscriptionUrl(u)) {
+      saveLoonSubUrl(u)
+      saveLoonPluginUrl(DEFAULT_LOON_URL)
+    } else {
+      saveLoonPluginUrl(u)
+    }
+  } catch {}
+}
+
 export function hasLoonConfigured(): boolean {
-  const u = loadLoonUrl()
-  return u.length > 0
+  const p = loadLoonPluginUrl()
+  const s = loadLoonSubUrl()
+  return Boolean((p && p.length > 0) || (s && s.length > 0))
 }
 
 export function formatBytes(bytes: number): string {
@@ -3375,10 +3460,39 @@ export function parseSubscriptionUserInfo(
   }
 }
 
-export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Promise<LoonMonitorData> {
-  const url = (rawUrl !== undefined ? rawUrl : loadLoonUrl()).trim()
-  if (!url) {
-    // 未配置：返回「无数据」状态，不展示内置示例流量
+export async function fetchLoonData(
+  rawUrl?: string,
+  forceRefresh = false,
+  rawSubUrl?: string
+): Promise<LoonMonitorData> {
+  let pluginTargetUrl = ""
+  let subTargetUrl = ""
+
+  if (rawUrl !== undefined) {
+    const trimmed = rawUrl.trim()
+    if (!trimmed && !rawSubUrl) {
+      const cached = getLoonData()
+      if (cached.configured) return cached
+      return {
+        ...cached,
+        configured: false,
+        errorText: "尚未配置 Loon 订阅或 OpenAPI",
+      }
+    }
+    if (rawSubUrl !== undefined) {
+      pluginTargetUrl = trimmed
+      subTargetUrl = rawSubUrl.trim()
+    } else if (isSubscriptionUrl(trimmed)) {
+      subTargetUrl = trimmed
+    } else {
+      pluginTargetUrl = trimmed
+    }
+  } else {
+    pluginTargetUrl = loadLoonPluginUrl()
+    subTargetUrl = loadLoonSubUrl()
+  }
+
+  if (!pluginTargetUrl && !subTargetUrl) {
     const cached = getLoonData()
     if (cached.configured) return cached
     return {
@@ -3400,146 +3514,283 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
   }
 
   try {
-    const startTime = Date.now()
-    const res = await fetch(url, {
-      headers: {
-        "User-Agent": "Loon/3.2.0 (iOS)",
-      },
-      // Loon 未运行 / 插件未生效时该地址会一直挂起；没有超时会让刷新
-      // Intent 的 Promise.all 永不 settle，右上角刷新按钮表现为「点了没反应」。
-      timeout: 8,
-    })
-    const latency = Math.max(1, Date.now() - startTime)
-
-    let subInfo: { upload: number; download: number; total: number; expire: number } | null = null
-
-    // 1. 尝试从响应头提取 subscription-userinfo
-    if (res.headers) {
-      const rawHeader =
-        (typeof res.headers.get === "function" ? res.headers.get("subscription-userinfo") : null) ||
-        (res.headers as any)["subscription-userinfo"] ||
-        (res.headers as any)["Subscription-Userinfo"] ||
-        ""
-      if (rawHeader) {
-        subInfo = parseSubscriptionUserInfo(rawHeader)
-      }
+    type SubResult = {
+      subInfo: { upload: number; download: number; total: number; expire: number } | null
+      bodyJson: any
+      latency: number
+    }
+    type PluginResult = {
+      bodyJson: any
+      subInfo: { upload: number; download: number; total: number; expire: number } | null
+      latency: number
     }
 
-    // 2. 若未在 Header 找到，尝试解析 Body（支持 OpenAPI JSON 或 JSON 格式订阅响应）
-    let bodyJson: any = null
-    try {
-      const text = await res.text()
-      if (text.startsWith("{") && text.endsWith("}")) {
-        bodyJson = JSON.parse(text)
-      }
-    } catch {}
+    let pluginPromise: Promise<PluginResult> | null = null
+    let subPromise: Promise<SubResult> | null = null
 
-    /*
-     * 流量默认值必须是「未知」而不是内置示例数字。
-     *
-     * 此前这里写死 5.8GB / 102.6GB / 500GB —— 当订阅尚未被 Loon 请求过
-     * （插件还没捕获到 subscription-userinfo）时，这些假数字会直接展示成
-     * 真实用量，用户看到的「累计上行/下行数据不对」就是这么来的。
-     * 现在缺数据就是 0，并由 hasTrafficData 标记区分「未知」与「真的为 0」。
-     */
+    if (pluginTargetUrl) {
+      pluginPromise = (async () => {
+        const startTime = Date.now()
+        let requestUrl = pluginTargetUrl
+        if (
+          subTargetUrl &&
+          (requestUrl.includes("loon.box") || requestUrl.includes("198.18.0.1") || requestUrl.includes("loon.local"))
+        ) {
+          requestUrl += (requestUrl.includes("?") ? "&" : "?") + "sub_url=" + encodeURIComponent(subTargetUrl)
+        }
+        const res = await fetch(requestUrl, {
+          headers: {
+            "User-Agent": "Loon/3.2.0 (iOS)",
+          },
+          timeout: 6,
+        })
+        const latency = Math.max(1, Date.now() - startTime)
+        let subInfo: { upload: number; download: number; total: number; expire: number } | null = null
+        if (res.headers) {
+          const rawHeader =
+            (typeof res.headers.get === "function" ? res.headers.get("subscription-userinfo") : null) ||
+            (res.headers as any)["subscription-userinfo"] ||
+            (res.headers as any)["Subscription-Userinfo"] ||
+            ""
+          if (rawHeader) {
+            subInfo = parseSubscriptionUserInfo(rawHeader)
+          }
+        }
+        let bodyJson: any = null
+        try {
+          const text = await res.text()
+          if (text.startsWith("{") && text.endsWith("}")) {
+            bodyJson = JSON.parse(text)
+          }
+        } catch {}
+        return { bodyJson, subInfo, latency }
+      })()
+    }
+
+    if (subTargetUrl) {
+      subPromise = (async () => {
+        const startTime = Date.now()
+        const res = await fetch(subTargetUrl, {
+          headers: {
+            "User-Agent": "ClashMeta; Loon/3.2.0; QuantumultX",
+          },
+          timeout: 8,
+        })
+        const latency = Math.max(1, Date.now() - startTime)
+        let subInfo: { upload: number; download: number; total: number; expire: number } | null = null
+        if (res.headers) {
+          const rawHeader =
+            (typeof res.headers.get === "function" ? res.headers.get("subscription-userinfo") : null) ||
+            (res.headers as any)["subscription-userinfo"] ||
+            (res.headers as any)["Subscription-Userinfo"] ||
+            ""
+          if (rawHeader) {
+            subInfo = parseSubscriptionUserInfo(rawHeader)
+          }
+        }
+        let bodyJson: any = null
+        try {
+          const text = await res.text()
+          if (text.startsWith("{") && text.endsWith("}")) {
+            bodyJson = JSON.parse(text)
+          }
+        } catch {}
+        return { subInfo, bodyJson, latency }
+      })()
+    }
+
+    const [pluginSettled, subSettled] = await Promise.all([
+      pluginPromise ? pluginPromise.catch((e) => ({ error: e })) : Promise.resolve(null),
+      subPromise ? subPromise.catch((e) => ({ error: e })) : Promise.resolve(null),
+    ])
+
+    const pluginRes: PluginResult | null = pluginSettled && !("error" in pluginSettled) ? (pluginSettled as PluginResult) : null
+    const subRes: SubResult | null = subSettled && !("error" in subSettled) ? (subSettled as SubResult) : null
+
+    if ((pluginTargetUrl || subTargetUrl) && !pluginRes && !subRes) {
+      const pErr = pluginSettled && "error" in pluginSettled ? (pluginSettled as any).error : null
+      const sErr = subSettled && "error" in subSettled ? (subSettled as any).error : null
+      throw pErr || sErr || new Error("Loon 监控通道均不可达")
+    }
+
     let uploadBytes = 0
     let downloadBytes = 0
     let totalBytes = 0
     let hasTrafficData = false
     let resetDaysText = "待订阅同步"
     let policyGroupCount = 0
-    let delayMs = latency
-    // 未知占位：插件未返回模式时显示 "--"，而不是伪装成「规则分流」
+    let delayMs = 0
     let runningMode = "--"
     let version = "3.2.x"
     let vpnIp = "--"
     let vpnLocation = "未连接"
     let nodeName = "未连接"
+    let hasPluginSuccess = false
+    let hasSubSuccess = false
 
-    if (subInfo) {
-      uploadBytes = subInfo.upload
-      downloadBytes = subInfo.download
-      totalBytes = subInfo.total
-      hasTrafficData = true
-      if (subInfo.expire > 0) {
-        const expMs = subInfo.expire > 10000000000 ? subInfo.expire : subInfo.expire * 1000
-        const diffDays = Math.ceil((expMs - Date.now()) / (86400 * 1000))
-        resetDaysText = diffDays > 0 ? `${diffDays} 天后重置` : "已到期"
-      } else {
-        resetDaysText = "长期有效"
-      }
-    } else if (bodyJson) {
-      if (typeof bodyJson.hasTrafficData === "boolean") {
-        hasTrafficData = bodyJson.hasTrafficData
-      } else if (
-        (bodyJson.upload != null && bodyJson.upload > 0) ||
-        (bodyJson.download != null && bodyJson.download > 0) ||
-        (bodyJson.total != null && bodyJson.total > 0)
-      ) {
+    // 1. 处理机场订阅通道 (权威流量来源)
+    if (subRes) {
+      hasSubSuccess = true
+      if (subRes.subInfo) {
+        uploadBytes = subRes.subInfo.upload
+        downloadBytes = subRes.subInfo.download
+        totalBytes = subRes.subInfo.total
         hasTrafficData = true
+        if (subRes.subInfo.expire > 0) {
+          const expMs = subRes.subInfo.expire > 10000000000 ? subRes.subInfo.expire : subRes.subInfo.expire * 1000
+          const diffDays = Math.ceil((expMs - Date.now()) / (86400 * 1000))
+          resetDaysText = diffDays > 0 ? `${diffDays} 天后重置` : "已到期"
+        } else {
+          resetDaysText = "长期有效"
+        }
+      } else if (subRes.bodyJson) {
+        if (typeof subRes.bodyJson.hasTrafficData === "boolean") {
+          hasTrafficData = subRes.bodyJson.hasTrafficData
+        } else if (
+          (subRes.bodyJson.upload != null && subRes.bodyJson.upload > 0) ||
+          (subRes.bodyJson.download != null && subRes.bodyJson.download > 0) ||
+          (subRes.bodyJson.total != null && subRes.bodyJson.total > 0)
+        ) {
+          hasTrafficData = true
+        }
+        if (subRes.bodyJson.upload != null) uploadBytes = Number(subRes.bodyJson.upload) || 0
+        if (subRes.bodyJson.download != null) downloadBytes = Number(subRes.bodyJson.download) || 0
+        if (subRes.bodyJson.total != null) totalBytes = Number(subRes.bodyJson.total) || 0
+        if (subRes.bodyJson.expire != null) {
+          const expMs =
+            Number(subRes.bodyJson.expire) > 10000000000
+              ? Number(subRes.bodyJson.expire)
+              : Number(subRes.bodyJson.expire) * 1000
+          const diffDays = Math.ceil((expMs - Date.now()) / (86400 * 1000))
+          resetDaysText = diffDays > 0 ? `${diffDays} 天后重置` : "已到期"
+        } else if (typeof subRes.bodyJson.resetDaysText === "string" && subRes.bodyJson.resetDaysText.trim()) {
+          resetDaysText = subRes.bodyJson.resetDaysText.trim()
+        }
       }
-      if (bodyJson.upload != null) uploadBytes = Number(bodyJson.upload) || 0
-      if (bodyJson.download != null) downloadBytes = Number(bodyJson.download) || 0
-      if (bodyJson.total != null) totalBytes = Number(bodyJson.total) || 0
-      if (bodyJson.expire != null) {
-        const expMs = Number(bodyJson.expire) > 10000000000 ? Number(bodyJson.expire) : Number(bodyJson.expire) * 1000
-        const diffDays = Math.ceil((expMs - Date.now()) / (86400 * 1000))
-        resetDaysText = diffDays > 0 ? `${diffDays} 天后重置` : "已到期"
-      } else if (typeof bodyJson.resetDaysText === "string" && bodyJson.resetDaysText.trim()) {
-        resetDaysText = bodyJson.resetDaysText.trim()
+      if (delayMs === 0 && subRes.latency) delayMs = subRes.latency
+
+      // 若响应体本身包含 OpenAPI 模式字段（例如某些自建订阅或代理网关）
+      if (subRes.bodyJson) {
+        const rawMode = subRes.bodyJson.runningMode
+        const rawModel =
+          typeof subRes.bodyJson.running_model === "number"
+            ? subRes.bodyJson.running_model
+            : typeof subRes.bodyJson.runningModel === "number"
+              ? subRes.bodyJson.runningModel
+              : null
+        const rawFlow = typeof subRes.bodyJson.flowmodel === "string" ? subRes.bodyJson.flowmodel : ""
+
+        if (typeof rawMode === "string" && rawMode.trim()) {
+          runningMode = rawMode.trim()
+        } else if (rawModel === 0 || rawFlow === "direct") {
+          runningMode = "全局直连"
+        } else if (rawModel === 2 || rawFlow === "proxy") {
+          runningMode = "全局代理"
+        } else if (rawModel === 1 || rawFlow === "filter") {
+          runningMode = "规则分流"
+        } else if (typeof subRes.bodyJson.mode === "string" && subRes.bodyJson.mode.trim()) {
+          runningMode = subRes.bodyJson.mode.trim()
+        }
+
+        if (Array.isArray(subRes.bodyJson.all_policy_groups)) {
+          policyGroupCount = subRes.bodyJson.all_policy_groups.length
+        } else if (typeof subRes.bodyJson.policy_groups_count === "number") {
+          policyGroupCount = subRes.bodyJson.policy_groups_count
+        }
+
+        if (typeof subRes.bodyJson.delay === "number") delayMs = subRes.bodyJson.delay
+        else if (typeof subRes.bodyJson.ping === "number") delayMs = subRes.bodyJson.ping
+        if (typeof subRes.bodyJson.version === "string") version = subRes.bodyJson.version
+        if (typeof subRes.bodyJson.vpnIp === "string") vpnIp = subRes.bodyJson.vpnIp
+        if (typeof subRes.bodyJson.vpnLocation === "string") vpnLocation = subRes.bodyJson.vpnLocation
+        if (typeof subRes.bodyJson.nodeName === "string") nodeName = subRes.bodyJson.nodeName
       }
     }
 
-    // 从 OpenAPI 提取运行模式、策略组等字段
-    if (bodyJson) {
-      /*
-       * 运行模式取值优先级：
-       *   1. 插件直接给出的中文文案 runningMode（最可靠，避免重复映射出错）
-       *   2. running_model / runningModel 数字（0 直连 / 1 分流 / 2 全局代理）
-       *   3. flowmodel 字符串 / mode 字符串
-       *
-       * 回归：插件 payload 里 `runningModel` 是**数字**、`runningMode` 才是中文
-       * 文案。早期实现只比对数字、忽略文案字段，遇到插件返回文案或字段缺失时
-       * 就一路落到默认值，导致「切成直连仍显示规则分流」。
-       */
-      const rawMode = bodyJson.runningMode
-      const rawModel =
-        typeof bodyJson.running_model === "number"
-          ? bodyJson.running_model
-          : typeof bodyJson.runningModel === "number"
-            ? bodyJson.runningModel
-            : null
-      const rawFlow = typeof bodyJson.flowmodel === "string" ? bodyJson.flowmodel : ""
+    // 2. 处理 Loon 插件通道 (权威运行状态来源，若订阅通道未提供流量也可作为流量兜底)
+    if (pluginRes) {
+      hasPluginSuccess = true
+      if (pluginRes.latency) delayMs = pluginRes.latency
 
-      if (typeof rawMode === "string" && rawMode.trim()) {
-        runningMode = rawMode.trim()
-      } else if (rawModel === 0 || rawFlow === "direct") {
-        runningMode = "全局直连"
-      } else if (rawModel === 2 || rawFlow === "proxy") {
-        runningMode = "全局代理"
-      } else if (rawModel === 1 || rawFlow === "filter") {
-        runningMode = "规则分流"
-      } else if (typeof bodyJson.mode === "string" && bodyJson.mode.trim()) {
-        runningMode = bodyJson.mode.trim()
+      if (!hasTrafficData) {
+        if (pluginRes.subInfo) {
+          uploadBytes = pluginRes.subInfo.upload
+          downloadBytes = pluginRes.subInfo.download
+          totalBytes = pluginRes.subInfo.total
+          hasTrafficData = true
+          if (pluginRes.subInfo.expire > 0) {
+            const expMs = pluginRes.subInfo.expire > 10000000000 ? pluginRes.subInfo.expire : pluginRes.subInfo.expire * 1000
+            const diffDays = Math.ceil((expMs - Date.now()) / (86400 * 1000))
+            resetDaysText = diffDays > 0 ? `${diffDays} 天后重置` : "已到期"
+          } else {
+            resetDaysText = "长期有效"
+          }
+        } else if (pluginRes.bodyJson) {
+          if (typeof pluginRes.bodyJson.hasTrafficData === "boolean") {
+            hasTrafficData = pluginRes.bodyJson.hasTrafficData
+          } else if (
+            (pluginRes.bodyJson.upload != null && pluginRes.bodyJson.upload > 0) ||
+            (pluginRes.bodyJson.download != null && pluginRes.bodyJson.download > 0) ||
+            (pluginRes.bodyJson.total != null && pluginRes.bodyJson.total > 0)
+          ) {
+            hasTrafficData = true
+          }
+          if (pluginRes.bodyJson.upload != null) uploadBytes = Number(pluginRes.bodyJson.upload) || 0
+          if (pluginRes.bodyJson.download != null) downloadBytes = Number(pluginRes.bodyJson.download) || 0
+          if (pluginRes.bodyJson.total != null) totalBytes = Number(pluginRes.bodyJson.total) || 0
+          if (pluginRes.bodyJson.expire != null) {
+            const expMs =
+              Number(pluginRes.bodyJson.expire) > 10000000000
+                ? Number(pluginRes.bodyJson.expire)
+                : Number(pluginRes.bodyJson.expire) * 1000
+            const diffDays = Math.ceil((expMs - Date.now()) / (86400 * 1000))
+            resetDaysText = diffDays > 0 ? `${diffDays} 天后重置` : "已到期"
+          } else if (typeof pluginRes.bodyJson.resetDaysText === "string" && pluginRes.bodyJson.resetDaysText.trim()) {
+            resetDaysText = pluginRes.bodyJson.resetDaysText.trim()
+          }
+        }
       }
 
-      if (Array.isArray(bodyJson.all_policy_groups)) {
-        policyGroupCount = bodyJson.all_policy_groups.length
-      } else if (typeof bodyJson.policy_groups_count === "number") {
-        policyGroupCount = bodyJson.policy_groups_count
-      }
+      const bodyJson = pluginRes.bodyJson
+      if (bodyJson) {
+        const rawMode = bodyJson.runningMode
+        const rawModel =
+          typeof bodyJson.running_model === "number"
+            ? bodyJson.running_model
+            : typeof bodyJson.runningModel === "number"
+              ? bodyJson.runningModel
+              : null
+        const rawFlow = typeof bodyJson.flowmodel === "string" ? bodyJson.flowmodel : ""
 
-      if (typeof bodyJson.delay === "number") delayMs = bodyJson.delay
-      else if (typeof bodyJson.ping === "number") delayMs = bodyJson.ping
-      if (typeof bodyJson.version === "string") version = bodyJson.version
-      if (typeof bodyJson.vpnIp === "string") vpnIp = bodyJson.vpnIp
-      if (typeof bodyJson.vpnLocation === "string") vpnLocation = bodyJson.vpnLocation
-      if (typeof bodyJson.nodeName === "string") nodeName = bodyJson.nodeName
-      else if (typeof bodyJson.node === "string") nodeName = bodyJson.node
-      else if (typeof bodyJson.current_node === "string") nodeName = bodyJson.current_node
+        if (typeof rawMode === "string" && rawMode.trim()) {
+          runningMode = rawMode.trim()
+        } else if (rawModel === 0 || rawFlow === "direct") {
+          runningMode = "全局直连"
+        } else if (rawModel === 2 || rawFlow === "proxy") {
+          runningMode = "全局代理"
+        } else if (rawModel === 1 || rawFlow === "filter") {
+          runningMode = "规则分流"
+        } else if (typeof bodyJson.mode === "string" && bodyJson.mode.trim()) {
+          runningMode = bodyJson.mode.trim()
+        }
+
+        if (Array.isArray(bodyJson.all_policy_groups)) {
+          policyGroupCount = bodyJson.all_policy_groups.length
+        } else if (typeof bodyJson.policy_groups_count === "number") {
+          policyGroupCount = bodyJson.policy_groups_count
+        }
+
+        if (typeof bodyJson.delay === "number") delayMs = bodyJson.delay
+        else if (typeof bodyJson.ping === "number") delayMs = bodyJson.ping
+        if (typeof bodyJson.version === "string") version = bodyJson.version
+        if (typeof bodyJson.vpnIp === "string") vpnIp = bodyJson.vpnIp
+        if (typeof bodyJson.vpnLocation === "string") vpnLocation = bodyJson.vpnLocation
+        if (typeof bodyJson.nodeName === "string") nodeName = bodyJson.nodeName
+        else if (typeof bodyJson.node === "string") nodeName = bodyJson.node
+        else if (typeof bodyJson.current_node === "string") nodeName = bodyJson.current_node
+      }
     }
 
-    // 若未从响应中解析到 VPN IP，尝试读取 VPN 节点卡片已有探测缓存
     if (vpnIp === "--") {
       try {
         const vpn = getVpnData()
@@ -3552,6 +3803,7 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
     }
 
     const remainingBytes = Math.max(0, totalBytes - uploadBytes - downloadBytes)
+    const isFused = hasPluginSuccess && hasSubSuccess
 
     const payload: LoonMonitorData = {
       serviceId: "loon",
@@ -3559,7 +3811,6 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
       downloadBytes,
       totalBytes,
       remainingBytes,
-      // 未拿到订阅数据时显示 "--"，不把 0 伪装成「真的用了 0 字节」
       uploadText: hasTrafficData ? formatBytes(uploadBytes) : "--",
       downloadText: hasTrafficData ? formatBytes(downloadBytes) : "--",
       totalText: hasTrafficData ? formatBytes(totalBytes) : "--",
@@ -3568,7 +3819,7 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
       resetDaysText,
       policyGroupCount,
       delayMs,
-      delayText: `${delayMs} ms`,
+      delayText: delayMs > 0 ? `${delayMs} ms` : "--",
       runningMode,
       version,
       vpnIp,
@@ -3577,6 +3828,7 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
       updatedAt: new Date().toISOString(),
       configured: true,
       errorText: undefined,
+      isFused,
     }
 
     const cacheEnvelope = { expiresAt: Date.now() + 15 * 60 * 1000, data: payload }
@@ -3591,11 +3843,9 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
       return {
         ...fallback,
         configured: false,
-        errorText: `Loon 数据获取失败：未连接到 LoonMonitor 插件 (请在 Loon 启用插件，或配置订阅链接)`,
+        errorText: `Loon 数据获取失败：未连接到 LoonMonitor 插件或订阅链接 (请检查网络与插件启用状态)`,
       }
     }
-    // 有历史缓存时仍然展示（数据可用），但必须标记「本次刷新失败」，
-    // 否则设置页的「测试连接」会把过期缓存误报成接通成功。
     const cachedAt = fallback.updatedAt ? new Date(fallback.updatedAt) : null
     const cachedText =
       cachedAt && !Number.isNaN(cachedAt.getTime())
@@ -3603,10 +3853,9 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
         : "上次"
     return {
       ...fallback,
-      errorText: `刷新失败：正在展示 ${cachedText} 的缓存数据 (请检查 LoonMonitor 插件是否启用)`,
+      errorText: `刷新失败：正在展示 ${cachedText} 的缓存数据 (请检查 Loon 插件或网络连接)`,
     }
   }
-  return getLoonData()
 }
 
 export function getLoonData(): LoonMonitorData {

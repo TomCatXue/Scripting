@@ -512,6 +512,10 @@ export interface LoonMonitorData {
    */
   configured?: boolean
   errorText?: string
+  /**
+   * 是否成功融合双通道数据（同时包含 Loon 插件运行状态与机场订阅流量）。
+   */
+  isFused?: boolean
 }
 
 export const DEFAULT_LOON: LoonMonitorData = {
@@ -539,4 +543,5 @@ export const DEFAULT_LOON: LoonMonitorData = {
   // 内置数据只是「尚未拉取」时的占位，卡片据此显示空状态提示
   configured: false,
   errorText: "尚未配置 Loon 订阅或 OpenAPI",
+  isFused: false,
 }
