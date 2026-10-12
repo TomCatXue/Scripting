@@ -3469,7 +3469,13 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
         resetDaysText = "长期有效"
       }
     } else if (bodyJson) {
-      if (bodyJson.upload != null || bodyJson.download != null || bodyJson.total != null) {
+      if (typeof bodyJson.hasTrafficData === "boolean") {
+        hasTrafficData = bodyJson.hasTrafficData
+      } else if (
+        (bodyJson.upload != null && bodyJson.upload > 0) ||
+        (bodyJson.download != null && bodyJson.download > 0) ||
+        (bodyJson.total != null && bodyJson.total > 0)
+      ) {
         hasTrafficData = true
       }
       if (bodyJson.upload != null) uploadBytes = Number(bodyJson.upload) || 0
@@ -3479,6 +3485,8 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
         const expMs = Number(bodyJson.expire) > 10000000000 ? Number(bodyJson.expire) : Number(bodyJson.expire) * 1000
         const diffDays = Math.ceil((expMs - Date.now()) / (86400 * 1000))
         resetDaysText = diffDays > 0 ? `${diffDays} 天后重置` : "已到期"
+      } else if (typeof bodyJson.resetDaysText === "string" && bodyJson.resetDaysText.trim()) {
+        resetDaysText = bodyJson.resetDaysText.trim()
       }
     }
 

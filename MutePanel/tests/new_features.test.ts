@@ -64,8 +64,8 @@ function testLoonPluginArtifacts(): void {
         "插件声明 [Host]，虚拟域名才能在本地解析，否则请求会在 DNS 阶段就失败"
     );
     assert.ok(
-        /loon\.box\s*=\s*127\.0\.0\.1/.test(pluginContent),
-        "loon.box 本地解析到 127.0.0.1"
+        /loon\.box\s*=\s*198\.18\.0\.1/.test(pluginContent),
+        "loon.box 本地解析到 Fake-IP 198.18.0.1 进入 TUN 虚拟网卡"
     );
     assert.ok(
         /^\[Script\]$/m.test(pluginContent),
