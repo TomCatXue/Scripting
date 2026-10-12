@@ -36,7 +36,7 @@ import {
   VStack,
   ZStack,
 } from "scripting"
-import { THEME, formatTime, remainColor, softTint } from "./theme"
+import { THEME, formatDateCompact, formatTime, remainColor, softTint } from "./theme"
 import { SetWidgetSubModeIntent } from "./app_intents"
 
 // ── 通用常量与工具 ───────────────────────────────────────────────
@@ -82,22 +82,20 @@ export function signedText(value: number, digits = 2, suffix = ""): string {
  */
 export const PRICE_FONT_SIZE = 26
 /**
- * 主数值固定占位宽度。
+ * 价格行不设固定列宽，改用「弹性价格 + 固定涨跌列」。
  *
- * 小号组件在 iPhone 15/16 上宽 158pt，减去 SMALL_PAD 左右各 14pt 只剩
- * 130pt 可用。按实际可能出现的取值范围（26pt 压缩字宽）测算：
- *   油价 8.55（4 字符）≈ 41pt
- *   金价 904.48（6 字符）≈ 62pt
- *   金价 1045.00（7 字符）≈ 83pt ← 最长用例
- * 故价格列取 84pt，涨跌列取 40pt（「+1.52%」约 37pt），合计 128pt，
- * 在 130pt 内留 2pt 余量，保证最长的四位数价格也不会挤进涨跌列。
+ * 历史问题：价格列与涨跌列都写死宽度（84 + 4 + 40 = 128pt）后，在
+ * 155pt 及以下的小号组件上必然溢出 —— 系统小号组件尺寸随机型变化：
+ *   430 宽机型 170pt / 390 宽 158pt / 375 宽 155pt 或 148pt / 320 宽 141pt
+ * 扣掉 SMALL_PAD 后内容区仅剩 113~142pt。固定 128pt 的硬需求会让
+ * SwiftUI 压缩弹性最小的一方；而价格带 layoutPriority，被牺牲的就是
+ * 涨跌列 —— 表现正是用户反馈的「涨跌金额看不见」。
  *
- * 两列都固定宽度后，油价与金价共用同一字号渲染，不再出现
- * 「位数少的没缩放、位数多的被缩放」导致的字号不一致。
+ * 现在只固定涨跌列（它必须完整：金额与百分比两行都不能截断），价格改为
+ * 可伸缩并由字号缩放兜底。涨跌列宽度按最长实际文本（「-1.52%」≈37pt）
+ * 留 1pt 余量取 38pt。
  */
-export const PRICE_COLUMN_WIDTH = 84
-/** 右侧涨跌两列的固定宽度（+12.48 / +1.52% 这类文本实测约 37pt） */
-export const PRICE_CHANGE_COLUMN_WIDTH = 40
+export const PRICE_CHANGE_COLUMN_WIDTH = 38
 
 export interface TrendSmallTemplateProps {
   /** 标题，如「Au9999」「92# 汽油」 */
@@ -232,9 +230,13 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
       <Spacer minLength={2} />
 
       {/* 底部：左超大数字，右涨跌两行。
-          价格列与涨跌列都取固定宽度：SwiftUI 只在「放不下」时才启用
-          minScaleFactor，若不固定宽度，位数少的油价不会被缩放、位数多的
-          金价会被缩放 —— 两张卡片的字号看起来就不一致了。 */}
+
+          只固定涨跌列（38pt），价格吃剩余宽度：
+            · 涨跌列必须完整 —— 金额与百分比是「跌了多少」的有效信息，
+              一旦被压缩就出现「涨跌金额不可见」的问题；
+            · 价格有 layoutPriority + 字号缩放，空间不足时由它让位，
+              数字仍能完整读出，不会像涨跌列那样直接消失。
+          两侧都写死宽度会在 155pt 及以下机型上溢出，故不再固定价格列。 */}
       <HStack alignment="lastTextBaseline">
         <Text
           font={PRICE_FONT_SIZE}
@@ -244,20 +246,28 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
           foregroundStyle={THEME.text}
           lineLimit={1}
           allowsTightening={true}
-          minScaleFactor={0.8}
+          minScaleFactor={0.7}
           layoutPriority={1}
-          frame={{ width: PRICE_COLUMN_WIDTH, alignment: "leading" }}
+          frame={{ maxWidth: "infinity", alignment: "leading" }}
         >
           {props.priceText}
         </Text>
         <Spacer minLength={4} />
-        <VStack spacing={0} alignment="trailing" frame={{ width: PRICE_CHANGE_COLUMN_WIDTH }}>
+        {/* 涨跌列固定宽度且不参与压缩，保证金额与百分比永远完整可读 */}
+        <VStack
+          spacing={0}
+          alignment="trailing"
+          frame={{ width: PRICE_CHANGE_COLUMN_WIDTH }}
+        >
           <Text
             font={12}
             fontWeight="semibold"
             monospacedDigit
             foregroundStyle={color}
             lineLimit={1}
+            allowsTightening={true}
+            minScaleFactor={0.85}
+            layoutPriority={1}
           >
             {props.changeText}
           </Text>
@@ -267,6 +277,9 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
             monospacedDigit
             foregroundStyle={color}
             lineLimit={1}
+            allowsTightening={true}
+            minScaleFactor={0.85}
+            layoutPriority={1}
           >
             {props.rateText}
           </Text>
@@ -863,7 +876,7 @@ export function MarketMediumTemplate(props: MarketMediumTemplateProps) {
         </HStack>
         <Spacer />
         <Text font={10} foregroundStyle={THEME.dim} monospacedDigit>
-          {`更新于 ${formatTime(props.updatedAt)}`}
+          {formatDateCompact(props.updatedAt)}
         </Text>
       </HStack>
 

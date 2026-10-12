@@ -146,11 +146,14 @@ export function RefreshButton() {
  */
 export function EmptyStateCard({
   icon,
+  iconImage,
   title,
   message,
   hint,
 }: {
   icon: string
+  /** 品牌图标（可选）：传入时优先于 SF Symbol，保证品牌组件观感统一 */
+  iconImage?: any
   title: string
   message: string
   hint?: string
@@ -166,7 +169,16 @@ export function EmptyStateCard({
     >
       {/* 顶栏：图标 + 标题 + 刷新 */}
       <HStack spacing={6} alignment="center" frame={{ height: 20 }}>
-        <Image systemName={icon} font={13} foregroundStyle={THEME.blue} />
+        {iconImage ? (
+          <Image
+            image={iconImage}
+            resizable={true}
+            scaleToFit={true}
+            frame={{ width: 14, height: 14 }}
+          />
+        ) : (
+          <Image systemName={icon} font={13} foregroundStyle={THEME.blue} />
+        )}
         <Text font={13} fontWeight="bold" foregroundStyle={THEME.text} lineLimit={1}>
           {title}
         </Text>
@@ -1611,7 +1623,12 @@ export function GitHubMediumCard({
       widgetBackground={THEME.cardBg}
     >
       {/* 左侧栏：用户信息与三大指标 */}
-      <VStack alignment="leading" spacing={10} frame={{ width: 146 }}>
+      {/*
+        间距 10 → 24：用户反馈三大指标紧贴头像，视觉上像「头像的附属物」。
+        加大到 24pt 后指标组与头像形成明确的两个信息块，卡片高度仍有余量
+        （44 头像 + 24 间隔 + 约 27 指标 = 95pt，中号组件内容区约 146pt）。
+      */}
+      <VStack alignment="leading" spacing={0} frame={{ width: 146 }}>
         {/* 用户头像与信息 */}
         <HStack spacing={8} alignment="center">
           <Image
@@ -1649,6 +1666,8 @@ export function GitHubMediumCard({
             </Text>
           </VStack>
         </HStack>
+
+        <Spacer minLength={24} />
 
         {/* 三大指标：三列等宽 + 顶端对齐，基准线整齐 */}
         <HStack spacing={4} alignment="top">
@@ -1760,48 +1779,58 @@ export function GitHubMediumCard({
                 >
                   {String(i + 1)}
                 </Text>
+                {/*
+                  仓库名与右侧统计的字号此前都是 11pt/10pt，但仓库名带
+                  layoutPriority 会把可用宽度全部吃掉，SwiftUI 转而压缩
+                  两个统计列，读数被压到 8pt 以下 → 用户反馈「仓库名及后续
+                  关联信息看不清」。这里给三列都明确的缩放下限，并让仓库名
+                  主动省略号截断，保证统计数字始终保持可读字号。
+                */}
                 <Text
-                  font={11}
-                  fontWeight="medium"
+                  font={11.5}
+                  fontWeight="semibold"
                   foregroundStyle={THEME.text}
                   lineLimit={1}
+                  truncationMode="tail"
                   allowsTightening={true}
-                  minScaleFactor={0.75}
+                  minScaleFactor={0.85}
                   layoutPriority={1}
                 >
                   {repo.name}
                 </Text>
-                <Spacer minLength={4} />
-                <HStack alignment="center" spacing={2}>
-                  <Image systemName="star.fill" font={9} foregroundStyle={THEME.orange} />
+                <Spacer minLength={6} />
+                <HStack alignment="center" spacing={2.5}>
+                  <Image systemName="star.fill" font={9.5} foregroundStyle={THEME.orange} />
                   <Text
-                    font={10}
+                    font={11}
                     fontWeight="medium"
-                    foregroundStyle={THEME.dim}
+                    foregroundStyle={THEME.muted}
                     monospacedDigit
                     lineLimit={1}
                     allowsTightening={true}
-                    minScaleFactor={0.8}
+                    minScaleFactor={0.9}
                   >
                     {String(repo.stars)}
                   </Text>
                 </HStack>
-                {/* 固定宽度让 7 行的 fork 数字右对齐；46pt 足够容纳三位数，
-                    相比 52pt 把省下的宽度还给仓库名，减少截断。 */}
-                <HStack alignment="center" spacing={2} frame={{ width: 46, alignment: "trailing" }}>
+                {/* 固定宽度让 7 行的 fork 数字右对齐。
+                    42pt = 图标 9.5 + 间隔 2.5 + 三位数（11pt 下约 27pt），
+                    刚好容纳且不浪费；相比 46pt 把省下的宽度还给仓库名，
+                    减少长仓库名被截断的概率。 */}
+                <HStack alignment="center" spacing={2.5} frame={{ width: 42, alignment: "trailing" }}>
                   <Image
                     systemName="arrow.triangle.branch"
-                    font={9}
+                    font={9.5}
                     foregroundStyle={THEME.purple}
                   />
                   <Text
-                    font={10}
+                    font={11}
                     fontWeight="medium"
-                    foregroundStyle={THEME.dim}
+                    foregroundStyle={THEME.muted}
                     monospacedDigit
                     lineLimit={1}
                     allowsTightening={true}
-                    minScaleFactor={0.8}
+                    minScaleFactor={0.9}
                   >
                     {String(repo.forks)}
                   </Text>
@@ -1829,6 +1858,7 @@ export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
     return (
       <EmptyStateCard
         icon="paperplane.fill"
+        iconImage={brandIcon("loon")}
         title="Loon 监控"
         message={data.errorText || "尚未配置 Loon 订阅或 OpenAPI"}
         hint="在「哑巴面板」设置页填入 Loon 订阅链接或 OpenAPI 地址后即可显示流量"
@@ -1836,12 +1866,23 @@ export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
     )
   }
 
-  /** 次级指标单元：图标 + 标签一行，数值一行 */
-  const stat = (icon: string, label: string, value: string, lineLimit = 1) => (
+  /**
+   * 次级指标单元：图标 + 标签一行，数值一行。
+   *
+   * `centered` 用于数值长度差异明显的列（如「实时延迟 37 ms」）——
+   * 左对齐时该列的短数值会与相邻三列的长数值挤在同一视觉基线上，看起来
+   * 参差不齐；居中后四列各自形成稳定的对称块，观感更整齐。
+   */
+  const stat = (
+    icon: string,
+    label: string,
+    value: string,
+    centered = false
+  ) => (
     <VStack
-      alignment="leading"
+      alignment={centered ? "center" : "leading"}
       spacing={3}
-      frame={{ maxWidth: "infinity", alignment: "leading" }}
+      frame={{ maxWidth: "infinity", alignment: centered ? "center" : "leading" }}
     >
       <HStack spacing={3} alignment="center">
         <Image systemName={icon} font={10} foregroundStyle={THEME.blue} />
@@ -1860,8 +1901,10 @@ export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
         fontWeight="bold"
         foregroundStyle={THEME.text}
         monospacedDigit
-        lineLimit={lineLimit}
+        lineLimit={1}
+        allowsTightening={true}
         minScaleFactor={0.7}
+        frame={centered ? { maxWidth: "infinity", alignment: "center" } : undefined}
       >
         {value}
       </Text>
@@ -1880,7 +1923,14 @@ export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
     >
       {/* 顶部标题栏 */}
       <HStack alignment="center" spacing={6}>
-        <Image systemName="paperplane.fill" font={13} foregroundStyle={THEME.blue} />
+        {/* Loon 官方图标（内嵌 Base64，与插件 #!icon 同源），
+            替换原先的 paperplane.fill 通用符号 */}
+        <BrandHeaderIcon
+          iconName="paperplane.fill"
+          iconColor={THEME.blue}
+          iconImage={brandIcon("loon")}
+          size={15}
+        />
         <Text font={14} fontWeight="bold" foregroundStyle={THEME.text}>
           Loon
         </Text>
@@ -1979,7 +2029,7 @@ export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
       {/* 次级 4 列指标网格 */}
       <HStack alignment="top" spacing={6} frame={{ maxWidth: "infinity" }}>
         {stat("network", "VPN 节点", data.nodeName || data.vpnIp || "当前节点")}
-        {stat("bolt.horizontal.fill", "实时延迟", data.delayText)}
+        {stat("bolt.horizontal.fill", "实时延迟", data.delayText, true)}
         {stat("globe", "剩余流量", data.remainingText)}
         {stat("dial.low.fill", "运行模式", data.runningMode)}
       </HStack>

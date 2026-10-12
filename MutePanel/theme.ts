@@ -139,6 +139,24 @@ export function formatTime(isoOrTimestamp: string | number): string {
   return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`
 }
 
+/**
+ * 紧凑日期：`10.25`（月.日）。
+ *
+ * 小组件右上角空间有限，`更新于 09:41` 这类文案会占掉标题行近一半宽度，
+ * 挤压 VPN IP / 调价胶囊等真正的信息。只显示月日既足够判断数据新旧，
+ * 又能腾出排版空间。年份不同时补上年份（如 `25.10.25`），避免跨年误读。
+ */
+export function formatDateCompact(isoOrTimestamp: string | number): string {
+  const d =
+    typeof isoOrTimestamp === "number"
+      ? new Date(isoOrTimestamp)
+      : new Date(isoOrTimestamp)
+  if (Number.isNaN(d.getTime())) return "--.--"
+  const stamp = `${pad2(d.getMonth() + 1)}.${pad2(d.getDate())}`
+  const thisYear = new Date().getFullYear()
+  return d.getFullYear() === thisYear ? stamp : `${String(d.getFullYear()).slice(-2)}.${stamp}`
+}
+
 export function formatNumber(v: number): string {
   return Number(v || 0).toLocaleString("en-US")
 }

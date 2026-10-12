@@ -195,9 +195,30 @@ async function testFuelSmallTagAlignment(): Promise<void> {
         tpl.includes("export const PRICE_FONT_SIZE"),
         "主数值字号集中定义，油价与金价共用"
     );
+    // 回归：价格列与涨跌列都写死宽度（84+4+40=128pt）时，在 155pt 及以下
+    // 小号组件上必然溢出；价格带 layoutPriority，被牺牲的是涨跌列 → 用户
+    // 反馈「油价下降幅度数值不可见」。现在只固定涨跌列，价格改弹性。
     assert.ok(
-        trend.includes("frame={{ width: PRICE_COLUMN_WIDTH"),
-        "主数值使用固定列宽，保证两张卡片数字实际渲染尺寸一致"
+        trend.includes("frame={{ maxWidth: \"infinity\", alignment: \"leading\" }}"),
+        "价格改为弹性宽度，空间不足时由它让位而不是牺牲涨跌列"
+    );
+    assert.ok(
+        trend.includes("frame={{ width: PRICE_CHANGE_COLUMN_WIDTH }}"),
+        "涨跌列固定宽度，保证金额与百分比完整可读"
+    );
+    assert.ok(
+        tpl.includes("export const PRICE_CHANGE_COLUMN_WIDTH = 38"),
+        "涨跌列宽度按最长文本「-1.52%」实测值取 38pt"
+    );
+    assert.ok(
+        !tpl.includes("PRICE_COLUMN_WIDTH"),
+        "不再保留固定价格列常量（会在小尺寸机型上造成溢出）"
+    );
+    // 涨跌两行都要有缩放下限，避免被压到不可读
+    const changeBlock = trend.slice(trend.indexOf("PRICE_CHANGE_COLUMN_WIDTH"));
+    assert.ok(
+        (changeBlock.match(/layoutPriority=\{1\}/g) || []).length >= 2,
+        "涨跌金额与百分比两行都需高优先级，防止被压缩隐藏"
     );
 }
 
@@ -315,6 +336,141 @@ async function testLoonSettingsHonesty(): Promise<void> {
     );
 }
 
+// ── 10. 右上角时间：紧凑 `10.25` 格式 ──────────────────────────
+async function testCompactDateDisplay(): Promise<void> {
+    resetGlobals();
+    const theme = await import("../theme.ts");
+
+    assert.equal(
+        typeof theme.formatDateCompact,
+        "function",
+        "theme 提供 formatDateCompact"
+    );
+    // 固定时间戳避免受当前日期影响：2026-10-25 09:41 本地时间
+    const oct = new Date(2026, 9, 25, 9, 41).getTime();
+    assert.equal(
+        theme.formatDateCompact(oct),
+        "10.25",
+        "同一年只显示「月.日」，不掺入时间"
+    );
+    assert.ok(
+        !theme.formatDateCompact(oct).includes(":"),
+        "紧凑格式不再包含时分"
+    );
+    assert.equal(theme.formatDateCompact("not-a-date"), "--.--", "非法值安全兜底");
+    // 跨年时补年份，避免误读为今年
+    const old = new Date(2020, 9, 25, 9, 41).getTime();
+    assert.match(
+        theme.formatDateCompact(old),
+        /^20\.10\.25$/,
+        "非本年数据补两位年份，避免跨年误读"
+    );
+
+    const tpl = fs.readFileSync(path.resolve(__dirname, "../templates.tsx"), "utf-8");
+    assert.ok(
+        tpl.includes("formatDateCompact(props.updatedAt)"),
+        "中号行情模板右上角改用紧凑日期"
+    );
+}
+
+// ── 11. GitHub：仓库名与统计数字都保持可读字号 ─────────────────
+async function testGitHubRepoLegibility(): Promise<void> {
+    resetGlobals();
+    const gh = cardsSrc.slice(
+        cardsSrc.indexOf("export function GitHubMediumCard"),
+        cardsSrc.indexOf("export function LoonMediumCard")
+    );
+
+    assert.ok(
+        gh.includes("truncationMode="),
+        "仓库名主动省略号截断，而不是把统计列压到不可读"
+    );
+    // 统计数字此前是 10pt，配合刚性 layoutPriority 会被压到 8pt 以下。
+    // 只校验仓库列表块（左侧指标与热力图图例的 9pt 是有意为之的辅助字号）。
+    const reposBlock = gh.slice(gh.indexOf("{top7.map"), gh.indexOf("{/* 竖向分隔线 */}") > 0
+        ? gh.indexOf("{top7.map") + 6000
+        : gh.length);
+    assert.ok(
+        !/font=\{9\}/.test(reposBlock),
+        "仓库列表不再出现 9pt 级字号"
+    );
+    const mins = [...reposBlock.matchAll(/minScaleFactor=\{([\d.]+)\}/g)].map((m) => Number(m[1]));
+    assert.ok(mins.length > 0, "统计区域声明了缩放下限");
+    assert.ok(
+        mins.every((v) => v >= 0.85),
+        `仓库列表缩放下限不低于 0.85，避免被压成微字（实际 ${Math.min(...mins)}）`
+    );
+}
+
+// ── 12. GitHub 左侧指标与头像拉开间距 ──────────────────────────
+async function testGitHubMetricSpacing(): Promise<void> {
+    resetGlobals();
+    const gh = cardsSrc.slice(
+        cardsSrc.indexOf("export function GitHubMediumCard"),
+        cardsSrc.indexOf("export function LoonMediumCard")
+    );
+    assert.ok(
+        gh.includes("Spacer minLength={24}"),
+        "三大指标与头像之间插入 24pt 间隔"
+    );
+    assert.ok(
+        !gh.includes('spacing={10} frame={{ width: 146 }}'),
+        "不再用统一的 spacing=10 让指标紧贴头像"
+    );
+}
+
+// ── 13. Loon：延迟数值居中 + 官方图标 ──────────────────────────
+async function testLoonCenteredDelayAndIcon(): Promise<void> {
+    resetGlobals();
+    // 注意：BentoLargeGridCard 在文件中位于 LoonMediumCard 之前，
+    // 不能用它作结束边界（会切出空串）。LoonMediumCard 之后是非导出辅助函数。
+    const loon = cardsSrc.slice(
+        cardsSrc.indexOf("export function LoonMediumCard"),
+        cardsSrc.indexOf("export function LoonSmallCard") > 0
+            ? cardsSrc.indexOf("export function LoonSmallCard")
+            : cardsSrc.length
+    );
+    assert.ok(loon.length > 500, "成功切出 Loon 中号卡片代码块");
+    assert.ok(
+        /stat\(\s*"bolt\.horizontal\.fill"\s*,\s*"实时延迟"\s*,\s*data\.delayText\s*,\s*true\s*\)/.test(
+            loon
+        ),
+        "实时延迟使用居中模式"
+    );
+    assert.ok(
+        loon.includes('alignment={centered ? "center" : "leading"}'),
+        "stat 支持居中/左对齐两种模式"
+    );
+
+    const icons = fs.readFileSync(path.resolve(__dirname, "../icons.ts"), "utf-8");
+    assert.ok(
+        icons.includes("loon:"),
+        "icons.ts 内嵌 Loon 官方图标"
+    );
+    assert.ok(
+        icons.includes('kind: "workbuddy" | "codex" | "antigravity" | "loon"'),
+        "brandIcon 的 kind 联合类型包含 loon"
+    );
+    // 必须在「顶栏」区块内校验：LoonMediumCard 的空状态里也有一个
+    // brandIcon("loon")，只查整个函数体会被它掩盖，导致图标回退测不出来。
+    const headerStart = loon.indexOf("{/* 顶部标题栏 */}");
+    const headerEnd = loon.indexOf("{/* 中部核心流量指标");
+    assert.ok(headerStart > 0 && headerEnd > headerStart, "定位到 Loon 顶栏代码块");
+    const header = loon.slice(headerStart, headerEnd);
+    assert.ok(
+        header.includes('iconImage={brandIcon("loon")}'),
+        "Loon 顶栏通过 iconImage 传入官方图标"
+    );
+    assert.ok(
+        !header.includes("systemName={iconName"),
+        "顶栏图标不再无条件回落到 SF Symbol（由 BrandHeaderIcon 兜底）"
+    );
+    assert.ok(
+        header.includes("<BrandHeaderIcon"),
+        "顶栏使用统一的 BrandHeaderIcon 渲染品牌图标"
+    );
+}
+
 const tests: [string, () => Promise<void> | void][] = [
     ["油价小号百分比显示", testFuelSmallPercentage],
     ["GitHub 头像无灰框且支持热力图", testGitHubAvatarAndHeatmap],
@@ -325,6 +481,10 @@ const tests: [string, () => Promise<void> | void][] = [
     ["WorkBuddy 账号已签/总数比率", testWorkBuddySignedRatio],
     ["胶囊视觉统一", testCapsuleConsistency],
     ["Loon 设置页连接状态判定", testLoonSettingsHonesty],
+    ["右上角紧凑日期格式", testCompactDateDisplay],
+    ["GitHub 仓库信息可读性", testGitHubRepoLegibility],
+    ["GitHub 左侧指标间距", testGitHubMetricSpacing],
+    ["Loon 延迟居中与官方图标", testLoonCenteredDelayAndIcon],
 ];
 
 let passed = 0;
