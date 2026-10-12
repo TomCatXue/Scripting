@@ -15,7 +15,7 @@ import {
   ZStack,
 } from "scripting"
 import { RefreshWidgetIntent, SetWidgetSubModeIntent } from "./app_intents"
-import { THEME, formatPct, formatTime, remainColor } from "./theme"
+import { THEME, formatPct, formatTime, remainColor, softTint } from "./theme"
 import { brandIcon } from "./icons"
 import {
   AiSmallTemplate,
@@ -1185,8 +1185,8 @@ export interface BentoModuleDef {
 
 /** 单个 Bento 微应用卡片 */
 function BentoCard({ mod }: { mod: BentoModuleDef }) {
+  // 涨/跌标签：沿用与其它卡片一致的胶囊几何，避免大号看板里出现第三种圆角语言。
   const tagColor = mod.tagUp ? THEME.red : THEME.green
-  const tagBg = mod.tagUp ? "rgba(239,68,68,0.12)" : "rgba(16,185,129,0.12)"
 
   return (
     <VStack
@@ -1214,14 +1214,19 @@ function BentoCard({ mod }: { mod: BentoModuleDef }) {
         </Text>
         <Spacer />
         {mod.tag ? (
-          <HStack
-            padding={{ top: 1, bottom: 1, leading: 4, trailing: 4 }}
-            widgetBackground={tagBg}
+          <Text
+            font={10}
+            fontWeight="semibold"
+            foregroundStyle={tagColor}
+            lineLimit={1}
+            allowsTightening={true}
+            minScaleFactor={0.85}
+            padding={{ top: 2.5, bottom: 2.5, leading: 6, trailing: 6 }}
+            background={softTint(tagColor) as any}
+            clipShape="capsule"
           >
-            <Text font={10} fontWeight="bold" foregroundStyle={tagColor} lineLimit={1}>
-              {mod.tag}
-            </Text>
-          </HStack>
+            {mod.tag}
+          </Text>
         ) : null}
       </HStack>
 
@@ -1461,6 +1466,50 @@ function getGithubContributionColor(level: number): any {
  * 配色：全部走 THEME 语义色（浅色深灰 / 深色纯白），不再写死 #FFFFFF。
  * 排版：三列等宽 + 顶端对齐，标签/数值行固定行高，保证三项标签在同一水平线。
  */
+/**
+ * 统一轻量胶囊标签。
+ *
+ * 旧实现在 `HStack` 上用 `widgetBackground` + `cornerRadius`，圆角半径与
+ * 实际高度不匹配（高度约 17pt 却用 4pt 圆角），看起来是一个歪斜的色块。
+ * 这里统一为「半圆端」胶囊：固定高度、圆角 = 高度一半、内边距对称，
+ * 并让底色用低饱和的品牌色，保证浅色/深色下都不刺眼。
+ */
+export function CompactChip({
+  text,
+  tint = THEME.blue,
+  intent,
+  width,
+}: {
+  text: string
+  tint?: any
+  intent?: any
+  width?: number
+}) {
+  const content = (
+    <Text
+      font={10}
+      fontWeight="semibold"
+      foregroundStyle={tint}
+      lineLimit={1}
+      allowsTightening={true}
+      minScaleFactor={0.8}
+      padding={{ leading: 7, trailing: 7, top: 3, bottom: 3 }}
+      frame={width ? { width, alignment: "center" } : undefined}
+      background={softTint(tint) as any}
+      clipShape="capsule"
+    >
+      {text}
+    </Text>
+  )
+
+  if (!intent) return content
+  return (
+    <Button intent={intent} buttonStyle="plain">
+      {content}
+    </Button>
+  )
+}
+
 export function GitHubMediumCard({
   data,
   submode,
@@ -1513,37 +1562,36 @@ export function GitHubMediumCard({
       frame={{ maxWidth: "infinity", alignment: "leading" }}
     >
       <HStack spacing={2} alignment="center" frame={{ maxWidth: "infinity", height: 15 }}>
-        <Image systemName={icon} font={10} foregroundStyle={iconColor} />
+        <Image systemName={icon} font={9} foregroundStyle={iconColor} />
         <Text
-          font={13}
+          font={12}
           fontWeight="bold"
           foregroundStyle={THEME.text}
           monospacedDigit
           lineLimit={1}
           allowsTightening={true}
-          minScaleFactor={0.65}
+          minScaleFactor={0.6}
         >
           {String(value)}
         </Text>
         <Text
-          font={10}
+          font={9}
           fontWeight="semibold"
           foregroundStyle={deltaColor(delta)}
           monospacedDigit
           lineLimit={1}
           allowsTightening={true}
-          minScaleFactor={0.65}
+          minScaleFactor={0.6}
         >
           {formatDelta(delta)}
         </Text>
       </HStack>
       <Text
-        font={10}
-        fontWeight="medium"
+        font={9}
         foregroundStyle={THEME.dim}
         lineLimit={1}
         allowsTightening={true}
-        minScaleFactor={0.65}
+        minScaleFactor={0.6}
         frame={{ maxWidth: "infinity", height: 12, alignment: "leading" }}
       >
         {label}
@@ -1554,8 +1602,8 @@ export function GitHubMediumCard({
   return (
     <HStack
       spacing={12}
-      alignment="top"
-      padding={{ top: 11, bottom: 11, leading: 14, trailing: 14 }}
+      alignment="center"
+      padding={{ top: 12, bottom: 12, leading: 14, trailing: 14 }}
       // frame 必须在 widgetBackground 之前：SwiftUI 修饰符是「从内向外」叠加，
       // frame 写在后面会让背景只铺满内容自然尺寸，多出来的区域透出系统底色，
       // 看起来就是「同一条边一侧白、一侧灰」。
@@ -1563,9 +1611,9 @@ export function GitHubMediumCard({
       widgetBackground={THEME.cardBg}
     >
       {/* 左侧栏：用户信息与三大指标 */}
-      <VStack alignment="leading" spacing={10} frame={{ width: 148 }}>
+      <VStack alignment="leading" spacing={10} frame={{ width: 146 }}>
         {/* 用户头像与信息 */}
-        <HStack spacing={9} alignment="center">
+        <HStack spacing={8} alignment="center">
           <Image
             imageUrl={data.avatarUrl || `https://github.com/${data.username}.png`}
             clipShape="circle"
@@ -1573,9 +1621,9 @@ export function GitHubMediumCard({
             scaleToFit={true}
             frame={{ width: 44, height: 44 }}
           />
-          <VStack alignment="leading" spacing={1.5} frame={{ maxWidth: "infinity" }}>
+          <VStack alignment="leading" spacing={1} frame={{ maxWidth: "infinity" }}>
             <Text
-              font={15}
+              font={14}
               fontWeight="bold"
               foregroundStyle={THEME.text}
               lineLimit={1}
@@ -1584,8 +1632,7 @@ export function GitHubMediumCard({
               {data.name || data.username}
             </Text>
             <Text
-              font={12}
-              fontWeight="medium"
+              font={11}
               foregroundStyle={THEME.dim}
               lineLimit={1}
               minScaleFactor={0.75}
@@ -1593,7 +1640,7 @@ export function GitHubMediumCard({
               @{data.username}
             </Text>
             <Text
-              font={11}
+              font={10}
               foregroundStyle={THEME.dim}
               lineLimit={1}
               minScaleFactor={0.75}
@@ -1620,16 +1667,15 @@ export function GitHubMediumCard({
 
       {/* 右侧栏：Top 7 热门仓库列表 / 贡献热力图切换 */}
       <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
-        {/* 顶栏：上移对齐，与左侧顶端齐平 */}
-        <HStack alignment="center" spacing={4} frame={{ height: 20 }}>
+        <HStack alignment="center" spacing={4}>
           <Image
             systemName={isHeatmap ? "calendar" : "chevron.left.forwardslash.chevron.right"}
             font={11}
             foregroundStyle={THEME.blue}
           />
           <Text
-            font={12}
-            fontWeight="bold"
+            font={11}
+            fontWeight="semibold"
             foregroundStyle={THEME.text}
             lineLimit={1}
             minScaleFactor={0.8}
@@ -1637,21 +1683,11 @@ export function GitHubMediumCard({
             {isHeatmap ? "贡献热力图" : "热门仓库"}
           </Text>
           <Spacer />
-          <Button
+          <CompactChip
+            text={isHeatmap ? "看仓库" : "热力图"}
+            tint={THEME.blue}
             intent={SetWidgetSubModeIntent(`github:${isHeatmap ? "repos" : "heatmap"}`)}
-            buttonStyle="plain"
-          >
-            <Text
-              font={10}
-              fontWeight="medium"
-              foregroundStyle={THEME.blue}
-              padding={{ horizontal: 5, vertical: 2 }}
-              background={{ light: "rgba(0,122,255,0.08)", dark: "rgba(10,132,255,0.16)" } as any}
-              clipShape={{ type: "rect", cornerRadius: 4, style: "continuous" }}
-            >
-              {isHeatmap ? "看仓库" : "热力图"}
-            </Text>
-          </Button>
+          />
           <RefreshButton />
         </HStack>
 
@@ -1706,14 +1742,21 @@ export function GitHubMediumCard({
             </HStack>
           </VStack>
         ) : (
-          <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
+          <VStack alignment="leading" spacing={0} frame={{ maxWidth: "infinity" }}>
             {top7.map((repo, i) => (
-              <HStack key={repo.name || String(i)} alignment="center" spacing={4}>
+              // 固定行高：7 行仓库的基线完全等距，长仓库名不会把右侧数字挤走。
+              <HStack
+                key={repo.name || String(i)}
+                alignment="center"
+                spacing={4}
+                frame={{ maxWidth: "infinity", height: 17 }}
+              >
                 <Text
-                  font={11}
+                  font={10}
                   fontWeight="bold"
                   foregroundStyle={i < 3 ? THEME.orange : THEME.dim}
-                  frame={{ width: 12 }}
+                  monospacedDigit
+                  frame={{ width: 10 }}
                 >
                   {String(i + 1)}
                 </Text>
@@ -1724,28 +1767,41 @@ export function GitHubMediumCard({
                   lineLimit={1}
                   allowsTightening={true}
                   minScaleFactor={0.75}
+                  layoutPriority={1}
                 >
                   {repo.name}
                 </Text>
-                <Spacer />
+                <Spacer minLength={4} />
                 <HStack alignment="center" spacing={2}>
-                  <Image systemName="star.fill" font={9.5} foregroundStyle={THEME.orange} />
+                  <Image systemName="star.fill" font={9} foregroundStyle={THEME.orange} />
                   <Text
-                    font={11}
+                    font={10}
                     fontWeight="medium"
                     foregroundStyle={THEME.dim}
                     monospacedDigit
+                    lineLimit={1}
+                    allowsTightening={true}
+                    minScaleFactor={0.8}
                   >
                     {String(repo.stars)}
                   </Text>
                 </HStack>
-                <HStack alignment="center" spacing={2}>
-                  <Image systemName="arrow.triangle.branch" font={9.5} foregroundStyle={THEME.purple} />
+                {/* 固定宽度让 7 行的 fork 数字右对齐；46pt 足够容纳三位数，
+                    相比 52pt 把省下的宽度还给仓库名，减少截断。 */}
+                <HStack alignment="center" spacing={2} frame={{ width: 46, alignment: "trailing" }}>
+                  <Image
+                    systemName="arrow.triangle.branch"
+                    font={9}
+                    foregroundStyle={THEME.purple}
+                  />
                   <Text
-                    font={11}
+                    font={10}
                     fontWeight="medium"
                     foregroundStyle={THEME.dim}
                     monospacedDigit
+                    lineLimit={1}
+                    allowsTightening={true}
+                    minScaleFactor={0.8}
                   >
                     {String(repo.forks)}
                   </Text>

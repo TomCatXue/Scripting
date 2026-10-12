@@ -1054,7 +1054,13 @@ async function configureLoonSettings() {
     saveLoonUrl("http://loon.box/api/monitor")
     await refreshLoonData()
     Widget.reloadAll()
-    await gAlert("✓ 已切换为 Loon 本地插件直连模式！\n\n地址：http://loon.box/api/monitor\n请确保已在 Loon 安装 LoonMonitor 插件。")
+    await gAlert(
+      "✓ 已切换为 Loon 本地插件直连模式！\n\n" +
+        "地址：http://loon.box/api/monitor\n\n" +
+        "请先在 Loon 导入 LoonMonitor 插件（插件 → 右上角 + → URL 导入）：\n" +
+        "https://cdn.jsdelivr.net/gh/TomCatXue/MyCookieCenter@main/loon/LoonMonitor.plugin\n\n" +
+        "导入后点下方「测试连接并立即刷新」确认已接通。"
+    )
   } else if (action.includes("链接")) {
     const input = await gPrompt(
       "请输入 Loon 订阅链接或 OpenAPI 地址 (支持包含 subscription-userinfo 响应头的链接)",
@@ -1068,13 +1074,25 @@ async function configureLoonSettings() {
     }
   } else if (action === "测试连接并立即刷新") {
     const res = await refreshLoonData()
-    if (res) {
+    // refreshLoonData 永远返回对象，失败时会带上 errorText（即使有历史缓存
+    // 也会标记本次刷新失败）。早期只用 `if (res)` 判断，插件没接通时也弹
+    // 「获取成功」，用户因此无法分辨插件到底有没有工作。
+    const fresh = res.configured && !res.errorText
+    if (fresh) {
       Widget.reloadAll()
       await gAlert(
         `✓ Loon 状态获取成功！\n\nVPN 出口：${res.vpnIp || "--"}\n节点归属：${res.vpnLocation || "--"}\n累计下行：${res.downloadText}\n累计上行：${res.uploadText}\n剩余流量：${res.remainingText}\n运行模式：${res.runningMode}\n策略组数：${res.policyGroupCount}\n实时延迟：${res.delayText}\n总额：${res.totalText}`
       )
     } else {
-      await gAlert("获取 Loon 数据失败，请检查网络与链接。")
+      await gAlert(
+        "✗ 未能接通 Loon 监控数据\n\n" +
+          `原因：${res.errorText || "LoonMonitor 插件未返回数据"}\n\n` +
+          "排查顺序：\n" +
+          "0. 直连地址必须是 http://loon.box/api/monitor（明文 HTTP）；\n" +
+          "1. Loon 已开启且 LoonMonitor 插件处于启用状态；\n" +
+          "2. 插件已更新到最新版（v1.3.0+），旧版拦截规则不同；\n" +
+          "3. 在 Loon 中刷新一次机场订阅，以便捕获流量配额。"
+      )
     }
   } else if (action === "清除配置 (恢复默认)") {
     saveLoonUrl("")

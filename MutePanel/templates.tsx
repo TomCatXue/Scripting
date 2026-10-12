@@ -36,7 +36,7 @@ import {
   VStack,
   ZStack,
 } from "scripting"
-import { THEME, formatTime, remainColor } from "./theme"
+import { THEME, formatTime, remainColor, softTint } from "./theme"
 import { SetWidgetSubModeIntent } from "./app_intents"
 
 // ── 通用常量与工具 ───────────────────────────────────────────────
@@ -69,6 +69,35 @@ export function signedText(value: number, digits = 2, suffix = ""): string {
 // ═════════════════════════════════════════════════════════════════
 // 1. 小号行情走势图模板（金价 / 油价 / 其他行情类）
 // ═════════════════════════════════════════════════════════════════
+
+/**
+ * 行情小号卡主数值字号。
+ *
+ * 油价（如 8.55，4 字符）与金价（如 904.48，6 字符）此前共用同一字号，
+ * 但 SwiftUI 只在「放不下」时才启用 minScaleFactor —— 于是位数多的金价被
+ * 缩小、位数少的油价保持原尺寸，两张卡片看起来字号不一致。
+ *
+ * 这里选一个「最长价格也能完整放下」的字号，并给价格一个固定宽度，
+ * 两张卡片的数字实际渲染尺寸因此完全相同。
+ */
+export const PRICE_FONT_SIZE = 26
+/**
+ * 主数值固定占位宽度。
+ *
+ * 小号组件在 iPhone 15/16 上宽 158pt，减去 SMALL_PAD 左右各 14pt 只剩
+ * 130pt 可用。按实际可能出现的取值范围（26pt 压缩字宽）测算：
+ *   油价 8.55（4 字符）≈ 41pt
+ *   金价 904.48（6 字符）≈ 62pt
+ *   金价 1045.00（7 字符）≈ 83pt ← 最长用例
+ * 故价格列取 84pt，涨跌列取 40pt（「+1.52%」约 37pt），合计 128pt，
+ * 在 130pt 内留 2pt 余量，保证最长的四位数价格也不会挤进涨跌列。
+ *
+ * 两列都固定宽度后，油价与金价共用同一字号渲染，不再出现
+ * 「位数少的没缩放、位数多的被缩放」导致的字号不一致。
+ */
+export const PRICE_COLUMN_WIDTH = 84
+/** 右侧涨跌两列的固定宽度（+12.48 / +1.52% 这类文本实测约 37pt） */
+export const PRICE_CHANGE_COLUMN_WIDTH = 40
 
 export interface TrendSmallTemplateProps {
   /** 标题，如「Au9999」「92# 汽油」 */
@@ -120,7 +149,16 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
       frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
       widgetBackground={{ light: "#FFFFFF", dark: "#161719" }}
     >
-      {/* Header：涨跌三角 + 标题 + 右上角调价标签 */}
+      {/*
+        Header：涨跌三角 + 标题 + 右上角调价胶囊。
+
+        小号组件宽 158pt，去掉 SMALL_PAD 只剩 130pt。实测这一行：
+        三角 13 + 标题「92#」29 + 间距 5 + 胶囊「10月15日调价」74 + 间隔 4
+        ≈ 125pt，可以放下；但若胶囊没有布局优先级，SwiftUI 会优先压缩它
+        （胶囊本来是弹性最小的一方），一路压到接近 0 宽 —— 这正是之前
+        「调价信息完全不可见」的原因。这里给胶囊 layoutPriority，并让标题
+        承担缩放，保证调价信息在任何数据下都完整可见。
+      */}
       <HStack spacing={5} alignment="center">
         <Image
           systemName={trendSymbol(props.isUp)}
@@ -132,26 +170,27 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
           fontWeight="semibold"
           foregroundStyle={THEME.text}
           lineLimit={1}
+          allowsTightening={true}
           minScaleFactor={0.7}
         >
           {props.title}
         </Text>
-        <Spacer />
+        <Spacer minLength={4} />
         {props.tagText ? (
-          <HStack
-            padding={{ leading: 5, trailing: 5, top: 1.5, bottom: 1.5 }}
-            widgetBackground={{ light: "rgba(0,0,0,0.05)", dark: "rgba(255,255,255,0.08)" }}
-            cornerRadius={4}
+          <Text
+            font={10}
+            fontWeight="semibold"
+            foregroundStyle={color}
+            lineLimit={1}
+            allowsTightening={true}
+            minScaleFactor={0.9}
+            layoutPriority={1}
+            padding={{ leading: 5, trailing: 5, top: 2.5, bottom: 2.5 }}
+            background={softTint(color) as any}
+            clipShape="capsule"
           >
-            <Text
-              font={10}
-              fontWeight="medium"
-              foregroundStyle={THEME.dim}
-              lineLimit={1}
-            >
-              {props.tagText}
-            </Text>
-          </HStack>
+            {props.tagText}
+          </Text>
         ) : null}
       </HStack>
       <Text
@@ -159,6 +198,7 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
         fontWeight="semibold"
         foregroundStyle={THEME.dim}
         lineLimit={1}
+        allowsTightening={true}
         minScaleFactor={0.7}
       >
         {props.subtitle}
@@ -191,21 +231,27 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
 
       <Spacer minLength={2} />
 
-      {/* 底部：左超大数字，右涨跌两行 */}
-      <HStack alignment="bottom">
+      {/* 底部：左超大数字，右涨跌两行。
+          价格列与涨跌列都取固定宽度：SwiftUI 只在「放不下」时才启用
+          minScaleFactor，若不固定宽度，位数少的油价不会被缩放、位数多的
+          金价会被缩放 —— 两张卡片的字号看起来就不一致了。 */}
+      <HStack alignment="lastTextBaseline">
         <Text
-          font={34}
+          font={PRICE_FONT_SIZE}
           fontWeight="bold"
           fontWidth="compressed"
           monospacedDigit
           foregroundStyle={THEME.text}
           lineLimit={1}
-          minScaleFactor={0.55}
+          allowsTightening={true}
+          minScaleFactor={0.8}
+          layoutPriority={1}
+          frame={{ width: PRICE_COLUMN_WIDTH, alignment: "leading" }}
         >
           {props.priceText}
         </Text>
         <Spacer minLength={4} />
-        <VStack spacing={0} alignment="trailing">
+        <VStack spacing={0} alignment="trailing" frame={{ width: PRICE_CHANGE_COLUMN_WIDTH }}>
           <Text
             font={12}
             fontWeight="semibold"
@@ -800,14 +846,19 @@ export function MarketMediumTemplate(props: MarketMediumTemplateProps) {
             {props.title}
           </Text>
           {props.badgeText ? (
-            <HStack
-              padding={{ top: 1, bottom: 1, leading: 5, trailing: 5 }}
-              widgetBackground={props.badgeBg}
+            <Text
+              font={11}
+              fontWeight="semibold"
+              foregroundStyle={props.badgeColor}
+              lineLimit={1}
+              allowsTightening={true}
+              minScaleFactor={0.9}
+              padding={{ top: 3, bottom: 3, leading: 8, trailing: 8 }}
+              background={props.badgeBg}
+              clipShape="capsule"
             >
-              <Text font={11} fontWeight="bold" foregroundStyle={props.badgeColor} lineLimit={1}>
-                {props.badgeText}
-              </Text>
-            </HStack>
+              {props.badgeText}
+            </Text>
           ) : null}
         </HStack>
         <Spacer />
@@ -822,22 +873,21 @@ export function MarketMediumTemplate(props: MarketMediumTemplateProps) {
       <HStack spacing={6} frame={{ maxWidth: "infinity" }}>
         {props.items.map((item, idx) => (
           <VStack key={idx} alignment="center" spacing={6} frame={{ maxWidth: "infinity" }}>
-            <HStack
-              alignment="center"
-              padding={{ top: 2.5, bottom: 2.5, leading: 7, trailing: 7 }}
+            {/* 品类标签：统一胶囊几何（垂直 3 / 水平 7、真胶囊端），
+                与顶部涨跌徽章、GitHub 切换胶囊保持同一视觉语言。 */}
+            <Text
+              font={11}
+              fontWeight="semibold"
+              foregroundStyle={item.textColor as any}
+              lineLimit={1}
+              allowsTightening={true}
+              minScaleFactor={0.9}
+              padding={{ top: 3, bottom: 3, leading: 7, trailing: 7 }}
               background={item.tagBg}
-              clipShape={{ type: "rect", cornerRadius: 5 }}
+              clipShape="capsule"
             >
-              <Text
-                font={11}
-                fontWeight="bold"
-                foregroundStyle={item.textColor as any}
-                lineLimit={1}
-                allowsTightening={true}
-              >
-                {item.name}
-              </Text>
-            </HStack>
+              {item.name}
+            </Text>
             <HStack
               alignment="center"
               padding={{ top: 6, bottom: 6, leading: 4, trailing: 4 }}

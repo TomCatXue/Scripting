@@ -96,6 +96,36 @@ export function remainColor(pct: number): any {
   return REMAIN_STOPS[REMAIN_STOPS.length - 1][1] as any
 }
 
+/**
+ * 把强调色转成同色系的低饱和底：用于胶囊标签、徽章等需要「淡一档」的表面。
+ *
+ * 直接给标签填满品牌色会盖过高亮文字，而固定写死 rgba 又无法跟随主题。
+ * 这里按当前外观把色相拉到低透明度，浅色背景上仍是柔和的淡色底。
+ */
+export function softTint(color: any, alphaLight = 0.12, alphaDark = 0.2): any {
+  const hexOf = (v: any): string | null => {
+    if (typeof v === "string") return v
+    if (v && typeof v === "object" && typeof v.light === "string") return v.light
+    return null
+  }
+  const toRgba = (hex: string, alpha: number) => {
+    const m = /^#?([\da-f]{6})$/i.exec(String(hex).trim())
+    if (!m) return hex
+    const n = parseInt(m[1], 16)
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${alpha})`
+  }
+  const lightSrc = hexOf(color)
+  const darkSrc =
+    (color && typeof color === "object" && typeof color.dark === "string"
+      ? color.dark
+      : lightSrc) || lightSrc
+  if (!lightSrc || !darkSrc) return color
+  return {
+    light: toRgba(lightSrc, alphaLight),
+    dark: toRgba(darkSrc, alphaDark),
+  }
+}
+
 export function pad2(n: number): string {
   return String(n).padStart(2, "0")
 }

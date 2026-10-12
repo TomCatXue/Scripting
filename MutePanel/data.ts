@@ -3546,7 +3546,17 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
         errorText: `Loon 数据获取失败：未连接到 LoonMonitor 插件 (请在 Loon 启用插件，或配置订阅链接)`,
       }
     }
-    return fallback
+    // 有历史缓存时仍然展示（数据可用），但必须标记「本次刷新失败」，
+    // 否则设置页的「测试连接」会把过期缓存误报成接通成功。
+    const cachedAt = fallback.updatedAt ? new Date(fallback.updatedAt) : null
+    const cachedText =
+      cachedAt && !Number.isNaN(cachedAt.getTime())
+        ? `${String(cachedAt.getHours()).padStart(2, "0")}:${String(cachedAt.getMinutes()).padStart(2, "0")}`
+        : "上次"
+    return {
+      ...fallback,
+      errorText: `刷新失败：正在展示 ${cachedText} 的缓存数据 (请检查 LoonMonitor 插件是否启用)`,
+    }
   }
   return getLoonData()
 }
