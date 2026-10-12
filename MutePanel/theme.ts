@@ -175,7 +175,7 @@ export function formatPct(v: number): string {
  * 严格遵循 iOS Dynamic Type 比例尺与统一边距，全面清除 < 10pt 亚像素微字
  */
 export const HIG_FONT = {
-  heroNumber: 28,      // 小号核心数值：配合 fontWidth=compressed 防止溢出
+  heroNumber: 28,      // 小号核心数值
   mediumHero: 32,      // 中号核心数值
   statLarge: 20,       // 中号关键看板数字
   statMedium: 16,      // 次级看板数字

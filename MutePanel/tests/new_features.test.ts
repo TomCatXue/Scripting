@@ -244,9 +244,19 @@ async function testGitHubMediumRefinements(): Promise<void> {
         ghCardSlice.includes('height: 17'),
         "7 行仓库固定等高，标签基线整齐"
     );
+    // 回归：仓库名曾带 layoutPriority，抢光宽度把星标数字压成 0 宽而消失。
+    // 现在改为「星标列与 Fork 列各自固定 42pt + 仓库名弹性截断」。
+    const reposBlock = ghCardSlice.slice(
+        ghCardSlice.indexOf("{top7.map"),
+        ghCardSlice.indexOf("{top7.map") + 6000
+    );
     assert.ok(
-        ghCardSlice.includes("layoutPriority={1}"),
-        "仓库名拥有布局优先级，长名字不会把 Stars/Fork 数字挤出可视区"
+        !reposBlock.includes("layoutPriority={1}"),
+        "仓库名不再独占布局优先级（会把星标数字挤出可视区）"
+    );
+    assert.ok(
+        (reposBlock.match(/frame=\{\{ width: 42, alignment: "trailing" \}\}/g) || []).length >= 2,
+        "星标列与 Fork 列都固定 42pt，两列数字始终完整可见"
     );
     assert.ok(
         ghCardSlice.includes("CompactChip"),

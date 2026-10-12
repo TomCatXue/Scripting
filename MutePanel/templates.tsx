@@ -132,7 +132,19 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
   const values = info.length > 0 ? info.map((d) => d.value) : [0]
   const minY = Math.min(...values)
   const color = trendColor(props.isUp)
-  // 平移到 0 基线让走势线占满图高（与模版 value - minY 一致）
+  /*
+   * 平移到 0 基线，并显式锁定 Y 轴域 [0, 跨度]。
+   *
+   * 只把数据平移是不够的：Chart 会自动把 Y 轴域向外扩展到「整齐刻度」，
+   * 于是最小值落在基线之上、曲线整体被顶到绘图区顶部，下面空出一大片
+   * ——用户看到的「线下面一大批空白」正是这个原因。
+   *
+   * 显式给 chartYScale 后，最小值贴住底边、最大值贴住顶边，曲线铺满绘图区。
+   * 跨度加 1% 余量，避免极值正好压在边界上被裁掉。
+   */
+  // 全平序列（跨度 0）时给一个最小域，避免上下界相等导致绘图区塌陷
+  const span = Math.max(Math.max(...values) - minY, Math.abs(minY) * 0.01, 0.01)
+  const yScale = { from: -span * 0.01, to: span * 1.01 }
   const marks = info.map((d, idx) => ({
     label: String(idx),
     value: d.value - minY,
@@ -205,12 +217,13 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
       </Text>
 
       {/* 走势线：隐藏坐标轴，仅保留平滑曲线。
-          高度紧凑化至 36pt，确保在 141~148pt 极小尺寸下内容区总高不超过 113pt，
-          底部价格与涨跌两行永远完整展开不被折叠或挤压。 */}
+          显式锁定 Y 轴域后曲线铺满 36pt 绘图区，下方不再出现空白；
+          与价格数字之间保留 6pt 间隔，既有呼吸感又不浪费高度。 */}
       {hasTrend ? (
         <Chart
           chartXAxis="hidden"
           chartYAxis="hidden"
+          chartYScale={yScale}
           frame={{ maxWidth: "infinity", height: 36 }}
           padding={{ top: 1, bottom: 1 }}
         >
@@ -230,7 +243,7 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
         </HStack>
       )}
 
-      <Spacer minLength={2} />
+      <Spacer minLength={6} />
 
       {/* 底部：左超大数字，右涨跌两行。
 
@@ -244,7 +257,6 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
         <Text
           font={PRICE_FONT_SIZE}
           fontWeight="bold"
-          fontWidth="compressed"
           monospacedDigit
           foregroundStyle={THEME.text}
           lineLimit={1}
@@ -266,7 +278,6 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
             font={HIG_FONT.subhead}
             fontWeight="semibold"
             monospacedDigit
-            fontWidth="compressed"
             foregroundStyle={color}
             lineLimit={1}
             allowsTightening={true}
@@ -279,7 +290,6 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
             font={HIG_FONT.subhead}
             fontWeight="semibold"
             monospacedDigit
-            fontWidth="compressed"
             foregroundStyle={color}
             lineLimit={1}
             allowsTightening={true}
@@ -379,8 +389,7 @@ export function AiMetricCell({ cell }: { cell: AiSmallCell }) {
       >
         <Text
           font={HIG_FONT.statMedium}
-          fontWeight="heavy"
-          fontWidth="compressed"
+          fontWeight="bold"
           foregroundStyle={cell.valueColor || THEME.text}
           monospacedDigit
           lineLimit={1}
@@ -668,7 +677,7 @@ export function WaveformMediumTemplate(props: WaveformMediumTemplateProps) {
           {props.mainLabel}
         </Text>
 
-        {/* 大号数值：对齐 DeepSeek 用量原版紧凑加粗字体质感（heavy + compressed 等宽） */}
+        {/* 大号数值：加粗 + 等宽数字，超长时靠 minScaleFactor 缩放完整展示 */}
         <HStack
           spacing={2}
           alignment="lastTextBaseline"
@@ -677,8 +686,7 @@ export function WaveformMediumTemplate(props: WaveformMediumTemplateProps) {
           {props.symbol ? (
             <Text
               font={HIG_FONT.statLarge}
-              fontWeight="heavy"
-              fontWidth="compressed"
+              fontWeight="bold"
               foregroundStyle={THEME.text}
               lineLimit={1}
               allowsTightening={true}
@@ -690,8 +698,7 @@ export function WaveformMediumTemplate(props: WaveformMediumTemplateProps) {
           ) : null}
           <Text
             font={HIG_FONT.mediumHero}
-            fontWeight="heavy"
-            fontWidth="compressed"
+            fontWeight="bold"
             foregroundStyle={THEME.text}
             monospacedDigit
             lineLimit={1}
@@ -924,8 +931,7 @@ export function MarketMediumTemplate(props: MarketMediumTemplateProps) {
               <Spacer />
               <Text
                 font={HIG_FONT.title}
-                fontWeight="heavy"
-                fontWidth="compressed"
+                fontWeight="bold"
                 foregroundStyle={THEME.text}
                 monospacedDigit
                 lineLimit={1}

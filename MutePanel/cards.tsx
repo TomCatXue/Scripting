@@ -282,7 +282,7 @@ export function MediaNexusCard({ data }: { data: MediaNexusData }) {
     >
       {/* 1. 顶部标题栏 */}
       <HStack spacing={7} alignment="center">
-        <Text font={HIG_FONT.statLarge} fontWeight="heavy" foregroundStyle={cTitle}>
+        <Text font={HIG_FONT.statLarge} fontWeight="bold" foregroundStyle={cTitle}>
           {data.title}
         </Text>
         <Circle fill={cGreen} frame={{ width: 7, height: 7 }} />
@@ -300,7 +300,7 @@ export function MediaNexusCard({ data }: { data: MediaNexusData }) {
         {/* 左半区：近7日入库（靠左贴齐标题） + 今日入库 */}
         <HStack alignment="center" spacing={18}>
           <VStack alignment="center" spacing={3}>
-            <Text font={HIG_FONT.statLarge} fontWeight="heavy" fontWidth="compressed" foregroundStyle={cGreen} monospacedDigit lineLimit={1} allowsTightening={true} minScaleFactor={0.7}>
+            <Text font={HIG_FONT.statLarge} fontWeight="bold" foregroundStyle={cGreen} monospacedDigit lineLimit={1} allowsTightening={true} minScaleFactor={0.7}>
               {`+${data.recent7Days}`}
             </Text>
             <Text font={HIG_FONT.subhead} fontWeight="regular" foregroundStyle={cLabel} lineLimit={1}>
@@ -308,7 +308,7 @@ export function MediaNexusCard({ data }: { data: MediaNexusData }) {
             </Text>
           </VStack>
           <VStack alignment="center" spacing={3}>
-            <Text font={HIG_FONT.statLarge} fontWeight="heavy" fontWidth="compressed" foregroundStyle={cGreen} monospacedDigit lineLimit={1} allowsTightening={true} minScaleFactor={0.7}>
+            <Text font={HIG_FONT.statLarge} fontWeight="bold" foregroundStyle={cGreen} monospacedDigit lineLimit={1} allowsTightening={true} minScaleFactor={0.7}>
               {`+${data.todayAdded}`}
             </Text>
             <Text font={HIG_FONT.subhead} fontWeight="regular" foregroundStyle={cLabel} lineLimit={1}>
@@ -331,7 +331,7 @@ export function MediaNexusCard({ data }: { data: MediaNexusData }) {
         {/* 右半区：电影 / 剧集 / 分集 往中间聚合，两边留有适度边距 */}
         <HStack alignment="center" spacing={0} frame={{ maxWidth: "infinity" }} padding={{ leading: 8, trailing: 8 }}>
           <VStack alignment="center" spacing={3}>
-            <Text font={HIG_FONT.statLarge} fontWeight="heavy" fontWidth="compressed" foregroundStyle={cBlue} monospacedDigit lineLimit={1} allowsTightening={true} minScaleFactor={0.7}>
+            <Text font={HIG_FONT.statLarge} fontWeight="bold" foregroundStyle={cBlue} monospacedDigit lineLimit={1} allowsTightening={true} minScaleFactor={0.7}>
               {data.movies.toLocaleString("en-US")}
             </Text>
             <Text font={HIG_FONT.subhead} fontWeight="regular" foregroundStyle={cLabel} lineLimit={1}>
@@ -340,7 +340,7 @@ export function MediaNexusCard({ data }: { data: MediaNexusData }) {
           </VStack>
           <Spacer />
           <VStack alignment="center" spacing={3}>
-            <Text font={HIG_FONT.statLarge} fontWeight="heavy" fontWidth="compressed" foregroundStyle={cBlue} monospacedDigit lineLimit={1} allowsTightening={true} minScaleFactor={0.7}>
+            <Text font={HIG_FONT.statLarge} fontWeight="bold" foregroundStyle={cBlue} monospacedDigit lineLimit={1} allowsTightening={true} minScaleFactor={0.7}>
               {data.shows.toLocaleString("en-US")}
             </Text>
             <Text font={HIG_FONT.subhead} fontWeight="regular" foregroundStyle={cLabel} lineLimit={1}>
@@ -349,7 +349,7 @@ export function MediaNexusCard({ data }: { data: MediaNexusData }) {
           </VStack>
           <Spacer />
           <VStack alignment="center" spacing={3}>
-            <Text font={HIG_FONT.statLarge} fontWeight="heavy" fontWidth="compressed" foregroundStyle={cBlue} monospacedDigit lineLimit={1} allowsTightening={true} minScaleFactor={0.7}>
+            <Text font={HIG_FONT.statLarge} fontWeight="bold" foregroundStyle={cBlue} monospacedDigit lineLimit={1} allowsTightening={true} minScaleFactor={0.7}>
               {data.episodes.toLocaleString("en-US")}
             </Text>
             <Text font={HIG_FONT.subhead} fontWeight="regular" foregroundStyle={cLabel} lineLimit={1}>
@@ -471,14 +471,13 @@ export function MetricBalanceCard({ data }: { data: MetricBalanceData }) {
       {/* 主大数值 */}
       <HStack alignment="lastTextBaseline" spacing={2}>
         {data.prefix ? (
-          <Text font={HIG_FONT.statLarge} fontWeight="heavy" fontWidth="compressed" foregroundStyle={mainNumColor}>
+          <Text font={HIG_FONT.statLarge} fontWeight="bold" foregroundStyle={mainNumColor}>
             {data.prefix}
           </Text>
         ) : null}
         <Text
           font={HIG_FONT.heroNumber}
-          fontWeight="heavy"
-          fontWidth="compressed"
+          fontWeight="bold"
           foregroundStyle={mainNumColor}
           monospacedDigit
           lineLimit={1}
@@ -786,8 +785,7 @@ export function VpnNodeCard({ data }: { data: VpnNodeData }) {
       {/* 主 IP 地址 */}
       <Text
         font={HIG_FONT.statLarge}
-        fontWeight="heavy"
-        fontWidth="compressed"
+        fontWeight="bold"
         foregroundStyle={cIp}
         monospacedDigit
         lineLimit={1}
@@ -1254,8 +1252,7 @@ function BentoCard({ mod }: { mod: BentoModuleDef }) {
       {/* 主数值 */}
       <Text
         font={HIG_FONT.statLarge}
-        fontWeight="heavy"
-        fontWidth="compressed"
+        fontWeight="bold"
         foregroundStyle={THEME.text}
         monospacedDigit
         lineLimit={1}
@@ -1585,8 +1582,7 @@ export function GitHubMediumCard({
         <Image systemName={icon} font={HIG_FONT.caption} foregroundStyle={iconColor} />
         <Text
           font={HIG_FONT.body}
-          fontWeight="heavy"
-          fontWidth="compressed"
+          fontWeight="bold"
           foregroundStyle={THEME.text}
           monospacedDigit
           lineLimit={1}
@@ -1655,7 +1651,7 @@ export function GitHubMediumCard({
           <VStack alignment="leading" spacing={1} frame={{ maxWidth: "infinity" }}>
             <Text
               font={HIG_FONT.title}
-              fontWeight="heavy"
+              fontWeight="bold"
               foregroundStyle={THEME.text}
               lineLimit={1}
               minScaleFactor={0.7}
@@ -1806,12 +1802,14 @@ export function GitHubMediumCard({
                   truncationMode="tail"
                   allowsTightening={true}
                   minScaleFactor={0.9}
-                  layoutPriority={1}
+                  // 仓库名吃剩余宽度并主动省略号截断；不能再给 layoutPriority，
+                  // 否则它会抢光宽度，把右侧星标数字压成 0 宽而整块消失。
+                  frame={{ maxWidth: "infinity", alignment: "leading" }}
                 >
                   {repo.name}
                 </Text>
-                <Spacer minLength={6} />
-                <HStack alignment="center" spacing={2.5}>
+                {/* 星标列固定宽度，与 Fork 列对称：两列都不会被仓库名挤没。 */}
+                <HStack alignment="center" spacing={2.5} frame={{ width: 42, alignment: "trailing" }}>
                   <Image systemName="star.fill" font={HIG_FONT.caption} foregroundStyle={THEME.orange} />
                   <Text
                     font={HIG_FONT.subhead}
@@ -1910,8 +1908,7 @@ export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
       </HStack>
       <Text
         font={HIG_FONT.statMedium}
-        fontWeight="heavy"
-        fontWidth="compressed"
+        fontWeight="bold"
         foregroundStyle={THEME.text}
         monospacedDigit
         lineLimit={1}
@@ -1996,8 +1993,7 @@ export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
           </HStack>
           <Text
             font={HIG_FONT.statLarge}
-            fontWeight="heavy"
-            fontWidth="compressed"
+            fontWeight="bold"
             foregroundStyle={THEME.text}
             monospacedDigit
             lineLimit={1}
@@ -2030,8 +2026,7 @@ export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
           </HStack>
           <Text
             font={HIG_FONT.statLarge}
-            fontWeight="heavy"
-            fontWidth="compressed"
+            fontWeight="bold"
             foregroundStyle={THEME.text}
             monospacedDigit
             lineLimit={1}
