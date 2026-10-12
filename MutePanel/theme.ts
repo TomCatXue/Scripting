@@ -27,6 +27,15 @@ export const THEME = {
   // 轨道槽底色与边框
   track: { light: "#E5E5EA", dark: "#2C2C2E" } as any,
   border: { light: "rgba(0,0,0,0.06)", dark: "rgba(255,255,255,0.12)" } as any,
+  /**
+   * 不透明边框色：需要「所有边看起来完全同色」时使用。
+   *
+   * `border` 是半透明黑/白，叠在不同底色上会呈现不同灰度 —— 卡片背景为浅灰、
+   * 系统背景为白时，同一条边会一边显白一边显灰。这里用不透明灰避免该问题。
+   */
+  borderSolid: { light: "#D9D9DE", dark: "#3A3A3C" } as any,
+  /** 轻微填充底色（用于刷新按钮底、标签底等需要「淡一档」的表面） */
+  fill: { light: "rgba(120,120,128,0.12)", dark: "rgba(120,120,128,0.24)" } as any,
 
   // 卡片背景与整体面板背景
   cardBg: { light: "#F2F2F7", dark: "#1C1C1E" } as any,

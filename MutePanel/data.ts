@@ -462,11 +462,16 @@ function buildWbDirectAggregate(
     mainValue: remain.toLocaleString("en-US"),
     progressPct: Math.min(100, Math.max(0, pct)),
     subLabel1: "账号",
-    subValue1: note || `${results.length}`,
+    // 账号区域显示「已签入账号数量」：成功签入的个数即有效账号数，
+    // 全部失败时回落为 0，避免把不可用账号也算成已签入。
+    subValue1: `${Math.max(0, Math.floor(okCount))}`,
     subLabel2: "已用",
     subValue2: used.toLocaleString("en-US"),
     validDays,
-    footerLeft: `官方直连 · 总量 ${size.toLocaleString("en-US")}`,
+    // 明细放到底栏，避免主区域标签重复（原为「账号: 7 账号」）
+    footerLeft: note
+      ? `官方直连 · ${note}`
+      : `官方直连 · 总量 ${size.toLocaleString("en-US")}`,
     // 近 7 日已用积分：接口只返回当前值，按自然日快照累积
     trend7d: (() => {
       pushSnapshot(TREND_KEY_WB_DIRECT, used)
@@ -2715,6 +2720,53 @@ export async function refreshFuelData(): Promise<FuelCardData | null> {
       trendColor,
       rawForecast,
       priceHistory,
+      // 涨跌额 / 涨跌幅 / 方向文案。
+      //
+      // 口径优先级：
+      //   1) priceHistory 里**最近一次真实调价**（向前找最后一个与当前价不同的点）。
+      //      不能只取末两点 —— 调价之后会补「今天」的现价点，末两点往往同值，
+      //      于是最近一次真实涨跌会被漏掉。
+      //   2) 没有真实调价历史时，退化为调价预测里的每升涨跌额（cleanLiter）。
+      //   3) 都没有则留空，由卡片显示「幅度待公布」，而不是会被误读的 0.00。
+      // 方向以真实变动为准（有真实数据时不再依赖预测文案）。
+      ...(() => {
+        const hist = (Array.isArray(priceHistory) ? priceHistory : [])
+          .map((h: any) => Number(h?.value))
+          .filter((v: number) => Number.isFinite(v))
+
+        if (hist.length >= 2) {
+          const last = hist[hist.length - 1]
+          // 向前找最后一个与当前价不同的点 = 上一次调价后的价位
+          let prevIdx = -1
+          for (let i = hist.length - 2; i >= 0; i--) {
+            if (hist[i] !== last) {
+              prevIdx = i
+              break
+            }
+          }
+          if (prevIdx >= 0) {
+            const prev = hist[prevIdx]
+            const diff = last - prev
+            const rate = prev !== 0 ? (diff / prev) * 100 : 0
+            const sign = diff > 0 ? "+" : ""
+            return {
+              trendLabel: diff > 0 ? "上调" : diff < 0 ? "下调" : "搁浅",
+              changeText: `${sign}${diff.toFixed(2)}`,
+              changeRateText: `${sign}${rate.toFixed(2)}%`,
+            }
+          }
+        }
+
+        // 回落到预测幅度（qiyoujiage 的「预计涨/跌 X 元/升」）
+        const fallbackLabel =
+          trendType === "up" ? "上调" : trendType === "down" ? "下调" : "搁浅"
+        if (cleanLiter) {
+          const sign = trendType === "up" ? "+" : trendType === "down" ? "-" : ""
+          const liter = cleanLiter.includes("-") ? cleanLiter.split("-")[0] : cleanLiter
+          return { trendLabel: fallbackLabel, changeText: `${sign}${liter}`, changeRateText: "" }
+        }
+        return { trendLabel: fallbackLabel, changeText: "", changeRateText: "" }
+      })(),
       updatedAt: new Date().toISOString(),
     }
 
@@ -3047,6 +3099,8 @@ export async function fetchGitHubData(
       forksDelta,
       topRepos,
       updatedAt: new Date().toISOString(),
+      configured: true,
+      errorText: undefined,
     }
 
     Storage.set(`${GITHUB_LAST_DATA_KEY}_${targetUser}`, payload, { shared: true })
@@ -3061,6 +3115,17 @@ export async function fetchGitHubData(
     return payload
   } catch (e) {
     console.log("获取 GitHub 监控数据异常，降级回退缓存:", e)
+    // 首次拉取失败且没有任何缓存时，返回的数据要标记为「未拿到真实数据」，
+    // 卡片据此显示空状态提示，而不是把内置示例数字当成真实数据展示。
+    const fallback = getGitHubData()
+    if (!fallback.configured) {
+      return {
+        ...fallback,
+        configured: false,
+        errorText: `GitHub 数据获取失败：${(e as any)?.message || e}`,
+      }
+    }
+    return fallback
   }
   return getGitHubData()
 }
@@ -3179,7 +3244,14 @@ export function parseSubscriptionUserInfo(
 export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Promise<LoonMonitorData> {
   const url = (rawUrl !== undefined ? rawUrl : loadLoonUrl()).trim()
   if (!url) {
-    return getLoonData()
+    // 未配置：返回「无数据」状态，不展示内置示例流量
+    const cached = getLoonData()
+    if (cached.configured) return cached
+    return {
+      ...cached,
+      configured: false,
+      errorText: "尚未配置 Loon 订阅或 OpenAPI",
+    }
   }
 
   if (!forceRefresh) {
@@ -3298,6 +3370,8 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
       runningMode,
       version,
       updatedAt: new Date().toISOString(),
+      configured: true,
+      errorText: undefined,
     }
 
     const cacheEnvelope = { expiresAt: Date.now() + 15 * 60 * 1000, data: payload }
@@ -3307,6 +3381,15 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
     return payload
   } catch (e) {
     console.log("获取 Loon 监控数据异常，降级回退缓存:", e)
+    const fallback = getLoonData()
+    if (!fallback.configured) {
+      return {
+        ...fallback,
+        configured: false,
+        errorText: `Loon 数据获取失败：${(e as any)?.message || e}`,
+      }
+    }
+    return fallback
   }
   return getLoonData()
 }

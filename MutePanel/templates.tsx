@@ -264,33 +264,50 @@ export interface AiSmallTemplateProps {
   footerRightColor?: any
 }
 
-/** 单个指标单元：图标 + 标签一行，数值一行，全部左对齐 */
+/**
+ * 单个指标单元：图标 + 标签一行，数值一行，全部左对齐。
+ *
+ * 关键：标签行与数值行都使用**固定行高**。
+ * 早期实现让两行高度随内容自适应，于是「积分剩余 / 已用」这类并排单元
+ * 只要文字长度不同（或触发缩放）就会各自错位，看起来像没对齐。
+ */
 export function AiMetricCell({ cell }: { cell: AiSmallCell }) {
   return (
     <VStack alignment="leading" spacing={1} frame={{ maxWidth: "infinity", alignment: "leading" }}>
-      <HStack spacing={4} alignment="center">
+      <HStack spacing={4} alignment="center" frame={{ maxWidth: "infinity", height: 14 }}>
         <Image
           systemName={cell.icon}
-          font={{ name: "system", size: 11 }}
+          font={{ name: "system", size: 10 }}
           foregroundStyle={cell.iconColor}
         />
-        <Text font={11} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.75}>
+        <Text
+          font={10}
+          foregroundStyle={THEME.dim}
+          lineLimit={1}
+          allowsTightening={true}
+          minScaleFactor={0.7}
+        >
           {cell.label}
         </Text>
       </HStack>
-      <HStack alignment="lastTextBaseline" spacing={2} frame={{ maxWidth: "infinity", alignment: "leading" }}>
+      <HStack
+        alignment="lastTextBaseline"
+        spacing={2}
+        frame={{ maxWidth: "infinity", height: 21, alignment: "leading" }}
+      >
         <Text
-          font={21}
+          font={17}
           fontWeight="heavy"
           foregroundStyle={cell.valueColor || THEME.text}
           monospacedDigit
           lineLimit={1}
-          minScaleFactor={0.55}
+          allowsTightening={true}
+          minScaleFactor={0.5}
         >
           {cell.value}
         </Text>
         {cell.suffix ? (
-          <Text font={13} fontWeight="bold" foregroundStyle={THEME.text} lineLimit={1}>
+          <Text font={11} fontWeight="bold" foregroundStyle={THEME.text} lineLimit={1}>
             {cell.suffix}
           </Text>
         ) : null}
@@ -313,27 +330,27 @@ export function AiSmallTemplate(props: AiSmallTemplateProps) {
       widgetBackground={{ light: "#FFFFFF", dark: "#161719" }}
     >
       {/* Header：品牌图标 + 名称 */}
-      <HStack spacing={7} alignment="center" frame={{ height: 22 }}>
+      <HStack spacing={6} alignment="center" frame={{ height: 20 }}>
         {props.svgCode ? (
-          <SVG code={props.svgCode} resizable={true} frame={{ width: 20, height: 20 }} />
+          <SVG code={props.svgCode} resizable={true} frame={{ width: 17, height: 17 }} />
         ) : null}
         {props.iconImage ? (
           <Image
             image={props.iconImage}
             resizable={true}
             scaleToFit={true}
-            frame={{ width: 19, height: 19 }}
+            frame={{ width: 16, height: 16 }}
           />
         ) : null}
         {!props.svgCode && !props.iconImage && props.iconName ? (
           <Image
             systemName={props.iconName}
-            font={{ name: "system", size: 17 }}
+            font={{ name: "system", size: 15 }}
             foregroundStyle={props.iconColor || THEME.blue}
           />
         ) : null}
         <Text
-          font={15}
+          font={13}
           fontWeight="heavy"
           foregroundStyle={props.titleColor || THEME.text}
           lineLimit={1}
@@ -377,16 +394,24 @@ export function AiSmallTemplate(props: AiSmallTemplateProps) {
       {props.progressPct !== undefined ? (
         <AiProgressBar pct={props.progressPct} />
       ) : (
-        <HStack alignment="center">
-          <Text font={11} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.8}>
+        <HStack alignment="center" frame={{ maxWidth: "infinity", height: 14 }}>
+          <Text
+            font={10}
+            foregroundStyle={THEME.dim}
+            lineLimit={1}
+            allowsTightening={true}
+            minScaleFactor={0.7}
+          >
             {props.footerLeft || ""}
           </Text>
           <Spacer />
           <Text
-            font={11}
+            font={10}
             foregroundStyle={props.footerRightColor || THEME.dim}
             monospacedDigit
             lineLimit={1}
+            allowsTightening={true}
+            minScaleFactor={0.7}
           >
             {props.footerRight || ""}
           </Text>
@@ -560,20 +585,31 @@ export function WaveformMediumTemplate(props: WaveformMediumTemplateProps) {
           {props.mainLabel}
         </Text>
 
-        {/* 大号数值 */}
-        <HStack spacing={2} alignment="lastTextBaseline">
+        {/* 大号数值：超过 1 万（含千分位逗号）时靠缩放完整展示，绝不截断 */}
+        <HStack
+          spacing={2}
+          alignment="lastTextBaseline"
+          frame={{ maxWidth: "infinity", alignment: "leading" }}
+        >
           {props.symbol ? (
-            <Text font={18} fontWeight="semibold" foregroundStyle={THEME.text} lineLimit={1}>
+            <Text
+              font={16}
+              fontWeight="semibold"
+              foregroundStyle={THEME.text}
+              lineLimit={1}
+              layoutPriority={1}
+            >
               {props.symbol}
             </Text>
           ) : null}
           <Text
-            font={34}
+            font={32}
             fontWeight="bold"
             foregroundStyle={THEME.text}
             monospacedDigit
             lineLimit={1}
-            minScaleFactor={0.6}
+            allowsTightening={true}
+            minScaleFactor={0.35}
           >
             {props.mainValue}
           </Text>

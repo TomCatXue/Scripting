@@ -118,11 +118,12 @@ export function RefreshButton() {
     <Button intent={RefreshWidgetIntent(undefined)} buttonStyle="plain">
       <ZStack frame={{ width: 22, height: 22 }}>
         <Circle
-          fill={{ light: "rgba(0,0,0,0.04)", dark: "rgba(255,255,255,0.08)" } as any}
+          fill={THEME.fill as any}
         />
         <Circle
           stroke={{
-            shapeStyle: { light: "rgba(0,0,0,0.06)", dark: "rgba(255,255,255,0.12)" } as any,
+            // 用不透明描边：半透明环叠在浅灰卡片上会一边显白一边显灰
+            shapeStyle: THEME.borderSolid as any,
             strokeStyle: { lineWidth: 0.8 },
           }}
         />
@@ -133,6 +134,78 @@ export function RefreshButton() {
         />
       </ZStack>
     </Button>
+  )
+}
+
+/**
+ * 统一的「暂无数据」空状态卡片。
+ *
+ * 用于尚未配置数据源（或首次拉取失败、没有可用缓存）的监控类组件。
+ * 关键原则：**不展示内置示例数字**——那会让人以为监控已经在工作，
+ * 而实际拿不到任何真实数据。这里只说明「当前没有数据」以及怎么接入。
+ */
+export function EmptyStateCard({
+  icon,
+  title,
+  message,
+  hint,
+}: {
+  icon: string
+  title: string
+  message: string
+  hint?: string
+}) {
+  return (
+    <VStack
+      alignment="leading"
+      spacing={0}
+      padding={{ top: 14, bottom: 12, leading: 16, trailing: 16 }}
+      // frame 必须先于 widgetBackground（见 GitHubMediumCard 的说明）
+      frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+      widgetBackground={THEME.cardBg}
+    >
+      {/* 顶栏：图标 + 标题 + 刷新 */}
+      <HStack spacing={6} alignment="center" frame={{ height: 20 }}>
+        <Image systemName={icon} font={13} foregroundStyle={THEME.blue} />
+        <Text font={13} fontWeight="bold" foregroundStyle={THEME.text} lineLimit={1}>
+          {title}
+        </Text>
+        <Spacer />
+        <RefreshButton />
+      </HStack>
+
+      <Spacer minLength={8} />
+
+      {/* 主体：说明当前没有数据 */}
+      <HStack spacing={8} alignment="center" frame={{ maxWidth: "infinity" }}>
+        <Image
+          systemName="tray"
+          font={{ name: "system", size: 22 }}
+          foregroundStyle={THEME.dim}
+        />
+        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
+          <Text
+            font={12}
+            fontWeight="semibold"
+            foregroundStyle={THEME.text}
+            lineLimit={2}
+            minScaleFactor={0.8}
+          >
+            {message}
+          </Text>
+          {hint ? (
+            <Text
+              font={10}
+              foregroundStyle={THEME.dim}
+              lineLimit={2}
+              minScaleFactor={0.75}
+            >
+              {hint}
+            </Text>
+          ) : null}
+        </VStack>
+      </HStack>
+    </VStack>
   )
 }
 
@@ -800,12 +873,29 @@ export function FuelPriceMediumCard({ data }: { data: FuelCardData }) {
     ? ({ light: "#00B368", dark: "#30D158" } as any)
     : ({ light: "#FF3B30", dark: "#FF453A" } as any)
 
+  /**
+   * 顶部徽章文案：把「方向 + 涨跌幅 + 每升涨跌额」一次说清。
+   *
+   * 例如「上调 +1.52% (+0.12元/升)」。
+   * 拿不到真实变动时退化为「上调 幅度待公布」，而不是显示没有信息量的
+   * 「上调 0.00%」——后者会被误读成「确定不涨不跌」。
+   */
+  const trendLabel = data.trendLabel || (isDown ? "下调" : "上调")
+  const rateText = String(data.changeRateText || "").trim()
+  const changeText = String(data.changeText || "").trim()
+  const magnitude = [rateText, changeText ? `${changeText}元/升` : ""]
+    .filter(Boolean)
+    .join(" ")
+  const badgeText = magnitude
+    ? `${trendLabel} ${magnitude}`
+    : `${trendLabel} 幅度待公布`
+
   return (
     <MarketMediumTemplate
       iconName="fuelpump.fill"
       iconColor="#F59E0B"
       title={`${data.province || ""}实时油价`}
-      badgeText={data.smallTrend || ""}
+      badgeText={badgeText}
       badgeColor={color}
       badgeBg={isDown ? "rgba(16,185,129,0.12)" : "rgba(239,68,68,0.12)"}
       items={items}
@@ -1329,7 +1419,7 @@ export function BentoLargeGridCard({
  * 右侧展示按 Stars 降序排列的前 7 个热门仓库
  *
  * 配色：全部走 THEME 语义色（浅色深灰 / 深色纯白），不再写死 #FFFFFF。
- * 排版：左侧指标改为三列等宽 + 顶端对齐，标签单行 + 自动缩放，消除折行错位。
+ * 排版：三列等宽 + 顶端对齐，标签/数值行固定行高，保证三项标签在同一水平线。
  */
 export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
   const top7 = (Array.isArray(data.topRepos) ? data.topRepos : []).slice(0, 7)
@@ -1337,7 +1427,25 @@ export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
   const deltaColor = (d: number) =>
     d > 0 ? THEME.green : d < 0 ? THEME.red : THEME.dim
 
-  /** 单个指标单元：图标 + 数值 + 增量一行，标签一行，整体左对齐 */
+  // 空状态：未配置账号或首次拉取失败时，不展示内置示例数字
+  // （那会让人误以为监控已经在工作），改为提示如何接入数据。
+  if (data.configured === false) {
+    return (
+      <EmptyStateCard
+        icon="chevron.left.forwardslash.chevron.right"
+        title="GitHub 监控"
+        message={data.errorText || "尚未配置 GitHub 账号"}
+        hint="在「哑巴面板」设置页填写 GitHub 用户名（可选 Token）后即可显示数据"
+      />
+    )
+  }
+
+  /**
+   * 单个指标单元：图标 + 数值 + 增量一行，标签一行。
+   *
+   * 两个 `frame.height` 是「三个标签同一水平线」的关键：让每列的行高固定，
+   * 标签行就不会因为某列数字更长而整体下沉。
+   */
   const metric = (
     icon: string,
     iconColor: any,
@@ -1350,35 +1458,38 @@ export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
       spacing={1}
       frame={{ maxWidth: "infinity", alignment: "leading" }}
     >
-      <HStack spacing={2} alignment="center">
-        <Image systemName={icon} font={10} foregroundStyle={iconColor} />
+      <HStack spacing={2} alignment="center" frame={{ maxWidth: "infinity", height: 15 }}>
+        <Image systemName={icon} font={9} foregroundStyle={iconColor} />
         <Text
-          font={13}
+          font={12}
           fontWeight="bold"
           foregroundStyle={THEME.text}
           monospacedDigit
           lineLimit={1}
-          minScaleFactor={0.7}
+          allowsTightening={true}
+          minScaleFactor={0.6}
         >
           {String(value)}
         </Text>
         <Text
-          font={10}
+          font={9}
           fontWeight="semibold"
           foregroundStyle={deltaColor(delta)}
           monospacedDigit
           lineLimit={1}
-          minScaleFactor={0.7}
+          allowsTightening={true}
+          minScaleFactor={0.6}
         >
           {formatDelta(delta)}
         </Text>
       </HStack>
       <Text
-        font={10}
+        font={9}
         foregroundStyle={THEME.dim}
         lineLimit={1}
         allowsTightening={true}
-        minScaleFactor={0.7}
+        minScaleFactor={0.6}
+        frame={{ maxWidth: "infinity", height: 12, alignment: "leading" }}
       >
         {label}
       </Text>
@@ -1390,8 +1501,11 @@ export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
       spacing={12}
       alignment="center"
       padding={{ top: 12, bottom: 12, leading: 14, trailing: 14 }}
-      widgetBackground={THEME.cardBg}
+      // frame 必须在 widgetBackground 之前：SwiftUI 修饰符是「从内向外」叠加，
+      // frame 写在后面会让背景只铺满内容自然尺寸，多出来的区域透出系统底色，
+      // 看起来就是「同一条边一侧白、一侧灰」。
       frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+      widgetBackground={THEME.cardBg}
     >
       {/* 左侧栏：用户信息与三大指标 */}
       <VStack alignment="leading" spacing={10} frame={{ width: 146 }}>
@@ -1445,7 +1559,7 @@ export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
       {/* 竖向分隔线 */}
       <RoundedRectangle
         cornerRadius={1}
-        fill={THEME.border as any}
+        fill={THEME.borderSolid as any}
         frame={{ width: 1, maxHeight: "infinity" }}
       />
 
@@ -1530,6 +1644,18 @@ export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
  * 保证浅色模式下不再出现「白字白底」不可读。
  */
 export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
+  // 空状态：未配置订阅 / OpenAPI 或首次拉取失败时，不展示内置示例流量
+  if (data.configured === false) {
+    return (
+      <EmptyStateCard
+        icon="paperplane.fill"
+        title="Loon 监控"
+        message={data.errorText || "尚未配置 Loon 订阅或 OpenAPI"}
+        hint="在「哑巴面板」设置页填入 Loon 订阅链接或 OpenAPI 地址后即可显示流量"
+      />
+    )
+  }
+
   /** 次级指标单元：图标 + 标签一行，数值一行 */
   const stat = (icon: string, label: string, value: string, lineLimit = 1) => (
     <VStack
@@ -1567,8 +1693,10 @@ export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
       alignment="leading"
       spacing={7}
       padding={{ top: 12, bottom: 10, leading: 16, trailing: 16 }}
-      widgetBackground={THEME.cardBg}
+      // frame 必须先于 widgetBackground，否则背景只铺满内容自然尺寸，
+      // 边框外侧透出系统底色，表现为「一侧白、两侧灰」。
       frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+      widgetBackground={THEME.cardBg}
     >
       {/* 顶部标题栏 */}
       <HStack alignment="center" spacing={6}>
@@ -1610,7 +1738,7 @@ export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
         {/* 分割线 */}
         <RoundedRectangle
           cornerRadius={1}
-          fill={THEME.border as any}
+          fill={THEME.borderSolid as any}
           frame={{ width: 1, height: 38 }}
         />
 

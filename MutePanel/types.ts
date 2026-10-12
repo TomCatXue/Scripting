@@ -254,6 +254,15 @@ export interface FuelCardData {
   trendColor: string
   rawForecast?: string
   /**
+   * 涨跌方向文案：上调 / 下调 / 搁浅。
+   * 与 trendType 一起使用，保证卡片能显示「上调 0.12 元/升」这类完整表述。
+   */
+  trendLabel?: string
+  /** 相邻两次调价的每升涨跌额（已带正负号，如 "+0.12"；无历史时为 ""） */
+  changeText?: string
+  /** 相邻两次调价的涨跌幅（已带正负号与 %，如 "+1.52%"；无历史时为 ""） */
+  changeRateText?: string
+  /**
    * 价格历史序列（按调价周期累积，用于中号走势图）。
    * 每次刷新若价格发生变化就追加一个采样点，最多保留 30 个。
    * 无历史时为空数组，模板会自动降级为「暂无历史走势数据」。
@@ -411,6 +420,12 @@ export interface GitHubMonitorData {
   forksDelta: number
   topRepos: GitHubRepoItem[]
   updatedAt: string
+  /**
+   * 是否已真正拿到过远端数据。未配置 / 首次拉取失败时为 false ——
+   * 卡片据此显示空状态提示，而不是把内置示例数字当成真实数据展示。
+   */
+  configured?: boolean
+  errorText?: string
 }
 
 export const DEFAULT_GITHUB: GitHubMonitorData = {
@@ -435,6 +450,9 @@ export const DEFAULT_GITHUB: GitHubMonitorData = {
     { name: "MyCookieCenter", stars: 22, forks: 0 },
   ],
   updatedAt: new Date().toISOString(),
+  // 内置数据只是「尚未拉取」时的占位，卡片据此显示空状态提示
+  configured: false,
+  errorText: "尚未配置 GitHub 账号",
 }
 
 // ── Loon 网络与流量监控数据模型 ───────────────────────────
@@ -455,6 +473,12 @@ export interface LoonMonitorData {
   runningMode: string
   version: string
   updatedAt: string
+  /**
+   * 是否已真正拿到过订阅 / OpenAPI 数据。未配置或首次拉取失败时为 false，
+   * 卡片据此显示空状态提示，而不是展示内置示例流量。
+   */
+  configured?: boolean
+  errorText?: string
 }
 
 export const DEFAULT_LOON: LoonMonitorData = {
@@ -474,4 +498,7 @@ export const DEFAULT_LOON: LoonMonitorData = {
   runningMode: "规则分流",
   version: "3.2.x",
   updatedAt: new Date().toISOString(),
+  // 内置数据只是「尚未拉取」时的占位，卡片据此显示空状态提示
+  configured: false,
+  errorText: "尚未配置 Loon 订阅或 OpenAPI",
 }

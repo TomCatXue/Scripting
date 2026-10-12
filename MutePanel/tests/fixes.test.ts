@@ -14,14 +14,58 @@ const templatesSrc = src("../templates.tsx");
 const cardsSrc = src("../cards.tsx");
 const dataSrc = src("../data.ts");
 
+/**
+ * 取某个顶层声明的完整函数体文本。
+ *
+ * 必须自己扫描匹配的大括号，不能用 `indexOf("\n}\n")`：
+ * 仓库里 templates.tsx / data.ts 是 CRLF 换行，`"\n}\n"` 根本匹配不到，
+ * 会退化成「一直切到文件末尾」，让基于源码的断言失去意义。
+ */
+function functionBody(source: string, name: string): string {
+    const declRe = new RegExp(
+        `export\\s+(?:async\\s+)?function\\s+${name}\\b|(?:async\\s+)?function\\s+${name}\\b`
+    );
+    const m = declRe.exec(source);
+    assert.ok(m, `定位到 ${name}`);
+
+    // 先跳过参数列表：`({ data })` 里的花括号属于解构参数，不是函数体。
+    const parenStart = source.indexOf("(", m!.index + m![0].length);
+    assert.ok(parenStart > 0, `${name} 参数列表起始括号`);
+    let parenDepth = 0;
+    let parenEnd = -1;
+    for (let i = parenStart; i < source.length; i++) {
+        if (source[i] === "(") parenDepth++;
+        else if (source[i] === ")") {
+            parenDepth--;
+            if (parenDepth === 0) {
+                parenEnd = i;
+                break;
+            }
+        }
+    }
+    assert.ok(parenEnd > parenStart, `${name} 参数列表未闭合`);
+
+    const braceStart = source.indexOf("{", parenEnd);
+    assert.ok(braceStart > 0, `${name} 函数体起始大括号`);
+
+    let depth = 0;
+    for (let i = braceStart; i < source.length; i++) {
+        const ch = source[i];
+        if (ch === "{") depth++;
+        else if (ch === "}") {
+            depth--;
+            if (depth === 0) return source.slice(m!.index, i + 1);
+        }
+    }
+    assert.fail(`${name} 函数体未闭合`);
+}
+
 const data = await import("../data.ts");
 
 // ── 1. AI 中号：坐标轴隐藏 + 独立日期行 ───────────────────────
 function testWaveformAxesHidden(): void {
     // 取出 WaveformMediumTemplate 的函数体
-    const start = templatesSrc.indexOf("export function WaveformMediumTemplate");
-    const end = templatesSrc.indexOf("\n}", start);
-    const body = templatesSrc.slice(start, end);
+    const body = functionBody(templatesSrc, "WaveformMediumTemplate");
 
     assert.ok(
         body.includes('chartXAxis="hidden"'),
@@ -57,9 +101,7 @@ function testWaveformAxesHidden(): void {
 }
 
 function testWaveformOwnDateRow(): void {
-    const start = templatesSrc.indexOf("export function WaveformMediumTemplate");
-    const end = templatesSrc.indexOf("\n}", start);
-    const body = templatesSrc.slice(start, end);
+    const body = functionBody(templatesSrc, "WaveformMediumTemplate");
 
     assert.ok(
         body.includes("axisValues.flatMap"),
@@ -95,9 +137,7 @@ function testModeSwitchSlotWired(): void {
     );
 
     // 模板必须实际渲染它
-    const fnStart = templatesSrc.indexOf("export function WaveformMediumTemplate");
-    const fnEnd = templatesSrc.indexOf("\n}", fnStart);
-    const fnBody = templatesSrc.slice(fnStart, fnEnd);
+    const fnBody = functionBody(templatesSrc, "WaveformMediumTemplate");
     assert.ok(
         fnBody.includes("props.modeSwitch"),
         "模板必须渲染 props.modeSwitch"
@@ -133,9 +173,7 @@ function testFuelHistoryUpsert(): void {
 
 // ── 4. 单点不画线（小号行情模板）──────────────────────────────
 function testTrendSmallDegrades(): void {
-    const start = templatesSrc.indexOf("export function TrendSmallTemplate");
-    const end = templatesSrc.indexOf("\n}", start);
-    const body = templatesSrc.slice(start, end);
+    const body = functionBody(templatesSrc, "TrendSmallTemplate");
 
     assert.ok(
         body.includes("const hasTrend = info.length >= 2"),
@@ -153,9 +191,7 @@ function testTrendSmallDegrades(): void {
 
 // ── 5. 油价小号卡不喂单点给模板 ───────────────────────────────
 function testFuelSmallCardHonest(): void {
-    const start = cardsSrc.indexOf("export function FuelPriceSmallCard");
-    const end = cardsSrc.indexOf("\n}", start);
-    const body = cardsSrc.slice(start, end);
+    const body = functionBody(cardsSrc, "FuelPriceSmallCard");
 
     assert.ok(
         body.includes("const hasTrend = history.length >= 2"),
@@ -474,6 +510,34 @@ async function testFuelRealHistoryDerived(): Promise<void> {
 
     // 末点必须是当前挂牌价
     assert.equal(hist[hist.length - 1].value, 7.88, "末点为当前挂牌价");
+
+    // 涨跌信息必须补全：方向 + 每升涨跌额 + 涨跌幅
+    // 末两点 8.08 → 7.88，差 -0.20，幅度 -0.20/8.08 ≈ -2.48%
+    assert.equal(r.trendLabel, "下调", "涨跌方向为下调");
+    assert.equal(r.changeText, "-0.20", "每升涨跌额 -0.20");
+    assert.equal(r.changeRateText, "-2.48%", "涨跌幅 -2.48%");
+}
+
+// ── 13b. 油价变动数据缺失时不得伪造 0.00 ──────────────────────
+async function testFuelChangeHonestWhenMissing(): Promise<void> {
+    resetGlobals();
+    storageRaw()["dashboard_kit_fuel_province"] = "北京";
+    storageRaw()["dashboard_kit_fuel_oil"] = "oil92";
+
+    // 页面没有任何调价预测文案，也没有 /tz 历史链接
+    setMockFetch(async () => ({
+        status: 200,
+        ok: true,
+        text: async () => "<dd>7.88</dd><dd>8.39</dd><dd>9.89</dd><dd>7.59</dd>",
+    }));
+
+    const r = await data.refreshFuelData();
+    assert.ok(r, "刷新成功");
+    assert.equal(r.trendLabel, "搁浅", "无预测时方向为搁浅");
+    // 拿不到真实变动时留空，由卡片显示「幅度待公布」，
+    // 而不是显示会被误读成「确定不涨不跌」的 0.00。
+    assert.equal(r.changeText, "", "无数据时涨跌额留空");
+    assert.equal(r.changeRateText, "", "无数据时涨跌幅留空");
 }
 
 // ── 14. 预览不再被慢网络拖住（限时等待 + 缓存兜底）────────────
@@ -624,16 +688,8 @@ function testDataExistsSyncUsage(): void {
 // 回归：GitHub / Loon 中号卡曾在浅色背景上写死 #FFFFFF，实机表现为「白字白底」
 // 完全不可读。这里钉住「正文走 THEME 语义色」的实现。
 function testMediumCardsAdaptiveColors(): void {
-    const cardBody = (name: string) => {
-        const start = cardsSrc.indexOf(`export function ${name}`);
-        assert.ok(start >= 0, `定位到 ${name}`);
-        const end = cardsSrc.indexOf("\n}\n", start);
-        assert.ok(end > start, `定位到 ${name} 函数体结束`);
-        return cardsSrc.slice(start, end);
-    };
-
     for (const name of ["GitHubMediumCard", "LoonMediumCard"]) {
-        const body = cardBody(name);
+        const body = functionBody(cardsSrc, name);
         assert.ok(
             !/foregroundStyle="#FFFFFF"/.test(body),
             `${name} 不得写死纯白文字（浅色模式下不可读）`
@@ -648,24 +704,60 @@ function testMediumCardsAdaptiveColors(): void {
         );
     }
 
-    // Loon 的分割线同样要跟随主题，不能是固定的白色半透明
-    const loon = cardBody("LoonMediumCard");
+    // Loon 的分割线同样要跟随主题，不能是固定的白色半透明。
+    // 用「不透明」的 borderSolid：半透明色叠在卡片浅灰背景上，
+    // 同一条边会因背景不同而一边显白一边显灰。
+    const loon = functionBody(cardsSrc, "LoonMediumCard");
     assert.ok(
-        loon.includes("THEME.border"),
-        "LoonMediumCard 分割线使用 THEME.border 动态色"
+        loon.includes("THEME.borderSolid"),
+        "LoonMediumCard 分割线使用不透明 borderSolid，保证各边同色"
     );
     assert.ok(
         !loon.includes("rgba(255,255,255,0.12)"),
         "LoonMediumCard 不得写死白色分割线"
     );
+    // GitHub 的竖向分隔线同理：半透明边叠在浅灰卡片上会一边显白一边显灰
+    const github = functionBody(cardsSrc, "GitHubMediumCard");
+    assert.ok(
+        github.includes("THEME.borderSolid"),
+        "GitHubMediumCard 分隔线使用不透明 borderSolid"
+    );
+}
+
+// ── 30. 修饰符顺序：frame 必须在 widgetBackground 之前 ────────────────
+// 回归：Loon 卡片曾把 frame 写在 widgetBackground 之后，背景只铺满内容自然
+// 尺寸，四周多出的区域透出系统底色 —— 表现为「同一条边一侧白、两侧灰」。
+function testWidgetBackgroundCoversFullFrame(): void {
+    const files: [string, string][] = [
+        ["cards.tsx", cardsSrc],
+        ["templates.tsx", templatesSrc],
+    ];
+
+    for (const [label, text] of files) {
+        const re = /<(VStack|HStack|ZStack)([\s\S]{0,600}?)>/g;
+        let m: RegExpExecArray | null;
+        const problems: string[] = [];
+        while ((m = re.exec(text)) !== null) {
+            const attrs = m[2];
+            if (!attrs.includes("widgetBackground")) continue;
+            const framePos = attrs.indexOf("frame=");
+            const bgPos = attrs.indexOf("widgetBackground=");
+            if (framePos >= 0 && framePos > bgPos) {
+                problems.push(attrs.replace(/\s+/g, " ").slice(0, 90));
+            }
+        }
+        assert.deepEqual(
+            problems,
+            [],
+            `${label} 存在 frame 写在 widgetBackground 之后的组件（背景不会铺满整个 frame）:\n  ${problems.join("\n  ")}`
+        );
+    }
 }
 
 // ── 23. GitHub 中号卡左侧指标排版：顶端对齐 + 单行标签 ────────────────
 // 回归：三列指标曾因外层居中对齐 + 标签换行，出现「Follower\ns」与数字基线错位。
 function testGitHubMetricLayout(): void {
-    const start = cardsSrc.indexOf("export function GitHubMediumCard");
-    const end = cardsSrc.indexOf("\n}\n", start);
-    const body = cardsSrc.slice(start, end);
+    const body = functionBody(cardsSrc, "GitHubMediumCard");
 
     assert.ok(
         /<HStack spacing=\{\d+\} alignment="top">/.test(body),
@@ -682,6 +774,135 @@ function testGitHubMetricLayout(): void {
     assert.ok(
         !body.includes("Star 降序"),
         "右侧标题行移除冗余「Star 降序」，保证「热门仓库」不被截断"
+    );
+    // 标签行与数值行都要固定行高，否则三列的标签会因内容长度不同而错位
+    assert.ok(
+        /frame=\{\{ maxWidth: "infinity", height: 15 \}\}/.test(body) &&
+            /height: 12, alignment: "leading"/.test(body),
+        "指标数值行/标签行需固定行高，保证三个标签处于同一水平线"
+    );
+}
+
+// ── 24. 小号 AI 卡片：并排指标必须行高一致 ─────────────────────────
+// 回归：WorkBuddy 的「积分剩余 / 已用」曾因两行高度随内容自适应而错位。
+function testAiMetricCellFixedHeight(): void {
+    const body = functionBody(templatesSrc, "AiMetricCell");
+
+    assert.ok(
+        /height: 14 \}/.test(body),
+        "指标标签行固定高度（14pt）"
+    );
+    assert.ok(
+        /height: 21, alignment: "leading"/.test(body),
+        "指标数值行固定高度（21pt）"
+    );
+    // 数值必须允许缩放 + 收紧，避免长数字撑破单元
+    assert.ok(
+        body.includes("allowsTightening") && body.includes("minScaleFactor"),
+        "数值需支持缩放与字距收紧，避免溢出"
+    );
+}
+
+// ── 25. 小组件字号收敛：小号模板不得超过 17pt ───────────────────────
+// 回归：小号组件曾用 21pt 数值 + 15pt 品牌名，在 systemSmall 上明显过大。
+function testSmallWidgetFontSizes(): void {
+    const sizes = [
+        ...functionBody(templatesSrc, "AiSmallTemplate").matchAll(/font=\{(\d+(?:\.\d+)?)\}/g),
+        ...functionBody(templatesSrc, "AiMetricCell").matchAll(/font=\{(\d+(?:\.\d+)?)\}/g),
+    ].map((m) => Number(m[1]));
+
+    assert.ok(sizes.length > 0, "小号模板应包含字号声明");
+    const max = Math.max(...sizes);
+    assert.ok(
+        max <= 17,
+        `小号组件最大字号不得超过 17pt，实际 ${max}pt`
+    );
+}
+
+// ── 26. 中号大数值：超过 1 万必须完整展示（不截断）───────────────────
+// 回归：中号积分超过 1 万（含千分位逗号）时被 112pt 左栏截断。
+function testMediumMainValueFitsLargeNumbers(): void {
+    const body = functionBody(templatesSrc, "WaveformMediumTemplate");
+
+    assert.ok(
+        body.includes("layoutPriority"),
+        "货币符号需设 layoutPriority，避免抢走数字的宽度"
+    );
+    assert.ok(
+        body.includes("allowsTightening"),
+        "大数值需允许收紧字距"
+    );
+    assert.ok(
+        /minScaleFactor=\{0\.35\}/.test(body),
+        "大数值缩放下限需放宽到 0.35，保证 6 位数也能完整显示"
+    );
+}
+
+// ── 27. WorkBuddy 账号区域显示「已签入账号数量」─────────────────────
+function testWbAccountCountDisplayed(): void {
+    const body = functionBody(dataSrc, "buildWbDirectAggregate");
+
+    assert.ok(
+        body.includes("subValue1: `${Math.max(0, Math.floor(okCount))}`"),
+        "账号区域显示已签入（成功）账号数量"
+    );
+    assert.ok(
+        body.includes('subLabel1: "账号"'),
+        "账号区域标签为「账号」"
+    );
+}
+
+// ── 28. 监控类组件：未配置 / 首次失败时必须显示空状态 ────────────────
+// 回归：GitHub / Loon 曾直接展示内置示例数字，看起来像已经接入数据。
+function testMonitorEmptyStates(): void {
+    assert.ok(
+        cardsSrc.includes("export function EmptyStateCard"),
+        "存在统一的空状态卡片组件"
+    );
+    for (const name of ["GitHubMediumCard", "LoonMediumCard"]) {
+        const body = functionBody(cardsSrc, name);
+        assert.ok(
+            body.includes("data.configured === false") && body.includes("<EmptyStateCard"),
+            `${name} 在未配置时必须渲染空状态，而不是内置示例数据`
+        );
+    }
+    // 默认数据必须显式标记为「未配置」，否则空状态分支永远进不去
+    assert.ok(
+        /configured: false/.test(src("../types.ts")),
+        "默认 GitHub / Loon 数据需标记 configured: false"
+    );
+    // 拉取成功要标记 configured: true，失败且无缓存要保留 false
+    assert.ok(
+        (dataSrc.match(/configured: true/g) || []).length >= 2,
+        "GitHub 与 Loon 拉取成功时都要标记 configured: true"
+    );
+}
+
+// ── 29. 油价：必须补全涨跌方向与幅度 ────────────────────────────────
+function testFuelChangeDisplay(): void {
+    // 数据层：涨跌方向文案 + 涨跌额 + 涨跌幅
+    assert.ok(
+        dataSrc.includes('trendType === "up" ? "上调" : trendType === "down" ? "下调" : "搁浅"'),
+        "数据层输出 trendLabel（上调/下调/搁浅）"
+    );
+    assert.ok(
+        dataSrc.includes("changeText:") && dataSrc.includes("changeRateText:"),
+        "数据层输出涨跌额与涨跌幅"
+    );
+
+    // 卡片层：徽章必须包含方向与幅度，缺数据时明确说明而不是显示 0.00%
+    const body = functionBody(cardsSrc, "FuelPriceMediumCard");
+    assert.ok(
+        body.includes("trendLabel") && body.includes("changeRateText") && body.includes("changeText"),
+        "中号油价卡展示方向 + 涨跌幅 + 每升涨跌额"
+    );
+    assert.ok(
+        body.includes("幅度待公布"),
+        "拿不到变动数据时显示「幅度待公布」，而不是没有信息量的 0.00%"
+    );
+    assert.ok(
+        !body.includes("badgeText={data.smallTrend"),
+        "不再直接把 smallTrend 当徽章（它缺少幅度信息）"
     );
 }
 
@@ -702,6 +923,7 @@ const tests: [string, () => void | Promise<void>][] = [
     ["管理弹窗不跨服务串台", testManageAccountsNoCrossService],
     ["快照走势回填首值", testSnapshotSeriesBackfillsFirst],
     ["油价真实调价历史回推", testFuelRealHistoryDerived],
+    ["油价变动缺失不伪造", testFuelChangeHonestWhenMissing],
     ["预览限时等待不卡顿", testPreviewBoundedWait],
     ["预览激活 ID 有有效期", testPreviewActiveIsTimeBounded],
     ["分发配置与 remoteResource 补齐", testDistributionAndRemoteResource],
@@ -710,6 +932,13 @@ const tests: [string, () => void | Promise<void>][] = [
     ["缓存存在性使用 existsSync", testDataExistsSyncUsage],
     ["中号卡片浅深色适配", testMediumCardsAdaptiveColors],
     ["GitHub 指标排版对齐", testGitHubMetricLayout],
+    ["小号指标行高一致", testAiMetricCellFixedHeight],
+    ["小组件字号收敛", testSmallWidgetFontSizes],
+    ["中号大数值完整展示", testMediumMainValueFitsLargeNumbers],
+    ["WorkBuddy 账号数量展示", testWbAccountCountDisplayed],
+    ["监控组件空状态", testMonitorEmptyStates],
+    ["油价涨跌信息补全", testFuelChangeDisplay],
+    ["背景铺满整个 frame", testWidgetBackgroundCoversFullFrame],
 ];
 
 let passed = 0;

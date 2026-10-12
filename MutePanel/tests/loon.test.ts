@@ -116,7 +116,7 @@ async function testFetchLoonOpenApi(): Promise<void> {
     assert.equal(res.version, "3.2.1", "版本提取成功");
 }
 
-// ── 6. 异常降级兜底 ───────────────────────────────────────────
+// ── 6. 异常降级兜底：无缓存时必须是「空状态」而不是内置示例数据 ──
 async function testFallbackOnError(): Promise<void> {
     resetGlobals();
     setMockFetch(async () => {
@@ -126,10 +126,24 @@ async function testFallbackOnError(): Promise<void> {
     const fallback = await data.fetchLoonData("http://unreachable:9090", true);
     assert.ok(fallback, "离线时返回兜底数据");
     assert.equal(fallback.serviceId, "loon");
-    assert.equal(fallback.downloadText, "102.6 GB");
-    assert.equal(fallback.uploadText, "5.8 GB");
-    assert.equal(fallback.policyGroupCount, 14);
-    assert.equal(fallback.runningMode, "规则分流");
+    // 首次拉取失败且没有任何缓存 → 标记为未配置，卡片显示空状态提示。
+    // 早期实现会返回内置示例流量（5.8 GB / 102.6 GB），看起来像已接入数据。
+    assert.equal(fallback.configured, false, "无缓存失败时标记未配置");
+    assert.ok(
+        String(fallback.errorText || "").includes("失败"),
+        `errorText 应说明获取失败，实际：${fallback.errorText}`
+    );
+}
+
+// ── 7. 未配置时不得展示内置示例流量 ────────────────────────────
+async function testUnconfiguredShowsEmptyState(): Promise<void> {
+    resetGlobals();
+    const d = await data.fetchLoonData("", true);
+    assert.equal(d.configured, false, "未配置 Loon 时标记未配置");
+    assert.ok(
+        String(d.errorText || "").includes("尚未配置"),
+        `未配置提示应明确，实际：${d.errorText}`
+    );
 }
 
 // ── 执行 ───────────────────────────────────────────────────────
@@ -140,6 +154,7 @@ const tests: [string, () => Promise<void> | void][] = [
     ["真实订阅头响应抓取与字段映射", testFetchLoonSubscription],
     ["OpenAPI JSON 格式解析", testFetchLoonOpenApi],
     ["异常降级兜底", testFallbackOnError],
+    ["未配置显示空状态", testUnconfiguredShowsEmptyState],
 ];
 
 let passed = 0;

@@ -139,7 +139,7 @@ async function testTokenHeader(): Promise<void> {
     assert.equal(uaHeader, "Scripting-App", "携带标准 User-Agent 请求头");
 }
 
-// ── 4. 异常降级兜底 ───────────────────────────────────────────
+// ── 4. 异常降级兜底：无缓存时必须是「空状态」而不是内置示例数据 ──
 async function testFallbackOnError(): Promise<void> {
     resetGlobals();
     setMockFetch(async () => {
@@ -150,6 +150,27 @@ async function testFallbackOnError(): Promise<void> {
     assert.ok(fallback, "网络失败时降级返回兜底数据");
     assert.equal(fallback.serviceId, "github");
     assert.ok(Array.isArray(fallback.topRepos), "兜底数据包含 topRepos 数组");
+    // 首次拉取失败且没有任何缓存 → 标记未配置，卡片显示空状态提示。
+    // 早期实现会返回内置示例数字，看起来像监控已经在工作。
+    assert.equal(fallback.configured, false, "无缓存失败时标记未配置");
+    assert.ok(
+        String(fallback.errorText || "").includes("失败"),
+        `errorText 应说明获取失败，实际：${fallback.errorText}`
+    );
+}
+
+// ── 5. 成功拉取必须标记为已配置 ────────────────────────────────
+async function testSuccessMarksConfigured(): Promise<void> {
+    resetGlobals();
+    data.saveGitHubUsername("configured-user");
+    setMockFetch(async (url: string) => {
+        if (url.includes("/repos")) return jsonResponse([{ name: "r", stargazers_count: 3, forks_count: 1 }]);
+        return jsonResponse({ login: "configured-user", name: "C", followers: 7 });
+    });
+
+    const r = await data.fetchGitHubData("configured-user", "", 30, true);
+    assert.equal(r.configured, true, "成功拉取后标记已配置");
+    assert.equal(r.errorText, undefined, "成功后清除错误文案");
 }
 
 // ── 执行 ───────────────────────────────────────────────────────
@@ -158,6 +179,7 @@ const tests: [string, () => Promise<void> | void][] = [
     ["REST API 请求、增量计算与 Top 7 排序", testFetchAndDeltas],
     ["Token Header 验证", testTokenHeader],
     ["异常降级兜底", testFallbackOnError],
+    ["成功拉取标记已配置", testSuccessMarksConfigured],
 ];
 
 let passed = 0;
