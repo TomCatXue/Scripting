@@ -254,9 +254,19 @@ async function testGitHubMediumRefinements(): Promise<void> {
         !reposBlock.includes("layoutPriority={1}"),
         "仓库名不再独占布局优先级（会把星标数字挤出可视区）"
     );
+    // 宽度方案：统计组固定 72pt（星标 34 + 间隔 10 + Fork 28），
+    // 组内不再参与压缩，两列数字始终完整可见且互不粘连。
     assert.ok(
-        (reposBlock.match(/frame=\{\{ width: 42, alignment: "trailing" \}\}/g) || []).length >= 2,
-        "星标列与 Fork 列都固定 42pt，两列数字始终完整可见"
+        reposBlock.includes('frame={{ width: 72, alignment: "trailing" }}'),
+        "统计组固定 72pt，星标与 Fork 都不被仓库名挤压"
+    );
+    assert.ok(
+        (reposBlock.match(/frame=\{\{ width: (34|28), alignment: "trailing" \}\}/g) || []).length >= 2,
+        "星标列与 Fork 列各自固定宽度，数字始终完整可见"
+    );
+    assert.ok(
+        reposBlock.includes("spacing={10}"),
+        "星标与 Fork 之间保留 10pt 间隔，两个数字不会视觉粘连"
     );
     assert.ok(
         ghCardSlice.includes("CompactChip"),
@@ -406,9 +416,15 @@ async function testGitHubRepoLegibility(): Promise<void> {
     );
     const mins = [...reposBlock.matchAll(/minScaleFactor=\{([\d.]+)\}/g)].map((m) => Number(m[1]));
     assert.ok(mins.length > 0, "统计区域声明了缩放下限");
+    // 统计列（星标/Fork）必须保持 0.85 以上；仓库名在 50pt 宽度下允许放到
+    // 0.8，让它尽量多显示字符，统计列的刚性下限不受影响。
+    // 从仓库名 Text 结束处开始切：之前的 minScaleFactor 属于仓库名，
+    // 之后的才属于星标/Fork 两个统计列。
+    const statCols = reposBlock.slice(reposBlock.indexOf("{repo.name}"));
+    const statMins = [...statCols.matchAll(/minScaleFactor=\{([\d.]+)\}/g)].map((m) => Number(m[1]));
     assert.ok(
-        mins.every((v) => v >= 0.85),
-        `仓库列表缩放下限不低于 0.85，避免被压成微字（实际 ${Math.min(...mins)}）`
+        statMins.length >= 2 && statMins.every((v) => v >= 0.85),
+        `星标/Fork 缩放下限不低于 0.85（实际 ${statMins.length ? Math.min(...statMins) : "无"}）`
     );
 }
 

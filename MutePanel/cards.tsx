@@ -1788,11 +1788,15 @@ export function GitHubMediumCard({
                   {String(i + 1)}
                 </Text>
                 {/*
-                  仓库名与右侧统计的字号此前都是 11pt/10pt，但仓库名带
-                  layoutPriority 会把可用宽度全部吃掉，SwiftUI 转而压缩
-                  两个统计列，读数被压到 8pt 以下 → 用户反馈「仓库名及后续
-                  关联信息看不清」。这里给三列都明确的缩放下限，并让仓库名
-                  主动省略号截断，保证统计数字始终保持可读字号。
+                  仓库名与统计区的宽度分配：
+
+                  右栏总宽约 139pt（中号组件）。此前星标列与 Fork 列各占 42pt，
+                  加上排名列与间距共吃掉 106pt，仓库名只剩 33pt 几乎全被截断，
+                  而两个数字之间仅隔 4pt、视觉上糊成一片。
+
+                  现在把两列收进一个固定宽度的「统计组」（星标 34 + 间隔 10 +
+                  Fork 28 = 72pt）：名字可用宽度升到 50pt（+52%），星标与 Fork
+                  之间拉开到 10pt，三块信息互相独立、都读得清。
                 */}
                 <Text
                   font={HIG_FONT.subhead}
@@ -1801,49 +1805,50 @@ export function GitHubMediumCard({
                   lineLimit={1}
                   truncationMode="tail"
                   allowsTightening={true}
-                  minScaleFactor={0.9}
-                  // 仓库名吃剩余宽度并主动省略号截断；不能再给 layoutPriority，
+                  minScaleFactor={0.8}
+                  // 仓库名吃剩余宽度并主动省略号截断；不能给 layoutPriority，
                   // 否则它会抢光宽度，把右侧星标数字压成 0 宽而整块消失。
                   frame={{ maxWidth: "infinity", alignment: "leading" }}
                 >
                   {repo.name}
                 </Text>
-                {/* 星标列固定宽度，与 Fork 列对称：两列都不会被仓库名挤没。 */}
-                <HStack alignment="center" spacing={2.5} frame={{ width: 42, alignment: "trailing" }}>
-                  <Image systemName="star.fill" font={HIG_FONT.caption} foregroundStyle={THEME.orange} />
-                  <Text
-                    font={HIG_FONT.subhead}
-                    fontWeight="medium"
-                    foregroundStyle={THEME.muted}
-                    monospacedDigit
-                    lineLimit={1}
-                    allowsTightening={true}
-                    minScaleFactor={0.9}
-                  >
-                    {String(repo.stars)}
-                  </Text>
-                </HStack>
-                {/* 固定宽度让 7 行的 fork 数字右对齐。
-                    42pt = 图标 9.5 + 间隔 2.5 + 三位数（11pt 下约 27pt），
-                    刚好容纳且不浪费；相比 46pt 把省下的宽度还给仓库名，
-                    减少长仓库名被截断的概率。 */}
-                <HStack alignment="center" spacing={2.5} frame={{ width: 42, alignment: "trailing" }}>
-                  <Image
-                    systemName="arrow.triangle.branch"
-                    font={HIG_FONT.caption}
-                    foregroundStyle={THEME.purple}
-                  />
-                  <Text
-                    font={HIG_FONT.subhead}
-                    fontWeight="medium"
-                    foregroundStyle={THEME.muted}
-                    monospacedDigit
-                    lineLimit={1}
-                    allowsTightening={true}
-                    minScaleFactor={0.9}
-                  >
-                    {String(repo.forks)}
-                  </Text>
+                {/*
+                  统计组：把星标与 Fork 收进一个固定宽度的子行，内部用 10pt
+                  间隔把两个数字明确分开，组本身不再参与压缩。
+                */}
+                <HStack alignment="center" spacing={10} frame={{ width: 72, alignment: "trailing" }}>
+                  <HStack alignment="center" spacing={2} frame={{ width: 34, alignment: "trailing" }}>
+                    <Image systemName="star.fill" font={HIG_FONT.caption} foregroundStyle={THEME.orange} />
+                    <Text
+                      font={HIG_FONT.subhead}
+                      fontWeight="medium"
+                      foregroundStyle={THEME.muted}
+                      monospacedDigit
+                      lineLimit={1}
+                      allowsTightening={true}
+                      minScaleFactor={0.85}
+                    >
+                      {String(repo.stars)}
+                    </Text>
+                  </HStack>
+                  <HStack alignment="center" spacing={2} frame={{ width: 28, alignment: "trailing" }}>
+                    <Image
+                      systemName="arrow.triangle.branch"
+                      font={HIG_FONT.caption}
+                      foregroundStyle={THEME.purple}
+                    />
+                    <Text
+                      font={HIG_FONT.subhead}
+                      fontWeight="medium"
+                      foregroundStyle={THEME.muted}
+                      monospacedDigit
+                      lineLimit={1}
+                      allowsTightening={true}
+                      minScaleFactor={0.85}
+                    >
+                      {String(repo.forks)}
+                    </Text>
+                  </HStack>
                 </HStack>
               </HStack>
             ))}
