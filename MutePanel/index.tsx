@@ -1058,7 +1058,7 @@ async function configureLoonSettings() {
       "✓ 已切换为 Loon 本地插件直连模式！\n\n" +
         "地址：http://loon.box/api/monitor\n\n" +
         "请先在 Loon 导入 LoonMonitor 插件（插件 → 右上角 + → URL 导入）：\n" +
-        "https://cdn.jsdelivr.net/gh/TomCatXue/MyCookieCenter@7b66723/loon/LoonMonitor.plugin\n\n" +
+        "https://cdn.jsdelivr.net/gh/TomCatXue/MyCookieCenter@3c83288/loon/LoonMonitor.plugin\n\n" +
         "导入后点下方「测试连接并立即刷新」确认已接通。"
     )
   } else if (action.includes("链接")) {

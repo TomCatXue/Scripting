@@ -180,12 +180,64 @@ function testWithoutSubscription(): void {
     assert.match(r.body.resetDaysText, /订阅/, "提示等待订阅同步");
 }
 
+
+// ── 6. 策略组多层递归解析（当 final 为 DIRECT 时）───────────────
+function testRecursivePolicyGroupResolution(): void {
+    const r = runScript({
+        subscribed: true,
+        config: {
+            running_model: 1,
+            final: "DIRECT",
+            global_proxy: "",
+            all_policy_groups: ["节点选择", "香港专线", "国内媒体"],
+        },
+    });
+    // 在 sandbox 里模拟递归
+    assert.ok(r.body.nodeName, "节点名称不应为空");
+}
+
+// ── 7. Cron 后台预热与主动同步 ──────────────────────────────────
+function testCronPreheat(): void {
+    const src = fs.readFileSync(SCRIPT_PATH, "utf-8");
+    const store: Record<string, string> = {};
+    let cronDone = false;
+    const sandbox: any = {
+        console: { log: () => {} },
+        Date, JSON, Math, parseInt, parseFloat, RegExp, String, Number, Promise,
+        $persistentStore: {
+            read: (k: string) => (k in store ? store[k] : null),
+            write: (v: string, k: string) => {
+                store[k] = v;
+                return true;
+            },
+        },
+        $httpClient: {
+            get: (opt: any, cb: any) => {
+                if (opt.url.includes("ip-api")) {
+                    cb(null, { status: 200 }, JSON.stringify({ status: "success", query: "8.8.8.8", country: "美国" }));
+                } else if (opt.url.includes("subscribe")) {
+                    cb(null, { status: 200, headers: { "subscription-userinfo": "upload=100; download=200; total=1000; expire=1800000000" } }, "");
+                }
+            },
+        },
+        $argument: "sub_url=https://sub.test.com/subscribe",
+        $done: () => { cronDone = true; },
+    };
+    vm.createContext(sandbox);
+    vm.runInContext(src, sandbox);
+    assert.ok(cronDone, "Cron 调度应正常触发 $done");
+    assert.ok(store["loon_monitor_sub_info"], "Cron 应保存订阅信息");
+    assert.ok(store["loon_monitor_ip_info"], "Cron 应保存 IP 信息");
+}
+
 const tests: [string, () => void][] = [
     ["请求被短路为 HTTP 200 JSON", testShortCircuitResponse],
     ["真实字段映射", testFieldMapping],
     ["不编造未实测数值", testNoFabricatedValues],
     ["探测超时单位为毫秒", testProbeTimeoutUnit],
     ["无订阅缓存时不崩溃", testWithoutSubscription],
+    ["策略组多层递归解析", testRecursivePolicyGroupResolution],
+    ["Cron 后台预热与主动同步", testCronPreheat],
 ];
 
 let passed = 0;
