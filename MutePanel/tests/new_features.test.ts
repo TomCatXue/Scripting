@@ -481,6 +481,48 @@ async function testLoonCenteredDelayAndIcon(): Promise<void> {
     );
 }
 
+// ── 14. Loon 刷新按钮：必须有超时兜底 + 失败可见 ────────────────
+// 回归：fetchLoonData 未设 timeout，Loon 不可达时 fetch 长时间挂起；
+// RefreshWidgetIntent 用裸 Promise.all 等全部完成，finally 里的
+// Widget.reloadAll() 迟迟不执行 → 用户点右上角刷新「没反应」。
+function testLoonRefreshHasTimeout(): void {
+    const intents = fs.readFileSync(path.resolve(__dirname, "../app_intents.tsx"), "utf-8");
+    assert.ok(
+        intents.includes("INTENT_REFRESH_TIMEOUT_MS"),
+        "刷新 Intent 定义整体超时常量"
+    );
+    assert.ok(
+        intents.includes("function guard") && intents.includes("withTimeout(job"),
+        "每个刷新任务都套上超时，不会因单个数据源挂起而阻塞 reloadAll"
+    );
+    assert.ok(
+        !/refreshLoonData\(\)\.catch\(\(\) => null\)/.test(intents),
+        "不再使用无超时的裸 catch 调用"
+    );
+
+    const dataSrc = fs.readFileSync(path.resolve(__dirname, "../data.ts"), "utf-8");
+    const fetchLoonBlock = dataSrc.slice(
+        dataSrc.indexOf("export async function fetchLoonData"),
+        dataSrc.indexOf("export function getLoonData")
+    );
+    assert.ok(
+        /timeout:\s*\d+/.test(fetchLoonBlock),
+        "fetchLoonData 的 fetch 必须设置秒级 timeout，避免无限挂起"
+    );
+
+    // 失败必须可见：卡片底栏在有 errorText 时就地替换为失败原因
+    const loonCard = cardsSrc.slice(
+        cardsSrc.indexOf("export function LoonMediumCard"),
+        cardsSrc.indexOf("export function LoonSmallCard") > 0
+            ? cardsSrc.indexOf("export function LoonSmallCard")
+            : cardsSrc.length
+    );
+    assert.ok(
+        loonCard.includes("{data.errorText ? (") && loonCard.includes("THEME.orange"),
+        "刷新失败时底栏显示失败原因，而不是界面毫无变化"
+    );
+}
+
 const tests: [string, () => Promise<void> | void][] = [
     ["油价小号百分比显示", testFuelSmallPercentage],
     ["GitHub 头像无灰框且支持热力图", testGitHubAvatarAndHeatmap],
@@ -495,6 +537,7 @@ const tests: [string, () => Promise<void> | void][] = [
     ["GitHub 仓库信息可读性", testGitHubRepoLegibility],
     ["GitHub 左侧指标间距", testGitHubMetricSpacing],
     ["Loon 延迟居中与官方图标", testLoonCenteredDelayAndIcon],
+    ["Loon 刷新超时与失败可见", testLoonRefreshHasTimeout],
 ];
 
 let passed = 0;

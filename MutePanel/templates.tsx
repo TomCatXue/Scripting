@@ -27,6 +27,7 @@ import {
   ChartPlotStyle,
   AreaChart,
   LineChart,
+  RuleLineForValueChart,
   HStack,
   Image,
   RoundedRectangle,
@@ -145,13 +146,21 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
   // 全平序列（跨度 0）时给一个最小域，避免上下界相等导致绘图区塌陷
   const span = Math.max(Math.max(...values) - minY, Math.abs(minY) * 0.01, 0.01)
   const yScale = { from: -span * 0.01, to: span * 1.01 }
+
+  /*
+   * 走势线样式对齐「上金所金价」参考实现：
+   *   · 线：细描边、不加投影 —— 投影会让曲线发虚、显脏；
+   *   · 面：同色渐变填充（实色 → 全透明），给曲线增加体积感；
+   *   · 基准线：中位值处的虚线，让走势有参照物。
+   * 三条叠在同一 Chart 里，视觉上就是参考脚本那种干净的「面积走势图」。
+   */
+  const areaGradient = [color, "rgba(0, 0, 0, 0)"] as any
   const marks = info.map((d, idx) => ({
     label: String(idx),
     value: d.value - minY,
     foregroundStyle: color,
-    // 同色投影是模版让线条「发光」的关键
-    shadow: { color, radius: 7, y: 7 },
   }))
+  const midValue = span / 2
 
   return (
     <VStack
@@ -227,7 +236,31 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
           frame={{ maxWidth: "infinity", height: 36 }}
           padding={{ top: 1, bottom: 1 }}
         >
-          <LineChart marks={marks} interpolationMethod="catmullRom" />
+          <AreaChart
+            marks={marks.map((m) => ({
+              ...m,
+              foregroundStyle: areaGradient,
+              opacity: 0.5,
+            }))}
+            interpolationMethod="catmullRom"
+          />
+          <LineChart
+            marks={marks.map((m) => ({
+              ...m,
+              lineStyle: { lineWidth: 1.5, lineCap: "round", lineJoin: "round" },
+            }))}
+            interpolationMethod="catmullRom"
+          />
+          <RuleLineForValueChart
+            marks={[
+              {
+                value: midValue,
+                lineStyle: { dash: [3, 1] },
+                foregroundStyle: color,
+                opacity: 0.5,
+              },
+            ]}
+          />
         </Chart>
       ) : (
         <HStack
@@ -853,9 +886,9 @@ export function MarketMediumTemplate(props: MarketMediumTemplateProps) {
   const maxY = Math.max(...values)
   const span = Math.max(maxY - minY, Math.abs(maxY) * 0.004, 0.01)
   const yScale = { from: minY - span * 0.12, to: maxY + span * 0.12 }
-  // 数据点少时用更粗的线与更大的光斑，保证小样本也清晰
-  const lineWidth = marks.length <= 3 ? 3.2 : 2.6
-  const dotSize = marks.length <= 3 ? 56 : 32
+  // 线宽与光斑对齐参考实现的细线风格：线更轻，最新点用小圆点标记即可
+  const lineWidth = 1.5
+  const dotSize = 24
 
   return (
     <VStack
@@ -979,6 +1012,17 @@ export function MarketMediumTemplate(props: MarketMediumTemplateProps) {
                   symbolSize: isLast ? dotSize : undefined,
                 }
               })}
+            />
+            {/* 中位值虚线基准线：与参考实现一致，让走势有参照物 */}
+            <RuleLineForValueChart
+              marks={[
+                {
+                  value: (yScale.from + yScale.to) / 2,
+                  lineStyle: { dash: [3, 1] },
+                  foregroundStyle: props.lineColor,
+                  opacity: 0.5,
+                },
+              ]}
             />
           </Chart>
         </VStack>

@@ -3405,6 +3405,9 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
       headers: {
         "User-Agent": "Loon/3.2.0 (iOS)",
       },
+      // Loon 未运行 / 插件未生效时该地址会一直挂起；没有超时会让刷新
+      // Intent 的 Promise.all 永不 settle，右上角刷新按钮表现为「点了没反应」。
+      timeout: 8,
     })
     const latency = Math.max(1, Date.now() - startTime)
 

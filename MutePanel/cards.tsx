@@ -2046,16 +2046,34 @@ export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
         {stat("dial.low.fill", "运行模式", data.runningMode)}
       </HStack>
 
-      {/* 底部状态栏 */}
-      <HStack alignment="center" spacing={0} frame={{ maxWidth: "infinity" }}>
-        <Text font={HIG_FONT.caption} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.75}>
-          {`订阅统计 · ${data.resetDaysText}`}
+      {/*
+        底部状态栏：正常时显示订阅统计；本次刷新失败时**就地替换**为失败原因。
+
+        data.errorText 只在「本次拉取失败」时由数据层写入（成功会清空）。
+        此前失败时界面完全无变化，点右上角刷新看起来就是「没反应」。
+        这里复用同一行而不是新增一行，避免撑破中号组件的高度预算。
+      */}
+      {data.errorText ? (
+        <Text
+          font={HIG_FONT.caption}
+          foregroundStyle={THEME.orange}
+          lineLimit={1}
+          allowsTightening={true}
+          minScaleFactor={0.6}
+        >
+          {data.errorText}
         </Text>
-        <Spacer />
-        <Text font={HIG_FONT.caption} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.75}>
-          {`策略组 ${data.policyGroupCount} · 总额 ${data.totalText}`}
-        </Text>
-      </HStack>
+      ) : (
+        <HStack alignment="center" spacing={0} frame={{ maxWidth: "infinity" }}>
+          <Text font={HIG_FONT.caption} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.75}>
+            {`订阅统计 · ${data.resetDaysText}`}
+          </Text>
+          <Spacer />
+          <Text font={HIG_FONT.caption} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.75}>
+            {`策略组 ${data.policyGroupCount} · 总额 ${data.totalText}`}
+          </Text>
+        </HStack>
+      )}
     </VStack>
   )
 }
