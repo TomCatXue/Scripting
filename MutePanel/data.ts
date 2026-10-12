@@ -3434,13 +3434,23 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
       }
     } catch {}
 
-    let uploadBytes = 5.8 * 1024 * 1024 * 1024
-    let downloadBytes = 102.6 * 1024 * 1024 * 1024
-    let totalBytes = 500 * 1024 * 1024 * 1024
-    let resetDaysText = "24 天后重置"
-    let policyGroupCount = 14
+    /*
+     * 流量默认值必须是「未知」而不是内置示例数字。
+     *
+     * 此前这里写死 5.8GB / 102.6GB / 500GB —— 当订阅尚未被 Loon 请求过
+     * （插件还没捕获到 subscription-userinfo）时，这些假数字会直接展示成
+     * 真实用量，用户看到的「累计上行/下行数据不对」就是这么来的。
+     * 现在缺数据就是 0，并由 hasTrafficData 标记区分「未知」与「真的为 0」。
+     */
+    let uploadBytes = 0
+    let downloadBytes = 0
+    let totalBytes = 0
+    let hasTrafficData = false
+    let resetDaysText = "待订阅同步"
+    let policyGroupCount = 0
     let delayMs = latency
-    let runningMode = "规则分流"
+    // 未知占位：插件未返回模式时显示 "--"，而不是伪装成「规则分流」
+    let runningMode = "--"
     let version = "3.2.x"
     let vpnIp = "--"
     let vpnLocation = "未连接"
@@ -3450,6 +3460,7 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
       uploadBytes = subInfo.upload
       downloadBytes = subInfo.download
       totalBytes = subInfo.total
+      hasTrafficData = true
       if (subInfo.expire > 0) {
         const expMs = subInfo.expire > 10000000000 ? subInfo.expire : subInfo.expire * 1000
         const diffDays = Math.ceil((expMs - Date.now()) / (86400 * 1000))
@@ -3458,6 +3469,9 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
         resetDaysText = "长期有效"
       }
     } else if (bodyJson) {
+      if (bodyJson.upload != null || bodyJson.download != null || bodyJson.total != null) {
+        hasTrafficData = true
+      }
       if (bodyJson.upload != null) uploadBytes = Number(bodyJson.upload) || 0
       if (bodyJson.download != null) downloadBytes = Number(bodyJson.download) || 0
       if (bodyJson.total != null) totalBytes = Number(bodyJson.total) || 0
@@ -3470,14 +3484,35 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
 
     // 从 OpenAPI 提取运行模式、策略组等字段
     if (bodyJson) {
-      if (bodyJson.running_model === 0 || bodyJson.runningModel === 0 || bodyJson.flowmodel === "direct") {
+      /*
+       * 运行模式取值优先级：
+       *   1. 插件直接给出的中文文案 runningMode（最可靠，避免重复映射出错）
+       *   2. running_model / runningModel 数字（0 直连 / 1 分流 / 2 全局代理）
+       *   3. flowmodel 字符串 / mode 字符串
+       *
+       * 回归：插件 payload 里 `runningModel` 是**数字**、`runningMode` 才是中文
+       * 文案。早期实现只比对数字、忽略文案字段，遇到插件返回文案或字段缺失时
+       * 就一路落到默认值，导致「切成直连仍显示规则分流」。
+       */
+      const rawMode = bodyJson.runningMode
+      const rawModel =
+        typeof bodyJson.running_model === "number"
+          ? bodyJson.running_model
+          : typeof bodyJson.runningModel === "number"
+            ? bodyJson.runningModel
+            : null
+      const rawFlow = typeof bodyJson.flowmodel === "string" ? bodyJson.flowmodel : ""
+
+      if (typeof rawMode === "string" && rawMode.trim()) {
+        runningMode = rawMode.trim()
+      } else if (rawModel === 0 || rawFlow === "direct") {
         runningMode = "全局直连"
-      } else if (bodyJson.running_model === 2 || bodyJson.runningModel === 2 || bodyJson.flowmodel === "proxy") {
+      } else if (rawModel === 2 || rawFlow === "proxy") {
         runningMode = "全局代理"
-      } else if (bodyJson.running_model === 1 || bodyJson.runningModel === 1 || bodyJson.flowmodel === "filter") {
+      } else if (rawModel === 1 || rawFlow === "filter") {
         runningMode = "规则分流"
-      } else if (typeof bodyJson.mode === "string") {
-        runningMode = bodyJson.mode
+      } else if (typeof bodyJson.mode === "string" && bodyJson.mode.trim()) {
+        runningMode = bodyJson.mode.trim()
       }
 
       if (Array.isArray(bodyJson.all_policy_groups)) {
@@ -3516,10 +3551,12 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
       downloadBytes,
       totalBytes,
       remainingBytes,
-      uploadText: formatBytes(uploadBytes),
-      downloadText: formatBytes(downloadBytes),
-      totalText: formatBytes(totalBytes),
-      remainingText: formatBytes(remainingBytes),
+      // 未拿到订阅数据时显示 "--"，不把 0 伪装成「真的用了 0 字节」
+      uploadText: hasTrafficData ? formatBytes(uploadBytes) : "--",
+      downloadText: hasTrafficData ? formatBytes(downloadBytes) : "--",
+      totalText: hasTrafficData ? formatBytes(totalBytes) : "--",
+      remainingText: hasTrafficData ? formatBytes(remainingBytes) : "--",
+      hasTrafficData,
       resetDaysText,
       policyGroupCount,
       delayMs,

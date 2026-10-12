@@ -495,6 +495,13 @@ export interface LoonMonitorData {
   delayText: string
   runningMode: string
   version: string
+  /**
+   * 是否真正拿到过订阅流量数据（upload / download / total）。
+   *
+   * 订阅未被 Loon 请求过时，插件返回 0；此时卡片应显示「待同步」而不是
+   * 把 0 当成真实用量，更不能回落到内置示例数字。
+   */
+  hasTrafficData?: boolean
   vpnIp?: string
   vpnLocation?: string
   nodeName?: string
@@ -509,20 +516,22 @@ export interface LoonMonitorData {
 
 export const DEFAULT_LOON: LoonMonitorData = {
   serviceId: "loon",
-  uploadBytes: 5.8 * 1024 * 1024 * 1024,
-  downloadBytes: 102.6 * 1024 * 1024 * 1024,
-  totalBytes: 500 * 1024 * 1024 * 1024,
-  remainingBytes: 391.6 * 1024 * 1024 * 1024,
-  uploadText: "5.8 GB",
-  downloadText: "102.6 GB",
-  totalText: "500 GB",
-  remainingText: "391.6 GB",
-  resetDaysText: "24 天后重置",
-  policyGroupCount: 14,
-  delayMs: 412,
-  delayText: "412 ms",
-  runningMode: "规则分流",
-  version: "3.2.x",
+  // 全部为「未知」占位：绝不内置示例流量，否则未接通时会伪装成真实用量
+  uploadBytes: 0,
+  downloadBytes: 0,
+  totalBytes: 0,
+  remainingBytes: 0,
+  uploadText: "--",
+  downloadText: "--",
+  totalText: "--",
+  remainingText: "--",
+  resetDaysText: "待同步",
+  policyGroupCount: 0,
+  delayMs: 0,
+  delayText: "--",
+  runningMode: "--",
+  version: "--",
+  hasTrafficData: false,
   vpnIp: "--",
   vpnLocation: "未连接",
   nodeName: "未连接",

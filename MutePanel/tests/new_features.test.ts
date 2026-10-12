@@ -539,6 +539,57 @@ function testLoonRefreshHasTimeout(): void {
     );
 }
 
+// ── 15. Loon 运行模式与流量真实性 ───────────────────────────────
+// 回归 1：插件 payload 里 runningMode 是中文文案、runningModel 才是数字。
+// 早期实现只比对数字、忽略文案字段，遇到字段缺失就一路落到默认值，
+// 导致用户切成「全局直连」后组件仍显示「规则分流」。
+// 回归 2：流量默认值是内置示例数字（5.8GB / 102.6GB / 500GB），订阅尚未
+// 被 Loon 请求过时会把这些假数字当成真实用量展示。
+function testLoonModeAndTrafficHonesty(): void {
+    const dataSrc2 = fs.readFileSync(path.resolve(__dirname, "../data.ts"), "utf-8");
+    const loonBlock = dataSrc2.slice(
+        dataSrc2.indexOf("export async function fetchLoonData"),
+        dataSrc2.indexOf("export function getLoonData")
+    );
+
+    assert.ok(
+        loonBlock.includes("const rawMode = bodyJson.runningMode"),
+        "运行模式优先读取插件返回的中文文案字段"
+    );
+    assert.ok(
+        loonBlock.includes("typeof rawMode === \"string\" && rawMode.trim()"),
+        "文案字段存在时直接采用，不再回落到默认「规则分流」"
+    );
+    assert.ok(
+        !/let runningMode = "规则分流"/.test(loonBlock),
+        "不再以「规则分流」作为初始默认值（会让模式错误无法被发现）"
+    );
+
+    // 流量默认值不得是内置示例数字
+    assert.ok(
+        !/let uploadBytes = 5\.8 \* 1024/.test(loonBlock),
+        "上行流量默认值不再写死 5.8GB 示例数字"
+    );
+    assert.ok(
+        loonBlock.includes("hasTrafficData"),
+        "存在 hasTrafficData 标记，用于区分「未知」与「真的为 0」"
+    );
+
+    const typesSrc = fs.readFileSync(path.resolve(__dirname, "../types.ts"), "utf-8");
+    const defaultLoon = typesSrc.slice(
+        typesSrc.indexOf("export const DEFAULT_LOON"),
+        typesSrc.indexOf("export const DEFAULT_LOON") + 900
+    );
+    assert.ok(
+        !/5\.8 \* 1024/.test(defaultLoon) && !/"102\.6 GB"/.test(defaultLoon),
+        "DEFAULT_LOON 不再内置示例流量数字"
+    );
+    assert.ok(
+        defaultLoon.includes('uploadText: "--"'),
+        "DEFAULT_LOON 的流量文案为未知占位"
+    );
+}
+
 const tests: [string, () => Promise<void> | void][] = [
     ["油价小号百分比显示", testFuelSmallPercentage],
     ["GitHub 头像无灰框且支持热力图", testGitHubAvatarAndHeatmap],
@@ -554,6 +605,7 @@ const tests: [string, () => Promise<void> | void][] = [
     ["GitHub 左侧指标间距", testGitHubMetricSpacing],
     ["Loon 延迟居中与官方图标", testLoonCenteredDelayAndIcon],
     ["Loon 刷新超时与失败可见", testLoonRefreshHasTimeout],
+    ["Loon 运行模式与流量真实性", testLoonModeAndTrafficHonesty],
 ];
 
 let passed = 0;
