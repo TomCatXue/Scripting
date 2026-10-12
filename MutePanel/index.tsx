@@ -1748,8 +1748,14 @@ export default function ConfigView() {
                 buttonStyle="borderedProminent"
                 controlSize="small"
                 action={async () => {
+                  // 预览参数值按官方要求写成 JSON 字符串，并携带 preview 标记：
+                  // widget.tsx 据此识别「当前跑在 App 内预览流程」，从而跳过结束调用
+                  // （否则预览会闪一下就回到设置页）。getWidgetView 已支持解析该结构。
                   const paramOptions = Object.fromEntries(
-                    WIDGET_OPTIONS.map((o) => [o.name, o.id])
+                    WIDGET_OPTIONS.map((o) => [
+                      o.name,
+                      JSON.stringify({ id: o.id, preview: true }),
+                    ])
                   )
                   // 针对带账号的在线看板，在启动预览前触发一次数据准备。
                   // 用 withTimeout 限时：网络慢时不再拖住预览，先用现有缓存出图。
@@ -1776,6 +1782,23 @@ export default function ConfigView() {
                     Storage.set("dashboard_kit_preview_active_id", active, { shared: true })
                     Storage.set("dashboard_kit_preview_active_id", active)
                   } catch {}
+
+                  // 标记「预览进行中」：widget.tsx 跑在 App 宿主进程里，此时主动结束
+                  // 脚本会连带关掉预览浮层（表现为「闪一下回到设置页」）。预览期间
+                  // 跳过结束调用，真实桌面组件不受影响。
+                  const markPreviewGuard = () => {
+                    try {
+                      const guard = { at: Date.now() }
+                      Storage.set("dashboard_kit_preview_guard_v1", guard, { shared: true })
+                      Storage.set("dashboard_kit_preview_guard_v1", guard)
+                    } catch {}
+                  }
+                  const clearPreviewGuard = () => {
+                    try {
+                      Storage.remove("dashboard_kit_preview_guard_v1", { shared: true })
+                      Storage.remove("dashboard_kit_preview_guard_v1")
+                    } catch {}
+                  }
 
                   let previewFamily = opt.defaultFamily as any
                   if (opt.id === "deepseek" || opt.id === "workbuddy" || opt.id === "workbuddy-direct" || opt.id === "codex" || opt.id === "antigravity") {
@@ -1806,13 +1829,25 @@ export default function ConfigView() {
                     previewFamily = chosen.includes("中号") ? "systemMedium" : "systemSmall"
                   }
 
-                  await Widget.preview({
-                    family: previewFamily,
-                    parameters: {
-                      options: paramOptions,
-                      default: opt.name,
-                    },
-                  })
+                  // 预览浮层内点击「刷新」（AppIntent 触发重渲染）时会再跑一次
+                  // widget.tsx，因此每次预览前都刷新标记时间戳，避免中途失效。
+                  markPreviewGuard()
+                  try {
+                    await Widget.preview({
+                      family: previewFamily,
+                      parameters: {
+                        options: paramOptions,
+                        default: opt.name,
+                      },
+                    })
+                  } catch (e: any) {
+                    // 预览失败（参数格式错误等）必须让用户看到原因，
+                    // 而不是「点一下什么都没发生」。
+                    await gAlert(`预览失败：\n${e?.message || e}`)
+                  } finally {
+                    // 预览关闭后立即解除标记，避免影响真实桌面组件的正常退出
+                    clearPreviewGuard()
+                  }
                 }}
               />
             </HStack>

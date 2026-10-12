@@ -543,12 +543,14 @@ function testDistributionAndRemoteResource(): void {
     );
 }
 
-// ── 19. 小组件生命周期：导入 Script，标准 reloadPolicy，调用 Script.exit ──
+// ── 19. 小组件生命周期：标准 reloadPolicy + 预览期间不得 exit ──
+// 回归：widget.tsx 末尾无条件 Script.exit() 会杀掉 App 内 Widget.preview 的宿主进程，
+// 表现为「点预览闪一下就回到设置页」。真实桌面组件仍按官方生命周期要求正常退出。
 function testWidgetLifecycleAndReloadPolicy(): void {
     const widgetSrc = src("../widget.tsx");
     assert.ok(
         /import\s*\{[^}]*?\bScript\b[^}]*?\}\s*from\s*"scripting"/.test(widgetSrc),
-        "widget.tsx 必须导入 Script"
+        "widget.tsx 仍导入 Script（真实组件需要正常结束脚本）"
     );
     assert.ok(
         widgetSrc.includes("reloadPolicy:") &&
@@ -556,8 +558,32 @@ function testWidgetLifecycleAndReloadPolicy(): void {
         "Widget.present 传入标准嵌套 reloadPolicy 对象"
     );
     assert.ok(
-        widgetSrc.includes("Script.exit()"),
-        "widget.tsx 必须在最后调用 Script.exit()，否则 iOS 扩展进程挂起"
+        widgetSrc.includes("PREVIEW_GUARD_KEY") &&
+            widgetSrc.includes("function isPreviewSession"),
+        "widget.tsx 必须有「预览进行中」标记与判定函数"
+    );
+    assert.ok(
+        /if \(!previewing\) \{\s*[\s\S]{0,200}?Script\.exit\(\)/.test(widgetSrc) &&
+            widgetSrc.includes("const previewing = isPreviewSession()"),
+        "Script.exit() 必须被预览会话守卫，预览期间不得退出"
+    );
+    assert.ok(
+        /isPreviewSession\(\)\) return/.test(widgetSrc),
+        "catch 兜底路径同样要在预览期间跳过 exit"
+    );
+    assert.ok(
+        widgetSrc.includes("withTimeout") && widgetSrc.includes("REFRESH_TIMEOUT_MS"),
+        "widget.tsx 数据刷新必须限时，超时用缓存出图"
+    );
+    // 写入侧：index.tsx 必须在预览前后写入/清除守卫标记
+    const indexSrc = src("../index.tsx");
+    assert.ok(
+        indexSrc.includes("markPreviewGuard()") && indexSrc.includes("clearPreviewGuard()"),
+        "index.tsx 必须在 Widget.preview 前后写入并清除预览守卫标记"
+    );
+    assert.ok(
+        /finally \{\s*[\s\S]{0,300}?clearPreviewGuard\(\)/.test(indexSrc),
+        "预览被用户关闭或抛错时都要清除标记"
     );
 }
 
@@ -594,6 +620,71 @@ function testDataExistsSyncUsage(): void {
     );
 }
 
+// ── 22. 中号卡片浅/深色适配：不得再写死纯白正文 ─────────────────────
+// 回归：GitHub / Loon 中号卡曾在浅色背景上写死 #FFFFFF，实机表现为「白字白底」
+// 完全不可读。这里钉住「正文走 THEME 语义色」的实现。
+function testMediumCardsAdaptiveColors(): void {
+    const cardBody = (name: string) => {
+        const start = cardsSrc.indexOf(`export function ${name}`);
+        assert.ok(start >= 0, `定位到 ${name}`);
+        const end = cardsSrc.indexOf("\n}\n", start);
+        assert.ok(end > start, `定位到 ${name} 函数体结束`);
+        return cardsSrc.slice(start, end);
+    };
+
+    for (const name of ["GitHubMediumCard", "LoonMediumCard"]) {
+        const body = cardBody(name);
+        assert.ok(
+            !/foregroundStyle="#FFFFFF"/.test(body),
+            `${name} 不得写死纯白文字（浅色模式下不可读）`
+        );
+        assert.ok(
+            body.includes("THEME.text"),
+            `${name} 主文字必须使用 THEME.text 动态色`
+        );
+        assert.ok(
+            body.includes("THEME.dim"),
+            `${name} 辅助文字必须使用 THEME.dim 动态色`
+        );
+    }
+
+    // Loon 的分割线同样要跟随主题，不能是固定的白色半透明
+    const loon = cardBody("LoonMediumCard");
+    assert.ok(
+        loon.includes("THEME.border"),
+        "LoonMediumCard 分割线使用 THEME.border 动态色"
+    );
+    assert.ok(
+        !loon.includes("rgba(255,255,255,0.12)"),
+        "LoonMediumCard 不得写死白色分割线"
+    );
+}
+
+// ── 23. GitHub 中号卡左侧指标排版：顶端对齐 + 单行标签 ────────────────
+// 回归：三列指标曾因外层居中对齐 + 标签换行，出现「Follower\ns」与数字基线错位。
+function testGitHubMetricLayout(): void {
+    const start = cardsSrc.indexOf("export function GitHubMediumCard");
+    const end = cardsSrc.indexOf("\n}\n", start);
+    const body = cardsSrc.slice(start, end);
+
+    assert.ok(
+        /<HStack spacing=\{\d+\} alignment="top">/.test(body),
+        "三大指标容器必须顶端对齐，避免基准线上下错位"
+    );
+    assert.ok(
+        (body.match(/lineLimit=\{1\}/g) || []).length >= 4,
+        "指标标签/数值需限定单行，杜绝 Followers 折行"
+    );
+    assert.ok(
+        body.includes("minScaleFactor"),
+        "紧凑空间下用 minScaleFactor 缩放，而不是折行"
+    );
+    assert.ok(
+        !body.includes("Star 降序"),
+        "右侧标题行移除冗余「Star 降序」，保证「热门仓库」不被截断"
+    );
+}
+
 // ── 执行 ───────────────────────────────────────────────────────
 const tests: [string, () => void | Promise<void>][] = [
     ["波形图中号隐藏坐标轴", testWaveformAxesHidden],
@@ -617,6 +708,8 @@ const tests: [string, () => void | Promise<void>][] = [
     ["小组件生命周期与 reloadPolicy 标准化", testWidgetLifecycleAndReloadPolicy],
     ["多账号 App Group 文件双通道", testAccountsFileDualChannel],
     ["缓存存在性使用 existsSync", testDataExistsSyncUsage],
+    ["中号卡片浅深色适配", testMediumCardsAdaptiveColors],
+    ["GitHub 指标排版对齐", testGitHubMetricLayout],
 ];
 
 let passed = 0;

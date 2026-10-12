@@ -52,6 +52,7 @@ import {
   refreshMediaData,
   refreshVpnData,
   refreshWbDirectData,
+  withTimeout,
 } from "./data"
 
 /** BENTO 模块顺序的存储键（App 内配置 / Widget 读取共享） */
@@ -162,6 +163,50 @@ function pickDefaultService(): string {
 
 /** 预览激活 ID 的有效期：超过这个时间就视为过期，不再影响真实桌面组件 */
 export const PREVIEW_ACTIVE_TTL_MS = 3 * 60 * 1000
+
+/**
+ * 「App 内预览正在进行」的标记键与有效期。
+ *
+ * App 内点「预览」时，widget.tsx 会跑在 **App 宿主进程** 里。此时主动结束脚本
+ * 会连带把预览浮层一起关掉，用户看到的就是「闪一下就回到面板设置页」。
+ * 真实桌面组件仍按官方要求正常结束脚本，因此这里用一个短时效标记来区分两者：
+ * 只有标记有效（即确实处于预览流程）时才跳过结束调用。
+ */
+export const PREVIEW_GUARD_KEY = "dashboard_kit_preview_guard_v1"
+// 取 10 分钟：预览浮层可能被长时间停留（含浮层内点刷新触发重渲染），
+// 只有 App 异常退出导致标记没被清掉时才会靠这个上限兜底。
+export const PREVIEW_GUARD_TTL_MS = 10 * 60 * 1000
+
+/**
+ * 预览参数里携带的标记。
+ *
+ * index.tsx 调 Widget.preview 时会把参数值写成 `{"id":"github","preview":true}`，
+ * 这条路径最可靠（不依赖 Storage 的异步落盘），优先据此判定。
+ */
+function previewFlagInParameter(): boolean {
+  try {
+    const raw = (Widget.parameter || "").trim()
+    if (!raw.startsWith("{") || !raw.endsWith("}")) return false
+    const parsed = JSON.parse(raw)
+    return parsed?.preview === true
+  } catch {
+    return false
+  }
+}
+
+/** 当前是否处于 App 内预览流程（参数标记优先，Storage 守卫兜底） */
+function isPreviewSession(): boolean {
+  if (previewFlagInParameter()) return true
+  try {
+    const raw =
+      Storage.get<any>(PREVIEW_GUARD_KEY, { shared: true }) ??
+      Storage.get<any>(PREVIEW_GUARD_KEY)
+    const at = Number(raw?.at)
+    return Number.isFinite(at) && Date.now() - at <= PREVIEW_GUARD_TTL_MS
+  } catch {
+    return false
+  }
+}
 
 /**
  * 读取「最近一次点击预览激活的组件 ID」。
@@ -461,46 +506,66 @@ export default function DefaultWidget() {
   return getWidgetView()
 }
 
+/**
+ * 单次数据刷新的超时上限。
+ *
+ * 背景：`main()` 里的刷新是「先拉最新数据、再渲染」的串行流程。网络卡住时
+ * 会一路等到系统超时，用户看到的就是「点了预览没反应 / 卡住」。这里统一限时，
+ * 超时即用缓存渲染，保证任何情况下都能快速出图。
+ */
+const REFRESH_TIMEOUT_MS = 1500
+
+/**
+ * 预览流程下的刷新上限。
+ *
+ * App 内点预览前，index.tsx 已经先做过一次带 3s 上限的数据准备；widget.tsx 再
+ * 跑一次全量刷新属于重复等待。这里压到 800ms，保证预览「点下去就出来」，
+ * 拿不到新数据就直接用缓存出图。
+ */
+const PREVIEW_REFRESH_TIMEOUT_MS = 800
+
+async function refreshForWidget(p: string, timeoutMs: number): Promise<void> {
+  const jobs: Promise<any>[] = []
+  if (p.includes("antigravity") || p === "ag" || p.includes("anti-gravity")) {
+    jobs.push(refreshAntigravityData())
+  } else if (p.includes("codex")) {
+    jobs.push(refreshCodexData())
+  } else if (p.includes("deepseek") || p === "ds") {
+    jobs.push(refreshDeepSeekData())
+  } else if (p.includes("workbuddy") || p.includes("wb-direct") || p === "wb" || p === "wbd") {
+    // WorkBuddy 已合并为单一「官方直连」数据源
+    jobs.push(refreshWbDirectData())
+  } else if (p.includes("media") || p.includes("moviepilot") || p.includes("emby") || p.includes("jellyfin")) {
+    jobs.push(refreshMediaData())
+  } else if (p.includes("cpamp")) {
+    jobs.push(refreshCpampData())
+  } else if (p.includes("vpn") || p.includes("node") || p.includes("ip")) {
+    jobs.push(refreshVpnData())
+  } else if (p.includes("fuel") || p.includes("oil") || p.includes("油价")) {
+    jobs.push(refreshFuelData())
+  } else if (p.includes("github") || p === "gh") {
+    jobs.push(refreshGitHubData())
+  } else if (p.includes("loon")) {
+    jobs.push(refreshLoonData())
+  } else if (p.includes("gold") || p.includes("黄金") || p.includes("金价")) {
+    jobs.push(refreshGoldData())
+  } else if (Widget.family === "systemMedium" || Widget.family === "systemLarge") {
+    jobs.push(refreshGoldData(), refreshDeepSeekData(), refreshFuelData())
+  } else {
+    jobs.push(refreshDeepSeekData())
+  }
+
+  await Promise.all(jobs.map((job) => withTimeout(job, timeoutMs)))
+}
+
 async function main() {
-  // 小组件唤醒执行时，后台轻量触发一次全局配额静默刷新（若有配置），拉取最新真实数据
+  // 小组件唤醒执行时，后台轻量触发一次全局配额静默刷新（若有配置），拉取最新真实数据。
+  // 限时等待：超时/失败一律落到缓存渲染，绝不阻塞出图。
+  const previewing = isPreviewSession()
   try {
     let p = (Widget.parameter || "").trim().toLowerCase()
     if (!p) p = readActivePreviewId()
-    if (p.includes("antigravity") || p === "ag" || p.includes("anti-gravity")) {
-      await refreshAntigravityData().catch(() => null)
-    } else if (p.includes("codex")) {
-      await refreshCodexData().catch(() => null)
-    } else if (p.includes("deepseek") || p === "ds") {
-      await refreshDeepSeekData().catch(() => null)
-    } else if (p.includes("workbuddy") || p.includes("wb-direct") || p === "wb" || p === "wbd") {
-      // WorkBuddy 已合并为单一「官方直连」数据源
-      await refreshWbDirectData().catch(() => null)
-    } else if (p.includes("media") || p.includes("moviepilot") || p.includes("emby") || p.includes("jellyfin")) {
-      await refreshMediaData().catch(() => null)
-    } else if (p.includes("cpamp")) {
-      await refreshCpampData().catch(() => null)
-    } else if (p.includes("vpn") || p.includes("node") || p.includes("ip")) {
-      await refreshVpnData().catch(() => null)
-    } else if (p.includes("fuel") || p.includes("oil") || p.includes("油价")) {
-      await refreshFuelData().catch(() => null)
-    } else if (p.includes("github") || p === "gh") {
-      await refreshGitHubData().catch(() => null)
-    } else if (p.includes("loon")) {
-      await refreshLoonData().catch(() => null)
-    } else if (p.includes("gold") || p.includes("黄金") || p.includes("金价")) {
-      await refreshGoldData().catch(() => null)
-    } else {
-      // 未带参数时，优先按默认组件刷新
-      if (Widget.family === "systemMedium" || Widget.family === "systemLarge") {
-        await Promise.all([
-          refreshGoldData().catch(() => null),
-          refreshDeepSeekData().catch(() => null),
-          refreshFuelData().catch(() => null),
-        ])
-      } else {
-        await refreshDeepSeekData().catch(() => null)
-      }
-    }
+    await refreshForWidget(p, previewing ? PREVIEW_REFRESH_TIMEOUT_MS : REFRESH_TIMEOUT_MS)
   } catch {}
 
   const view = getWidgetView()
@@ -511,11 +576,21 @@ async function main() {
       date: new Date(Date.now() + 15 * 60 * 1000),
     },
   })
-  Script.exit()
+
+  // App 内「预览」会把 widget.tsx 跑在 App 宿主进程里，此时主动结束脚本会
+  // 连带关掉预览浮层——表现为「点预览闪一下就回到设置页」。
+  // 预览流程下跳过结束调用；真实桌面组件照常结束脚本。
+  if (!previewing) {
+    try {
+      Script.exit()
+    } catch {}
+  }
 }
 
 main().catch((e) => {
   console.log("Widget render error:", e)
+  // 预览流程里同样不能 exit（会连带关闭预览浮层）
+  if (isPreviewSession()) return
   try {
     Script.exit()
   } catch {}

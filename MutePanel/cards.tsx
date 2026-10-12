@@ -183,7 +183,8 @@ export function MediaNexusCard({ data }: { data: MediaNexusData }) {
   const cBlue = { light: "#1D64E8", dark: "#3B82F6" } as any
   const cLabel = { light: "#64748B", dark: "#94A3B8" } as any
   const cText = { light: "#1E293B", dark: "#F1F5F9" } as any
-  const cDim = { light: "#94A3B8", dark: "#64748B" } as any
+  // 辅助文字：浅色模式必须比深色模式更深（原来写反了，浅色下几乎看不见）
+  const cDim = { light: "#64748B", dark: "#94A3B8" } as any
   const cDivider = { light: "#CBD5E1", dark: "#334155" } as any
   const cFilm = { light: "#D97706", dark: "#FBBF24" } as any
 
@@ -1326,11 +1327,63 @@ export function BentoLargeGridCard({
  * GitHub 监控中号小组件 (参考图 1 风格)
  * 左侧展示用户头像、用户名、简介及 Followers、Stars、Forks 三项核心指标及其增量变化
  * 右侧展示按 Stars 降序排列的前 7 个热门仓库
+ *
+ * 配色：全部走 THEME 语义色（浅色深灰 / 深色纯白），不再写死 #FFFFFF。
+ * 排版：左侧指标改为三列等宽 + 顶端对齐，标签单行 + 自动缩放，消除折行错位。
  */
 export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
   const top7 = (Array.isArray(data.topRepos) ? data.topRepos : []).slice(0, 7)
   const formatDelta = (d: number) => (d > 0 ? `+${d}` : d < 0 ? `${d}` : "+0")
-  const deltaColor = (d: number) => (d > 0 ? "#22C55E" : d < 0 ? "#EF4444" : "#6E7681")
+  const deltaColor = (d: number) =>
+    d > 0 ? THEME.green : d < 0 ? THEME.red : THEME.dim
+
+  /** 单个指标单元：图标 + 数值 + 增量一行，标签一行，整体左对齐 */
+  const metric = (
+    icon: string,
+    iconColor: any,
+    value: number,
+    delta: number,
+    label: string
+  ) => (
+    <VStack
+      alignment="leading"
+      spacing={1}
+      frame={{ maxWidth: "infinity", alignment: "leading" }}
+    >
+      <HStack spacing={2} alignment="center">
+        <Image systemName={icon} font={10} foregroundStyle={iconColor} />
+        <Text
+          font={13}
+          fontWeight="bold"
+          foregroundStyle={THEME.text}
+          monospacedDigit
+          lineLimit={1}
+          minScaleFactor={0.7}
+        >
+          {String(value)}
+        </Text>
+        <Text
+          font={10}
+          fontWeight="semibold"
+          foregroundStyle={deltaColor(delta)}
+          monospacedDigit
+          lineLimit={1}
+          minScaleFactor={0.7}
+        >
+          {formatDelta(delta)}
+        </Text>
+      </HStack>
+      <Text
+        font={10}
+        foregroundStyle={THEME.dim}
+        lineLimit={1}
+        allowsTightening={true}
+        minScaleFactor={0.7}
+      >
+        {label}
+      </Text>
+    </VStack>
+  )
 
   return (
     <HStack
@@ -1350,81 +1403,49 @@ export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
             resizable={true}
             scaleToFit={true}
             frame={{ width: 44, height: 44 }}
-            border={{ color: "rgba(255,255,255,0.18)", width: 1.5 }}
+            border={{ style: THEME.border as any, width: 1.5 }}
           />
           <VStack alignment="leading" spacing={1} frame={{ maxWidth: "infinity" }}>
-            <Text font={14} fontWeight="bold" foregroundStyle="#FFFFFF" lineLimit={1}>
+            <Text
+              font={14}
+              fontWeight="bold"
+              foregroundStyle={THEME.text}
+              lineLimit={1}
+              minScaleFactor={0.75}
+            >
               {data.name || data.username}
             </Text>
-            <Text font={11} foregroundStyle="#8B949E" lineLimit={1}>
+            <Text
+              font={11}
+              foregroundStyle={THEME.dim}
+              lineLimit={1}
+              minScaleFactor={0.75}
+            >
               @{data.username}
             </Text>
-            <Text font={10} foregroundStyle="#8B949E" lineLimit={1}>
+            <Text
+              font={10}
+              foregroundStyle={THEME.dim}
+              lineLimit={1}
+              minScaleFactor={0.75}
+            >
               {data.bio || "Code · Learn · Build · Share"}
             </Text>
           </VStack>
         </HStack>
 
-        {/* 三大指标横向排布 */}
-        <HStack spacing={8} alignment="center">
-          {/* Followers */}
-          <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
-            <HStack spacing={2} alignment="center">
-              <Image systemName="person.2.fill" font={10} foregroundStyle="#38BDF8" />
-              <Text font={13} fontWeight="bold" foregroundStyle="#FFFFFF">
-                {String(data.followers)}
-              </Text>
-              <Text font={10} fontWeight="semibold" foregroundStyle={deltaColor(data.followersDelta)}>
-                {formatDelta(data.followersDelta)}
-              </Text>
-            </HStack>
-            <Text font={10} foregroundStyle="#8B949E">
-              Followers
-            </Text>
-          </VStack>
-
-          {/* Stars */}
-          <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
-            <HStack spacing={2} alignment="center">
-              <Text font={11} foregroundStyle="#F59E0B">
-                ★
-              </Text>
-              <Text font={13} fontWeight="bold" foregroundStyle="#FFFFFF">
-                {String(data.stars)}
-              </Text>
-              <Text font={10} fontWeight="semibold" foregroundStyle={deltaColor(data.starsDelta)}>
-                {formatDelta(data.starsDelta)}
-              </Text>
-            </HStack>
-            <Text font={10} foregroundStyle="#8B949E">
-              Stars
-            </Text>
-          </VStack>
-
-          {/* Forks */}
-          <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity" }}>
-            <HStack spacing={2} alignment="center">
-              <Text font={11} foregroundStyle="#A855F7">
-                ⑂
-              </Text>
-              <Text font={13} fontWeight="bold" foregroundStyle="#FFFFFF">
-                {String(data.forks)}
-              </Text>
-              <Text font={10} fontWeight="semibold" foregroundStyle={deltaColor(data.forksDelta)}>
-                {formatDelta(data.forksDelta)}
-              </Text>
-            </HStack>
-            <Text font={10} foregroundStyle="#8B949E">
-              Forks
-            </Text>
-          </VStack>
+        {/* 三大指标：三列等宽 + 顶端对齐，基准线整齐 */}
+        <HStack spacing={4} alignment="top">
+          {metric("person.2.fill", THEME.blue, data.followers, data.followersDelta, "Followers")}
+          {metric("star.fill", THEME.orange, data.stars, data.starsDelta, "Stars")}
+          {metric("arrow.triangle.branch", THEME.purple, data.forks, data.forksDelta, "Forks")}
         </HStack>
       </VStack>
 
       {/* 竖向分隔线 */}
       <RoundedRectangle
         cornerRadius={1}
-        fill="rgba(255,255,255,0.08)"
+        fill={THEME.border as any}
         frame={{ width: 1, maxHeight: "infinity" }}
       />
 
@@ -1434,15 +1455,18 @@ export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
           <Image
             systemName="chevron.left.forwardslash.chevron.right"
             font={11}
-            foregroundStyle="#38BDF8"
+            foregroundStyle={THEME.blue}
           />
-          <Text font={11} fontWeight="semibold" foregroundStyle="#C9D1D9">
+          <Text
+            font={11}
+            fontWeight="semibold"
+            foregroundStyle={THEME.text}
+            lineLimit={1}
+            minScaleFactor={0.8}
+          >
             热门仓库
           </Text>
           <Spacer />
-          <Text font={10} foregroundStyle="#6E7681">
-            Star 降序
-          </Text>
           <RefreshButton />
         </HStack>
 
@@ -1452,28 +1476,40 @@ export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
               <Text
                 font={10}
                 fontWeight="bold"
-                foregroundStyle={i < 3 ? "#F59E0B" : "#6E7681"}
+                foregroundStyle={i < 3 ? THEME.orange : THEME.dim}
                 frame={{ width: 10 }}
               >
                 {String(i + 1)}
               </Text>
-              <Text font={11} fontWeight="medium" foregroundStyle="#F0F6FC" lineLimit={1}>
+              <Text
+                font={11}
+                fontWeight="medium"
+                foregroundStyle={THEME.text}
+                lineLimit={1}
+                allowsTightening={true}
+                minScaleFactor={0.75}
+              >
                 {repo.name}
               </Text>
               <Spacer />
               <HStack alignment="center" spacing={2}>
-                <Text font={10} foregroundStyle="#F59E0B">
+                <Text font={10} foregroundStyle={THEME.orange}>
                   ★
                 </Text>
-                <Text font={10} fontWeight="medium" foregroundStyle="#8B949E">
+                <Text
+                  font={10}
+                  fontWeight="medium"
+                  foregroundStyle={THEME.dim}
+                  monospacedDigit
+                >
                   {String(repo.stars)}
                 </Text>
               </HStack>
               <HStack alignment="center" spacing={1}>
-                <Text font={10} foregroundStyle="#A855F7">
+                <Text font={10} foregroundStyle={THEME.purple}>
                   ⑂
                 </Text>
-                <Text font={10} foregroundStyle="#6E7681">
+                <Text font={10} foregroundStyle={THEME.dim} monospacedDigit>
                   {String(repo.forks)}
                 </Text>
               </HStack>
@@ -1489,8 +1525,43 @@ export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
  * Loon 监控中号小组件 (参考图 2 风格)
  * 顶部 Loon 标题与刷新；中部累计下行与累计上行核心大指标（纵向分割线）；
  * 次级策略组数、实时延迟、剩余流量、运行模式四列网格；底部订阅统计与总额信息
+ *
+ * 配色：正文/数值统一走 THEME.text，标签走 THEME.dim，分割线走 THEME.border，
+ * 保证浅色模式下不再出现「白字白底」不可读。
  */
 export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
+  /** 次级指标单元：图标 + 标签一行，数值一行 */
+  const stat = (icon: string, label: string, value: string, lineLimit = 1) => (
+    <VStack
+      alignment="leading"
+      spacing={3}
+      frame={{ maxWidth: "infinity", alignment: "leading" }}
+    >
+      <HStack spacing={3} alignment="center">
+        <Image systemName={icon} font={10} foregroundStyle={THEME.blue} />
+        <Text
+          font={10}
+          foregroundStyle={THEME.dim}
+          lineLimit={1}
+          allowsTightening={true}
+          minScaleFactor={0.7}
+        >
+          {label}
+        </Text>
+      </HStack>
+      <Text
+        font={14}
+        fontWeight="bold"
+        foregroundStyle={THEME.text}
+        monospacedDigit
+        lineLimit={lineLimit}
+        minScaleFactor={0.7}
+      >
+        {value}
+      </Text>
+    </VStack>
+  )
+
   return (
     <VStack
       alignment="leading"
@@ -1501,16 +1572,16 @@ export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
     >
       {/* 顶部标题栏 */}
       <HStack alignment="center" spacing={6}>
-        <Image systemName="paperplane.fill" font={13} foregroundStyle="#38BDF8" />
-        <Text font={14} fontWeight="bold" foregroundStyle="#FFFFFF">
+        <Image systemName="paperplane.fill" font={13} foregroundStyle={THEME.blue} />
+        <Text font={14} fontWeight="bold" foregroundStyle={THEME.text}>
           Loon
         </Text>
         <Spacer />
-        <Text font={11} foregroundStyle="#94A3B8">
+        <Text font={11} foregroundStyle={THEME.dim}>
           {`更新 ${formatTime(data.updatedAt)}`}
         </Text>
-        <Button intent={RefreshWidgetIntent}>
-          <Image systemName="arrow.clockwise" font={12} foregroundStyle="#38BDF8" />
+        <Button intent={RefreshWidgetIntent(undefined)} buttonStyle="plain">
+          <Image systemName="arrow.clockwise" font={12} foregroundStyle={THEME.blue} />
         </Button>
       </HStack>
 
@@ -1519,12 +1590,19 @@ export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
         {/* 累计下行 */}
         <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
           <HStack alignment="center" spacing={4}>
-            <Image systemName="arrow.down.circle.fill" font={13} foregroundStyle="#10B981" />
-            <Text font={12} foregroundStyle="#CBD5E1">
+            <Image systemName="arrow.down.circle.fill" font={13} foregroundStyle={THEME.green} />
+            <Text font={12} foregroundStyle={THEME.muted}>
               累计下行
             </Text>
           </HStack>
-          <Text font={23} fontWeight="bold" foregroundStyle="#FFFFFF" lineLimit={1}>
+          <Text
+            font={23}
+            fontWeight="bold"
+            foregroundStyle={THEME.text}
+            monospacedDigit
+            lineLimit={1}
+            minScaleFactor={0.7}
+          >
             {data.downloadText}
           </Text>
         </VStack>
@@ -1532,7 +1610,7 @@ export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
         {/* 分割线 */}
         <RoundedRectangle
           cornerRadius={1}
-          fill="rgba(255,255,255,0.12)"
+          fill={THEME.border as any}
           frame={{ width: 1, height: 38 }}
         />
 
@@ -1544,79 +1622,39 @@ export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
           frame={{ maxWidth: "infinity" }}
         >
           <HStack alignment="center" spacing={4}>
-            <Image systemName="arrow.up.circle.fill" font={13} foregroundStyle="#F59E0B" />
-            <Text font={12} foregroundStyle="#CBD5E1">
+            <Image systemName="arrow.up.circle.fill" font={13} foregroundStyle={THEME.orange} />
+            <Text font={12} foregroundStyle={THEME.muted}>
               累计上行
             </Text>
           </HStack>
-          <Text font={23} fontWeight="bold" foregroundStyle="#FFFFFF" lineLimit={1}>
+          <Text
+            font={23}
+            fontWeight="bold"
+            foregroundStyle={THEME.text}
+            monospacedDigit
+            lineLimit={1}
+            minScaleFactor={0.7}
+          >
             {data.uploadText}
           </Text>
         </VStack>
       </HStack>
 
       {/* 次级 4 列指标网格 */}
-      <HStack alignment="center" spacing={4} frame={{ maxWidth: "infinity" }}>
-        {/* 策略组数 */}
-        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
-          <HStack alignment="center" spacing={3}>
-            <Image systemName="square.stack.3d.up.fill" font={10} foregroundStyle="#38BDF8" />
-            <Text font={10} foregroundStyle="#94A3B8">
-              策略组数
-            </Text>
-          </HStack>
-          <Text font={14} fontWeight="bold" foregroundStyle="#FFFFFF">
-            {String(data.policyGroupCount)}
-          </Text>
-        </VStack>
-
-        {/* 实时延迟 */}
-        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
-          <HStack alignment="center" spacing={3}>
-            <Image systemName="bolt.horizontal.fill" font={10} foregroundStyle="#38BDF8" />
-            <Text font={10} foregroundStyle="#94A3B8">
-              实时延迟
-            </Text>
-          </HStack>
-          <Text font={14} fontWeight="bold" foregroundStyle="#FFFFFF">
-            {data.delayText}
-          </Text>
-        </VStack>
-
-        {/* 剩余流量 */}
-        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
-          <HStack alignment="center" spacing={3}>
-            <Image systemName="globe" font={10} foregroundStyle="#38BDF8" />
-            <Text font={10} foregroundStyle="#94A3B8">
-              剩余流量
-            </Text>
-          </HStack>
-          <Text font={14} fontWeight="bold" foregroundStyle="#FFFFFF">
-            {data.remainingText}
-          </Text>
-        </VStack>
-
-        {/* 运行模式 */}
-        <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
-          <HStack alignment="center" spacing={3}>
-            <Image systemName="dial.low.fill" font={10} foregroundStyle="#38BDF8" />
-            <Text font={10} foregroundStyle="#94A3B8">
-              运行模式
-            </Text>
-          </HStack>
-          <Text font={14} fontWeight="bold" foregroundStyle="#FFFFFF" lineLimit={1}>
-            {data.runningMode}
-          </Text>
-        </VStack>
+      <HStack alignment="top" spacing={6} frame={{ maxWidth: "infinity" }}>
+        {stat("square.stack.3d.up.fill", "策略组数", String(data.policyGroupCount))}
+        {stat("bolt.horizontal.fill", "实时延迟", data.delayText)}
+        {stat("globe", "剩余流量", data.remainingText)}
+        {stat("dial.low.fill", "运行模式", data.runningMode)}
       </HStack>
 
       {/* 底部状态栏 */}
       <HStack alignment="center" spacing={0} frame={{ maxWidth: "infinity" }}>
-        <Text font={10} foregroundStyle="#94A3B8">
+        <Text font={10} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.75}>
           {`订阅统计 · ${data.resetDaysText}`}
         </Text>
         <Spacer />
-        <Text font={10} foregroundStyle="#94A3B8">
+        <Text font={10} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.75}>
           {`Loon ${data.version} · 总额 ${data.totalText}`}
         </Text>
       </HStack>
