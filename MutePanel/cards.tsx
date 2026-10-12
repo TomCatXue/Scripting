@@ -1628,7 +1628,12 @@ export function GitHubMediumCard({
         加大到 24pt 后指标组与头像形成明确的两个信息块，卡片高度仍有余量
         （44 头像 + 24 间隔 + 约 27 指标 = 95pt，中号组件内容区约 146pt）。
       */}
-      <VStack alignment="leading" spacing={0} frame={{ width: 146 }}>
+      {/*
+        间距调整：使用合理的模块间距 (spacing=14) 替代此前过度拉伸的
+        Spacer(minLength=24)，消除头像与三大指标之间尴尬的空洞留白，
+        同时与右侧居中对齐保持和谐呼吸感。
+      */}
+      <VStack alignment="leading" spacing={14} frame={{ width: 146 }}>
         {/* 用户头像与信息 */}
         <HStack spacing={8} alignment="center">
           <Image
@@ -1666,8 +1671,6 @@ export function GitHubMediumCard({
             </Text>
           </VStack>
         </HStack>
-
-        <Spacer minLength={24} />
 
         {/* 三大指标：三列等宽 + 顶端对齐，基准线整齐 */}
         <HStack spacing={4} alignment="top">
@@ -1919,7 +1922,7 @@ export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
       // frame 必须先于 widgetBackground，否则背景只铺满内容自然尺寸，
       // 边框外侧透出系统底色，表现为「一侧白、两侧灰」。
       frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
-      widgetBackground={THEME.cardBg}
+      widgetBackground={{ light: "#FFFFFF", dark: "#161719" }}
     >
       {/* 顶部标题栏 */}
       <HStack alignment="center" spacing={6}>

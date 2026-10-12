@@ -203,21 +203,22 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
       </Text>
 
       {/* 走势线：隐藏坐标轴，仅保留平滑曲线。
-          历史不足 2 天时不画线 —— 单点会连成一条误导性的水平直线。 */}
+          高度紧凑化至 36pt，确保在 141~148pt 极小尺寸下内容区总高不超过 113pt，
+          底部价格与涨跌两行永远完整展开不被折叠或挤压。 */}
       {hasTrend ? (
         <Chart
           chartXAxis="hidden"
           chartYAxis="hidden"
-          frame={{ maxWidth: "infinity", height: 46 }}
-          padding={{ top: 2, bottom: 2 }}
+          frame={{ maxWidth: "infinity", height: 36 }}
+          padding={{ top: 1, bottom: 1 }}
         >
           <LineChart marks={marks} interpolationMethod="catmullRom" />
         </Chart>
       ) : (
         <HStack
           alignment="center"
-          frame={{ maxWidth: "infinity", height: 46 }}
-          padding={{ top: 2, bottom: 2 }}
+          frame={{ maxWidth: "infinity", height: 36 }}
+          padding={{ top: 1, bottom: 1 }}
         >
           <Spacer />
           <Text font={10} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.8}>
@@ -235,9 +236,9 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
             · 涨跌列必须完整 —— 金额与百分比是「跌了多少」的有效信息，
               一旦被压缩就出现「涨跌金额不可见」的问题；
             · 价格有 layoutPriority + 字号缩放，空间不足时由它让位，
-              数字仍能完整读出，不会像涨跌列那样直接消失。
-          两侧都写死宽度会在 155pt 及以下机型上溢出，故不再固定价格列。 */}
-      <HStack alignment="lastTextBaseline">
+              数字仍能完整读出，不会像涨跌列那样直接消失；
+            · 整个底部 HStack 赋予 layoutPriority={1}，防止被系统折叠。 */}
+      <HStack alignment="lastTextBaseline" layoutPriority={1}>
         <Text
           font={PRICE_FONT_SIZE}
           fontWeight="bold"
@@ -375,6 +376,7 @@ export function AiMetricCell({ cell }: { cell: AiSmallCell }) {
         <Text
           font={17}
           fontWeight="heavy"
+          fontWidth="compressed"
           foregroundStyle={cell.valueColor || THEME.text}
           monospacedDigit
           lineLimit={1}
@@ -662,7 +664,7 @@ export function WaveformMediumTemplate(props: WaveformMediumTemplateProps) {
           {props.mainLabel}
         </Text>
 
-        {/* 大号数值：超过 1 万（含千分位逗号）时靠缩放完整展示，绝不截断 */}
+        {/* 大号数值：对齐 DeepSeek 用量原版紧凑加粗字体质感（heavy + compressed 等宽） */}
         <HStack
           spacing={2}
           alignment="lastTextBaseline"
@@ -670,8 +672,9 @@ export function WaveformMediumTemplate(props: WaveformMediumTemplateProps) {
         >
           {props.symbol ? (
             <Text
-              font={16}
-              fontWeight="semibold"
+              font={18}
+              fontWeight="heavy"
+              fontWidth="compressed"
               foregroundStyle={THEME.text}
               lineLimit={1}
               layoutPriority={1}
@@ -681,7 +684,8 @@ export function WaveformMediumTemplate(props: WaveformMediumTemplateProps) {
           ) : null}
           <Text
             font={32}
-            fontWeight="bold"
+            fontWeight="heavy"
+            fontWidth="compressed"
             foregroundStyle={THEME.text}
             monospacedDigit
             lineLimit={1}
@@ -914,7 +918,8 @@ export function MarketMediumTemplate(props: MarketMediumTemplateProps) {
               <Spacer />
               <Text
                 font={15}
-                fontWeight="bold"
+                fontWeight="heavy"
+                fontWidth="compressed"
                 foregroundStyle={THEME.text}
                 monospacedDigit
                 lineLimit={1}

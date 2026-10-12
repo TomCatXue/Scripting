@@ -410,12 +410,12 @@ async function testGitHubMetricSpacing(): Promise<void> {
         cardsSrc.indexOf("export function LoonMediumCard")
     );
     assert.ok(
-        gh.includes("Spacer minLength={24}"),
-        "三大指标与头像之间插入 24pt 间隔"
+        !gh.includes("Spacer minLength={24}"),
+        "移除过度拉伸的 24pt Spacer，消除三大指标与头像之间的空洞留白"
     );
     assert.ok(
-        !gh.includes('spacing={10} frame={{ width: 146 }}'),
-        "不再用统一的 spacing=10 让指标紧贴头像"
+        gh.includes('spacing={14} frame={{ width: 146 }}'),
+        "使用独立适度的 14pt 间距让指标与头像保持良好呼吸感"
     );
 }
 

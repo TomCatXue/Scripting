@@ -376,7 +376,7 @@ function testFuelRealAdjustHistory(): void {
         "存在真实调价历史抓取函数"
     );
     assert.ok(
-        dataSrc.includes("http://www.qiyoujiage.com${tzPath}") &&
+        (dataSrc.includes("http://m.qiyoujiage.com${tzPath}") || dataSrc.includes("http://www.qiyoujiage.com${tzPath}")) &&
             dataSrc.includes("/^\\/tz\\/\\d{4}\\.shtml$/"),
         "抓取 qiyoujiage 的调价记录表（真实历史），并校验路径形态"
     );

@@ -2457,7 +2457,7 @@ async function fetchFuelAdjustHistory(
   if (!Number.isFinite(focusPrice) || focusPrice <= 0) return []
   if (!/^\/tz\/\d{4}\.shtml$/.test(tzPath || "")) return []
   try {
-    const res = await fetch(`http://www.qiyoujiage.com${tzPath}`, {
+    const res = await fetch(`http://m.qiyoujiage.com${tzPath}`, {
       headers: { "User-Agent": "Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X)" },
       timeout: 15,
     })
