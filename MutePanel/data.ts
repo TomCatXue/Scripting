@@ -3515,6 +3515,26 @@ export function parseSubscriptionUserInfo(
   }
 }
 
+/**
+ * 从插件 / OpenAPI payload 中按候选字段名取数值（取第一个有效数字）。
+ *
+ * LoonMonitor 插件与 Loon OpenAPI 的字段命名并不统一：
+ *   · 新版插件返回 camelCase：uploadBytes / downloadBytes / totalBytes / delayMs / policyGroupCount
+ *   · 旧版插件与 OpenAPI config 返回短名：upload / delay / ping / policy_groups_count
+ * 只认其中一种就会把另一种的数据静默丢掉（流量恒为 0、策略组恒为 0、延迟退化成
+ * 请求耗时），因此这里统一按候选顺序读取。
+ */
+function pickLoonNumber(obj: any, keys: string[]): number | null {
+  if (!obj) return null
+  for (const k of keys) {
+    const v = obj[k]
+    if (v == null) continue
+    const n = Number(v)
+    if (Number.isFinite(n)) return n
+  }
+  return null
+}
+
 export async function fetchLoonData(
   rawUrl?: string,
   forceRefresh = false,
@@ -3699,18 +3719,17 @@ export async function fetchLoonData(
           resetDaysText = "长期有效"
         }
       } else if (subRes.bodyJson) {
+        const sUpload = pickLoonNumber(subRes.bodyJson, ["uploadBytes", "upload"])
+        const sDownload = pickLoonNumber(subRes.bodyJson, ["downloadBytes", "download"])
+        const sTotal = pickLoonNumber(subRes.bodyJson, ["totalBytes", "total"])
         if (typeof subRes.bodyJson.hasTrafficData === "boolean") {
           hasTrafficData = subRes.bodyJson.hasTrafficData
-        } else if (
-          (subRes.bodyJson.upload != null && subRes.bodyJson.upload > 0) ||
-          (subRes.bodyJson.download != null && subRes.bodyJson.download > 0) ||
-          (subRes.bodyJson.total != null && subRes.bodyJson.total > 0)
-        ) {
+        } else if ((sUpload ?? 0) > 0 || (sDownload ?? 0) > 0 || (sTotal ?? 0) > 0) {
           hasTrafficData = true
         }
-        if (subRes.bodyJson.upload != null) uploadBytes = Number(subRes.bodyJson.upload) || 0
-        if (subRes.bodyJson.download != null) downloadBytes = Number(subRes.bodyJson.download) || 0
-        if (subRes.bodyJson.total != null) totalBytes = Number(subRes.bodyJson.total) || 0
+        if (sUpload != null) uploadBytes = sUpload
+        if (sDownload != null) downloadBytes = sDownload
+        if (sTotal != null) totalBytes = sTotal
         if (subRes.bodyJson.expire != null) {
           const expMs =
             Number(subRes.bodyJson.expire) > 10000000000
@@ -3749,12 +3768,13 @@ export async function fetchLoonData(
 
         if (Array.isArray(subRes.bodyJson.all_policy_groups)) {
           policyGroupCount = subRes.bodyJson.all_policy_groups.length
-        } else if (typeof subRes.bodyJson.policy_groups_count === "number") {
-          policyGroupCount = subRes.bodyJson.policy_groups_count
+        } else {
+          const subPolicyCount = pickLoonNumber(subRes.bodyJson, ["policyGroupCount", "policy_groups_count"])
+          if (subPolicyCount != null) policyGroupCount = subPolicyCount
         }
 
-        if (typeof subRes.bodyJson.delay === "number") delayMs = subRes.bodyJson.delay
-        else if (typeof subRes.bodyJson.ping === "number") delayMs = subRes.bodyJson.ping
+        const subDelay = pickLoonNumber(subRes.bodyJson, ["delayMs", "delay", "ping"])
+        if (subDelay != null) delayMs = subDelay
         if (typeof subRes.bodyJson.version === "string") version = subRes.bodyJson.version
         if (typeof subRes.bodyJson.vpnIp === "string") vpnIp = subRes.bodyJson.vpnIp
         if (typeof subRes.bodyJson.vpnLocation === "string") vpnLocation = subRes.bodyJson.vpnLocation
@@ -3781,18 +3801,17 @@ export async function fetchLoonData(
             resetDaysText = "长期有效"
           }
         } else if (pluginRes.bodyJson) {
+          const pUpload = pickLoonNumber(pluginRes.bodyJson, ["uploadBytes", "upload"])
+          const pDownload = pickLoonNumber(pluginRes.bodyJson, ["downloadBytes", "download"])
+          const pTotal = pickLoonNumber(pluginRes.bodyJson, ["totalBytes", "total"])
           if (typeof pluginRes.bodyJson.hasTrafficData === "boolean") {
             hasTrafficData = pluginRes.bodyJson.hasTrafficData
-          } else if (
-            (pluginRes.bodyJson.upload != null && pluginRes.bodyJson.upload > 0) ||
-            (pluginRes.bodyJson.download != null && pluginRes.bodyJson.download > 0) ||
-            (pluginRes.bodyJson.total != null && pluginRes.bodyJson.total > 0)
-          ) {
+          } else if ((pUpload ?? 0) > 0 || (pDownload ?? 0) > 0 || (pTotal ?? 0) > 0) {
             hasTrafficData = true
           }
-          if (pluginRes.bodyJson.upload != null) uploadBytes = Number(pluginRes.bodyJson.upload) || 0
-          if (pluginRes.bodyJson.download != null) downloadBytes = Number(pluginRes.bodyJson.download) || 0
-          if (pluginRes.bodyJson.total != null) totalBytes = Number(pluginRes.bodyJson.total) || 0
+          if (pUpload != null) uploadBytes = pUpload
+          if (pDownload != null) downloadBytes = pDownload
+          if (pTotal != null) totalBytes = pTotal
           if (pluginRes.bodyJson.expire != null) {
             const expMs =
               Number(pluginRes.bodyJson.expire) > 10000000000
@@ -3831,12 +3850,13 @@ export async function fetchLoonData(
 
         if (Array.isArray(bodyJson.all_policy_groups)) {
           policyGroupCount = bodyJson.all_policy_groups.length
-        } else if (typeof bodyJson.policy_groups_count === "number") {
-          policyGroupCount = bodyJson.policy_groups_count
+        } else {
+          const pluginPolicyCount = pickLoonNumber(bodyJson, ["policyGroupCount", "policy_groups_count"])
+          if (pluginPolicyCount != null) policyGroupCount = pluginPolicyCount
         }
 
-        if (typeof bodyJson.delay === "number") delayMs = bodyJson.delay
-        else if (typeof bodyJson.ping === "number") delayMs = bodyJson.ping
+        const pluginDelay = pickLoonNumber(bodyJson, ["delayMs", "delay", "ping"])
+        if (pluginDelay != null) delayMs = pluginDelay
         if (typeof bodyJson.version === "string") version = bodyJson.version
         if (typeof bodyJson.vpnIp === "string") vpnIp = bodyJson.vpnIp
         if (typeof bodyJson.vpnLocation === "string") vpnLocation = bodyJson.vpnLocation
@@ -3855,6 +3875,32 @@ export async function fetchLoonData(
           nodeName = vpn.statusTitle || "当前节点"
         }
       } catch {}
+    }
+
+    /**
+     * 抗抖动：本次刷新两个通道都没给出流量时，不要把上一份已知流量擦成 “--”。
+     *
+     * 典型场景：直连拉取机场订阅的这一条请求偶发超时/被拒（实测会发生），而
+     * Loon 本地插件通道照常返回运行状态。旧实现会照样写下一份「流量全 --」的
+     * 缓存，于是小组件即便半小时前还显示着 22 GB / 24 GB，也会立刻变成「没有
+     * 信息」，且要等下一次订阅请求成功才恢复。这里保留上次的真实流量，同时在
+     * 底栏如实标注本次订阅同步失败（维持「不编造数据」的诚实口径）。
+     */
+    let carriedFromText = ""
+    if (!hasTrafficData) {
+      const prev = getLoonData()
+      if (prev && prev.hasTrafficData) {
+        uploadBytes = prev.uploadBytes
+        downloadBytes = prev.downloadBytes
+        totalBytes = prev.totalBytes
+        hasTrafficData = true
+        if (prev.resetDaysText) resetDaysText = prev.resetDaysText
+        const prevAt = prev.updatedAt ? new Date(prev.updatedAt) : null
+        carriedFromText =
+          prevAt && !Number.isNaN(prevAt.getTime())
+            ? `${String(prevAt.getHours()).padStart(2, "0")}:${String(prevAt.getMinutes()).padStart(2, "0")}`
+            : "上次"
+      }
     }
 
     const remainingBytes = Math.max(0, totalBytes - uploadBytes - downloadBytes)
@@ -3882,7 +3928,9 @@ export async function fetchLoonData(
       nodeName,
       updatedAt: new Date().toISOString(),
       configured: true,
-      errorText: undefined,
+      errorText: carriedFromText
+        ? `订阅流量本次同步失败，展示 ${carriedFromText} 的缓存流量`
+        : undefined,
       isFused,
     }
 
