@@ -14,7 +14,7 @@ import {
   VStack,
   ZStack,
 } from "scripting"
-import { RefreshWidgetIntent } from "./app_intents"
+import { RefreshWidgetIntent, SetWidgetSubModeIntent } from "./app_intents"
 import { THEME, formatPct, formatTime, remainColor } from "./theme"
 import { brandIcon } from "./icons"
 import {
@@ -839,9 +839,34 @@ export function FuelPriceSmallCard({ data }: { data: FuelCardData }) {
   const close = last ? Number(last.value) : current
   const dif = prev ? close - Number(prev.value) : 0
   const rate = prev && Number(prev.value) !== 0 ? (dif / Number(prev.value)) * 100 : 0
-  // 涨跌方向以真实差值优先，缺失时回落到调价预测方向
+
+  let changeText = String(data.changeText || "").trim()
+  let rateText = String(data.changeRateText || "").trim()
+
+  if (!changeText && prev) {
+    changeText = signedText(dif)
+  }
+  if (!rateText) {
+    if (prev && Number(prev.value) !== 0) {
+      rateText = signedText(rate, 2, "%")
+    } else if (changeText && current > 0) {
+      const numChange = parseFloat(changeText.replace("+", ""))
+      if (Number.isFinite(numChange)) {
+        const calcRate = (numChange / current) * 100
+        const sign = calcRate > 0 ? "+" : ""
+        rateText = `${sign}${calcRate.toFixed(2)}%`
+      }
+    }
+  }
+
   const trendText = String(data.smallTrend || "")
-  const isUp = prev ? dif >= 0 : !(trendText.includes("跌") || trendText.includes("下调"))
+  const isDown =
+    data.trendType === "down" ||
+    (data.trendLabel && data.trendLabel.includes("下调")) ||
+    changeText.startsWith("-") ||
+    trendText.includes("跌") ||
+    trendText.includes("下调")
+  const isUp = !isDown
 
   return (
     <TrendSmallTemplate
@@ -849,8 +874,8 @@ export function FuelPriceSmallCard({ data }: { data: FuelCardData }) {
       subtitle={data.subTitle || `${data.province || ""}实时油价`}
       data={hasTrend ? history : []}
       priceText={close.toFixed(2)}
-      changeText={prev ? signedText(dif) : "--"}
-      rateText={prev ? signedText(rate, 2, "%") : "--"}
+      changeText={changeText || "--"}
+      rateText={rateText || "--"}
       isUp={isUp}
       footnote={hasTrend ? data.cleanDateText || undefined : "累积走势中"}
     />
@@ -1413,6 +1438,21 @@ export function BentoLargeGridCard({
   )
 }
 
+function getGithubContributionColor(level: number): any {
+  switch (level) {
+    case 1:
+      return { light: "#9BE9A8", dark: "#0E4429" }
+    case 2:
+      return { light: "#40C463", dark: "#006D32" }
+    case 3:
+      return { light: "#30A14E", dark: "#26A641" }
+    case 4:
+      return { light: "#216E39", dark: "#39D353" }
+    default:
+      return { light: "rgba(0,0,0,0.06)", dark: "rgba(255,255,255,0.08)" }
+  }
+}
+
 /**
  * GitHub 监控中号小组件 (参考图 1 风格)
  * 左侧展示用户头像、用户名、简介及 Followers、Stars、Forks 三项核心指标及其增量变化
@@ -1421,7 +1461,21 @@ export function BentoLargeGridCard({
  * 配色：全部走 THEME 语义色（浅色深灰 / 深色纯白），不再写死 #FFFFFF。
  * 排版：三列等宽 + 顶端对齐，标签/数值行固定行高，保证三项标签在同一水平线。
  */
-export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
+export function GitHubMediumCard({
+  data,
+  submode,
+}: {
+  data: GitHubMonitorData
+  submode?: string
+}) {
+  const currentMode =
+    submode ||
+    (typeof Storage !== "undefined"
+      ? Storage.get<string>("dashboard_kit_submode_github", { shared: true }) ||
+        Storage.get<string>("dashboard_kit_submode_github") ||
+        "repos"
+      : "repos")
+  const isHeatmap = currentMode === "heatmap"
   const top7 = (Array.isArray(data.topRepos) ? data.topRepos : []).slice(0, 7)
   const formatDelta = (d: number) => (d > 0 ? `+${d}` : d < 0 ? `${d}` : "+0")
   const deltaColor = (d: number) =>
@@ -1517,7 +1571,6 @@ export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
             resizable={true}
             scaleToFit={true}
             frame={{ width: 44, height: 44 }}
-            border={{ style: THEME.border as any, width: 1.5 }}
           />
           <VStack alignment="leading" spacing={1} frame={{ maxWidth: "infinity" }}>
             <Text
@@ -1563,11 +1616,11 @@ export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
         frame={{ width: 1, maxHeight: "infinity" }}
       />
 
-      {/* 右侧栏：Top 7 热门仓库列表 */}
+      {/* 右侧栏：Top 7 热门仓库列表 / 贡献热力图切换 */}
       <VStack alignment="leading" spacing={3} frame={{ maxWidth: "infinity" }}>
         <HStack alignment="center" spacing={4}>
           <Image
-            systemName="chevron.left.forwardslash.chevron.right"
+            systemName={isHeatmap ? "calendar" : "chevron.left.forwardslash.chevron.right"}
             font={11}
             foregroundStyle={THEME.blue}
           />
@@ -1578,58 +1631,125 @@ export function GitHubMediumCard({ data }: { data: GitHubMonitorData }) {
             lineLimit={1}
             minScaleFactor={0.8}
           >
-            热门仓库
+            {isHeatmap ? "贡献热力图" : "热门仓库"}
           </Text>
           <Spacer />
+          <Button
+            intent={SetWidgetSubModeIntent(`github:${isHeatmap ? "repos" : "heatmap"}`)}
+            buttonStyle="plain"
+          >
+            <Text
+              font={9}
+              fontWeight="semibold"
+              foregroundStyle={THEME.blue}
+              padding={{ horizontal: 5, vertical: 2 }}
+              background={{ light: "rgba(0,122,255,0.08)", dark: "rgba(10,132,255,0.16)" } as any}
+              clipShape={{ type: "rect", cornerRadius: 4, style: "continuous" }}
+            >
+              {isHeatmap ? "看仓库" : "热力图"}
+            </Text>
+          </Button>
           <RefreshButton />
         </HStack>
 
-        <VStack alignment="leading" spacing={2.5} frame={{ maxWidth: "infinity" }}>
-          {top7.map((repo, i) => (
-            <HStack key={repo.name || String(i)} alignment="center" spacing={3}>
-              <Text
-                font={10}
-                fontWeight="bold"
-                foregroundStyle={i < 3 ? THEME.orange : THEME.dim}
-                frame={{ width: 10 }}
-              >
-                {String(i + 1)}
-              </Text>
-              <Text
-                font={11}
-                fontWeight="medium"
-                foregroundStyle={THEME.text}
-                lineLimit={1}
-                allowsTightening={true}
-                minScaleFactor={0.75}
-              >
-                {repo.name}
+        {isHeatmap ? (
+          <VStack alignment="leading" spacing={5} frame={{ maxWidth: "infinity" }}>
+            {/* 12 周 × 7 天网格 */}
+            <HStack spacing={2} alignment="center">
+              {(() => {
+                const rawWeeks =
+                  Array.isArray(data.contributions?.weeks) && data.contributions!.weeks.length > 0
+                    ? data.contributions!.weeks.slice(-12)
+                    : []
+                const weeks =
+                  rawWeeks.length > 0
+                    ? rawWeeks
+                    : Array.from({ length: 12 }, () => ({
+                        days: Array.from({ length: 7 }, () => ({ level: 0, count: 0, date: "" })),
+                      }))
+                return weeks.map((week, wIdx) => (
+                  <VStack key={`w-${wIdx}`} spacing={2} alignment="center">
+                    {(week.days || []).slice(0, 7).map((day, dIdx) => (
+                      <RoundedRectangle
+                        key={`d-${wIdx}-${dIdx}`}
+                        cornerRadius={1.5}
+                        fill={getGithubContributionColor(day.level) as any}
+                        frame={{ width: 7.5, height: 7.5 }}
+                      />
+                    ))}
+                  </VStack>
+                ))
+              })()}
+            </HStack>
+
+            {/* 底部色块图例与统计 */}
+            <HStack alignment="center" frame={{ maxWidth: "infinity" }}>
+              <Text font={9} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.8}>
+                {`近 90 天: ${data.contributions?.total || 0} 次`}
               </Text>
               <Spacer />
-              <HStack alignment="center" spacing={2}>
-                <Text font={10} foregroundStyle={THEME.orange}>
-                  ★
-                </Text>
-                <Text
-                  font={10}
-                  fontWeight="medium"
-                  foregroundStyle={THEME.dim}
-                  monospacedDigit
-                >
-                  {String(repo.stars)}
-                </Text>
-              </HStack>
-              <HStack alignment="center" spacing={1}>
-                <Text font={10} foregroundStyle={THEME.purple}>
-                  ⑂
-                </Text>
-                <Text font={10} foregroundStyle={THEME.dim} monospacedDigit>
-                  {String(repo.forks)}
-                </Text>
+              <HStack spacing={1.5} alignment="center">
+                <Text font={8} foregroundStyle={THEME.dim}>少</Text>
+                {[0, 1, 2, 3, 4].map((lvl) => (
+                  <RoundedRectangle
+                    key={`lvl-${lvl}`}
+                    cornerRadius={1}
+                    fill={getGithubContributionColor(lvl) as any}
+                    frame={{ width: 5.5, height: 5.5 }}
+                  />
+                ))}
+                <Text font={8} foregroundStyle={THEME.dim}>多</Text>
               </HStack>
             </HStack>
-          ))}
-        </VStack>
+          </VStack>
+        ) : (
+          <VStack alignment="leading" spacing={2.5} frame={{ maxWidth: "infinity" }}>
+            {top7.map((repo, i) => (
+              <HStack key={repo.name || String(i)} alignment="center" spacing={3}>
+                <Text
+                  font={10}
+                  fontWeight="bold"
+                  foregroundStyle={i < 3 ? THEME.orange : THEME.dim}
+                  frame={{ width: 10 }}
+                >
+                  {String(i + 1)}
+                </Text>
+                <Text
+                  font={11}
+                  fontWeight="medium"
+                  foregroundStyle={THEME.text}
+                  lineLimit={1}
+                  allowsTightening={true}
+                  minScaleFactor={0.75}
+                >
+                  {repo.name}
+                </Text>
+                <Spacer />
+                <HStack alignment="center" spacing={2}>
+                  <Text font={10} foregroundStyle={THEME.orange}>
+                    ★
+                  </Text>
+                  <Text
+                    font={10}
+                    fontWeight="medium"
+                    foregroundStyle={THEME.dim}
+                    monospacedDigit
+                  >
+                    {String(repo.stars)}
+                  </Text>
+                </HStack>
+                <HStack alignment="center" spacing={1}>
+                  <Text font={10} foregroundStyle={THEME.purple}>
+                    ⑂
+                  </Text>
+                  <Text font={10} foregroundStyle={THEME.dim} monospacedDigit>
+                    {String(repo.forks)}
+                  </Text>
+                </HStack>
+              </HStack>
+            ))}
+          </VStack>
+        )}
       </VStack>
     </HStack>
   )
@@ -1704,6 +1824,34 @@ export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
         <Text font={14} fontWeight="bold" foregroundStyle={THEME.text}>
           Loon
         </Text>
+        {/* VPN 出口 IP 状态指示 */}
+        <HStack spacing={3} alignment="center">
+          <Circle
+            fill={data.vpnIp && data.vpnIp !== "--" ? THEME.green : (THEME.dim as any)}
+            frame={{ width: 5.5, height: 5.5 }}
+          />
+          <Text
+            font={10}
+            fontWeight="medium"
+            monospacedDigit
+            foregroundStyle={THEME.text}
+            lineLimit={1}
+            minScaleFactor={0.7}
+          >
+            {data.vpnIp || "--"}
+          </Text>
+          {data.vpnLocation && data.vpnLocation !== "未连接" ? (
+            <Text
+              font={9}
+              foregroundStyle={THEME.dim}
+              lineLimit={1}
+              allowsTightening={true}
+              minScaleFactor={0.7}
+            >
+              {data.vpnLocation}
+            </Text>
+          ) : null}
+        </HStack>
         <Spacer />
         <Text font={11} foregroundStyle={THEME.dim}>
           {`更新 ${formatTime(data.updatedAt)}`}
@@ -1770,7 +1918,7 @@ export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
 
       {/* 次级 4 列指标网格 */}
       <HStack alignment="top" spacing={6} frame={{ maxWidth: "infinity" }}>
-        {stat("square.stack.3d.up.fill", "策略组数", String(data.policyGroupCount))}
+        {stat("network", "VPN 节点", data.nodeName || data.vpnIp || "当前节点")}
         {stat("bolt.horizontal.fill", "实时延迟", data.delayText)}
         {stat("globe", "剩余流量", data.remainingText)}
         {stat("dial.low.fill", "运行模式", data.runningMode)}
@@ -1783,7 +1931,7 @@ export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
         </Text>
         <Spacer />
         <Text font={10} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.75}>
-          {`Loon ${data.version} · 总额 ${data.totalText}`}
+          {`策略组 ${data.policyGroupCount} · 总额 ${data.totalText}`}
         </Text>
       </HStack>
     </VStack>

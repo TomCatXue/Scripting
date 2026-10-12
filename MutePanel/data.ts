@@ -54,6 +54,7 @@ import {
   type MetricBalanceData,
   type VpnNodeData,
   type GitHubMonitorData,
+  type GitHubContributions,
   type LoonMonitorData,
 } from "./types"
 
@@ -2763,7 +2764,13 @@ export async function refreshFuelData(): Promise<FuelCardData | null> {
         if (cleanLiter) {
           const sign = trendType === "up" ? "+" : trendType === "down" ? "-" : ""
           const liter = cleanLiter.includes("-") ? cleanLiter.split("-")[0] : cleanLiter
-          return { trendLabel: fallbackLabel, changeText: `${sign}${liter}`, changeRateText: "" }
+          const deltaNum = parseFloat(liter)
+          let changeRateText = ""
+          if (Number.isFinite(deltaNum) && focusNum > 0) {
+            const predRate = (deltaNum / focusNum) * 100
+            changeRateText = `${sign}${predRate.toFixed(2)}%`
+          }
+          return { trendLabel: fallbackLabel, changeText: `${sign}${liter}`, changeRateText }
         }
         return { trendLabel: fallbackLabel, changeText: "", changeRateText: "" }
       })(),
@@ -3012,6 +3019,124 @@ export function hasGitHubConfigured(): boolean {
   return false
 }
 
+/**
+ * 抓取 GitHub 贡献热力图数据（带三级降级保护）
+ */
+export async function fetchGitHubContributions(
+  username: string,
+  token?: string
+): Promise<GitHubContributions | undefined> {
+  const targetUser = encodeURIComponent(username.trim())
+  if (!targetUser) return undefined
+
+  // 1. 若有 Token，优先走官方 GraphQL API
+  if (token) {
+    try {
+      const gqlQuery = JSON.stringify({
+        query: `query($login: String!) {
+          user(login: $login) {
+            contributionsCollection {
+              contributionCalendar {
+                totalContributions
+                weeks {
+                  contributionDays {
+                    date
+                    contributionCount
+                    contributionLevel
+                  }
+                }
+              }
+            }
+          }
+        }`,
+        variables: { login: username.trim() },
+      })
+      const res = await fetch("https://api.github.com/graphql", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "User-Agent": "Scripting-App",
+          "Content-Type": "application/json",
+        },
+        timeout: 4,
+      })
+      if (res.ok) {
+        const json = await res.json()
+        const cal = json?.data?.user?.contributionsCollection?.contributionCalendar
+        if (cal && Array.isArray(cal.weeks)) {
+          const levelMap: Record<string, 0 | 1 | 2 | 3 | 4> = {
+            NONE: 0,
+            FIRST_QUARTILE: 1,
+            SECOND_QUARTILE: 2,
+            THIRD_QUARTILE: 3,
+            FOURTH_QUARTILE: 4,
+          }
+          const weeks = cal.weeks.map((w: any) => ({
+            days: (Array.isArray(w.contributionDays) ? w.contributionDays : []).map((d: any) => ({
+              date: String(d.date || ""),
+              count: Number(d.contributionCount) || 0,
+              level: levelMap[d.contributionLevel] ?? (d.contributionCount > 0 ? 1 : 0),
+            })),
+          }))
+          return {
+            total: Number(cal.totalContributions) || 0,
+            weeks,
+          }
+        }
+      }
+    } catch {}
+    return undefined
+  }
+
+  // 2. 无 Token 时，走公共贡献端点
+  try {
+    const res = await fetch(
+      `https://github-contributions-api.jogruber.de/v4/${targetUser}?y=last`,
+      {
+        headers: { "User-Agent": "Scripting-App" },
+        timeout: 4,
+      }
+    )
+    if (res.ok) {
+      const data = await res.json()
+      if (data && Array.isArray(data.contributions)) {
+        const rawDays: { date: string; count: number; level: 0 | 1 | 2 | 3 | 4 }[] = data.contributions.map(
+          (c: any) => ({
+            date: String(c.date || ""),
+            count: Number(c.count) || 0,
+            level: (Math.min(4, Math.max(0, Number(c.level) || 0)) as any) || 0,
+          })
+        )
+        const weeks: { days: typeof rawDays }[] = []
+        for (let i = 0; i < rawDays.length; i += 7) {
+          weeks.push({ days: rawDays.slice(i, i + 7) })
+        }
+        let total = 0
+        if (data.total && typeof data.total === "object") {
+          total = Object.values(data.total).reduce((sum: number, v: any) => sum + (Number(v) || 0), 0)
+        } else {
+          total = rawDays.reduce((sum, d) => sum + d.count, 0)
+        }
+        return { total, weeks }
+      }
+    }
+  } catch {}
+
+  // 3. 兜底生成最近 12 周空结构
+  const weeks: { days: { date: string; count: number; level: 0 | 1 | 2 | 3 | 4 }[] }[] = []
+  const now = new Date()
+  for (let w = 11; w >= 0; w--) {
+    const days = []
+    for (let d = 0; d < 7; d++) {
+      const dayOffset = w * 7 + (6 - d)
+      const dayDate = new Date(now.getTime() - dayOffset * 86400 * 1000)
+      days.push({ date: dayDate.toISOString().slice(0, 10), count: 0, level: 0 as 0 })
+    }
+    weeks.push({ days })
+  }
+  return { total: 0, weeks }
+}
+
 export async function fetchGitHubData(
   usernameOverride?: string,
   tokenOverride?: string,
@@ -3043,12 +3168,13 @@ export async function fetchGitHubData(
   }
 
   try {
-    const [userRes, reposRes] = await Promise.all([
+    const [userRes, reposRes, contributions] = await Promise.all([
       fetch(`https://api.github.com/users/${encodeURIComponent(targetUser)}`, { headers }),
       fetch(
         `https://api.github.com/users/${encodeURIComponent(targetUser)}/repos?sort=stars&per_page=100`,
         { headers }
       ),
+      fetchGitHubContributions(targetUser, targetToken).catch(() => undefined),
     ])
 
     if (!userRes.ok) {
@@ -3098,6 +3224,7 @@ export async function fetchGitHubData(
       forks: totalForks,
       forksDelta,
       topRepos,
+      contributions,
       updatedAt: new Date().toISOString(),
       configured: true,
       errorText: undefined,
@@ -3305,6 +3432,9 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
     let delayMs = latency
     let runningMode = "规则分流"
     let version = "3.2.x"
+    let vpnIp = "--"
+    let vpnLocation = "未连接"
+    let nodeName = "未连接"
 
     if (subInfo) {
       uploadBytes = subInfo.upload
@@ -3349,6 +3479,23 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
       if (typeof bodyJson.delay === "number") delayMs = bodyJson.delay
       else if (typeof bodyJson.ping === "number") delayMs = bodyJson.ping
       if (typeof bodyJson.version === "string") version = bodyJson.version
+      if (typeof bodyJson.vpnIp === "string") vpnIp = bodyJson.vpnIp
+      if (typeof bodyJson.vpnLocation === "string") vpnLocation = bodyJson.vpnLocation
+      if (typeof bodyJson.nodeName === "string") nodeName = bodyJson.nodeName
+      else if (typeof bodyJson.node === "string") nodeName = bodyJson.node
+      else if (typeof bodyJson.current_node === "string") nodeName = bodyJson.current_node
+    }
+
+    // 若未从响应中解析到 VPN IP，尝试读取 VPN 节点卡片已有探测缓存
+    if (vpnIp === "--") {
+      try {
+        const vpn = getVpnData()
+        if (vpn && vpn.ip && vpn.ip !== "--") {
+          vpnIp = vpn.ip
+          vpnLocation = vpn.location || ""
+          nodeName = vpn.statusTitle || "当前节点"
+        }
+      } catch {}
     }
 
     const remainingBytes = Math.max(0, totalBytes - uploadBytes - downloadBytes)
@@ -3369,6 +3516,9 @@ export async function fetchLoonData(rawUrl?: string, forceRefresh = false): Prom
       delayText: `${delayMs} ms`,
       runningMode,
       version,
+      vpnIp,
+      vpnLocation,
+      nodeName,
       updatedAt: new Date().toISOString(),
       configured: true,
       errorText: undefined,

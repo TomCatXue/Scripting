@@ -288,6 +288,9 @@ export const DEFAULT_FUEL: FuelCardData = {
   cleanDateText: "近期调价",
   smallTrend: "预计下调",
   mediumForecast: "近期调价 预计下调",
+  trendLabel: "下调",
+  changeText: "-0.12",
+  changeRateText: "-1.52%",
   trendType: "down",
   trendColor: "#2FB350",
   updatedAt: new Date().toISOString(),
@@ -406,6 +409,21 @@ export interface GitHubRepoItem {
   forks: number
 }
 
+export interface GitHubContributionDay {
+  date: string
+  count: number
+  level: 0 | 1 | 2 | 3 | 4
+}
+
+export interface GitHubContributionWeek {
+  days: GitHubContributionDay[]
+}
+
+export interface GitHubContributions {
+  total: number
+  weeks: GitHubContributionWeek[]
+}
+
 export interface GitHubMonitorData {
   serviceId: "github"
   username: string
@@ -419,6 +437,7 @@ export interface GitHubMonitorData {
   forks: number
   forksDelta: number
   topRepos: GitHubRepoItem[]
+  contributions?: GitHubContributions
   updatedAt: string
   /**
    * 是否已真正拿到过远端数据。未配置 / 首次拉取失败时为 false ——
@@ -449,6 +468,10 @@ export const DEFAULT_GITHUB: GitHubMonitorData = {
     { name: "Airplay.App", stars: 34, forks: 1 },
     { name: "MyCookieCenter", stars: 22, forks: 0 },
   ],
+  contributions: {
+    total: 342,
+    weeks: [],
+  },
   updatedAt: new Date().toISOString(),
   // 内置数据只是「尚未拉取」时的占位，卡片据此显示空状态提示
   configured: false,
@@ -472,6 +495,9 @@ export interface LoonMonitorData {
   delayText: string
   runningMode: string
   version: string
+  vpnIp?: string
+  vpnLocation?: string
+  nodeName?: string
   updatedAt: string
   /**
    * 是否已真正拿到过订阅 / OpenAPI 数据。未配置或首次拉取失败时为 false，
@@ -497,6 +523,9 @@ export const DEFAULT_LOON: LoonMonitorData = {
   delayText: "412 ms",
   runningMode: "规则分流",
   version: "3.2.x",
+  vpnIp: "--",
+  vpnLocation: "未连接",
+  nodeName: "未连接",
   updatedAt: new Date().toISOString(),
   // 内置数据只是「尚未拉取」时的占位，卡片据此显示空状态提示
   configured: false,

@@ -962,8 +962,15 @@ async function configureGitHubSettings() {
   const currentUsername = loadGitHubUsername()
   const currentToken = loadGitHubToken()
   const currentInterval = loadGitHubInterval()
+  const currentSubmode =
+    (typeof Storage !== "undefined"
+      ? Storage.get<string>("dashboard_kit_submode_github", { shared: true }) ||
+        Storage.get<string>("dashboard_kit_submode_github") ||
+        "repos"
+      : "repos")
 
   const action = await gActionSheet("GitHub 监控配置", [
+    `切换右侧视图 (当前: ${currentSubmode === "heatmap" ? "贡献热力图" : "热门仓库"})`,
     `设置用户名 (当前: ${currentUsername})`,
     currentToken ? "修改或清除 Token (已配置)" : "设置 Personal Access Token (可选)",
     `设置刷新间隔 (当前: ${currentInterval} 分钟)`,
@@ -973,7 +980,13 @@ async function configureGitHubSettings() {
   ])
   if (!action || action === "取消") return
 
-  if (action.includes("设置用户名")) {
+  if (action.includes("切换右侧视图")) {
+    const nextMode = currentSubmode === "heatmap" ? "repos" : "heatmap"
+    Storage.set("dashboard_kit_submode_github", nextMode, { shared: true })
+    Storage.set("dashboard_kit_submode_github", nextMode)
+    Widget.reloadAll()
+    await gAlert(`✓ 已切换右侧视图为：${nextMode === "heatmap" ? "贡献热力图" : "热门仓库排行"}`)
+  } else if (action.includes("设置用户名")) {
     const input = await gPrompt("请输入要监控的 GitHub 用户名", currentUsername)
     if (input && input.trim()) {
       saveGitHubUsername(input.trim())
@@ -1029,14 +1042,20 @@ async function configureGitHubSettings() {
 async function configureLoonSettings() {
   const currentUrl = loadLoonUrl()
   const action = await gActionSheet("Loon 监控配置", [
-    currentUrl ? "修改订阅或 OpenAPI 链接" : "设置订阅或 OpenAPI 链接",
+    "使用 Loon 本地插件直连 (推荐)",
+    currentUrl ? "修改自定义订阅或 OpenAPI 链接" : "设置自定义订阅或 OpenAPI 链接",
     "测试连接并立即刷新",
     "清除配置 (恢复默认)",
     "取消",
   ])
   if (!action || action === "取消") return
 
-  if (action.includes("链接")) {
+  if (action === "使用 Loon 本地插件直连 (推荐)") {
+    saveLoonUrl("http://loon.local/api/monitor")
+    await refreshLoonData()
+    Widget.reloadAll()
+    await gAlert("✓ 已切换为 Loon 本地插件直连模式！\n\n地址：http://loon.local/api/monitor\n请确保已在 Loon 安装 LoonMonitor 插件。")
+  } else if (action.includes("链接")) {
     const input = await gPrompt(
       "请输入 Loon 订阅链接或 OpenAPI 地址 (支持包含 subscription-userinfo 响应头的链接)",
       currentUrl
@@ -1052,7 +1071,7 @@ async function configureLoonSettings() {
     if (res) {
       Widget.reloadAll()
       await gAlert(
-        `✓ Loon 状态获取成功！\n\n累计下行：${res.downloadText}\n累计上行：${res.uploadText}\n剩余流量：${res.remainingText}\n运行模式：${res.runningMode}\n策略组数：${res.policyGroupCount}\n实时延迟：${res.delayText}\n总额：${res.totalText}`
+        `✓ Loon 状态获取成功！\n\nVPN 出口：${res.vpnIp || "--"}\n节点归属：${res.vpnLocation || "--"}\n累计下行：${res.downloadText}\n累计上行：${res.uploadText}\n剩余流量：${res.remainingText}\n运行模式：${res.runningMode}\n策略组数：${res.policyGroupCount}\n实时延迟：${res.delayText}\n总额：${res.totalText}`
       )
     } else {
       await gAlert("获取 Loon 数据失败，请检查网络与链接。")

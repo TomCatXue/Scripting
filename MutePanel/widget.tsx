@@ -268,7 +268,11 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
   if (family === "systemMedium") {
     const mService = param || CONFIG.mediumStyle || pickDefaultService()
     if (mService === "github") {
-      return <GitHubMediumCard data={getGitHubData()} />
+      const ghMode =
+        Storage.get<string>("dashboard_kit_submode_github", { shared: true }) ||
+        Storage.get<string>("dashboard_kit_submode_github") ||
+        "repos"
+      return <GitHubMediumCard data={getGitHubData()} submode={ghMode} />
     } else if (mService === "loon") {
       return <LoonMediumCard data={getLoonData()} />
     } else if (mService === "workbuddy") {
