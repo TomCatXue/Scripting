@@ -3607,21 +3607,33 @@ export async function fetchLoonData(
       pluginPromise = (async () => {
         const startTime = Date.now()
         let requestUrl = pluginTargetUrl
-        if (
-          subTargetUrl &&
-          (requestUrl.includes("loon.box") || requestUrl.includes("198.18.0.1") || requestUrl.includes("loon.local"))
-        ) {
-          requestUrl += (requestUrl.includes("?") ? "&" : "?") + "sub_url=" + encodeURIComponent(subTargetUrl)
+        let res: any = null
+        try {
+          res = await fetch(requestUrl, {
+            headers: {
+              "User-Agent": "Loon/3.2.0 (iOS)",
+            },
+            timeout: 6,
+          })
+        } catch (err) {
+          // 若 loon.box 域名解析失败，降级直连 198.18.0.1 (绕过 DNS 直接进入 TUN)
+          if (requestUrl.includes("loon.box") || requestUrl.includes("loon.local")) {
+            const fallbackIpUrl = "http://198.18.0.1/api/monitor"
+            try {
+              res = await fetch(fallbackIpUrl, {
+                headers: { "User-Agent": "Loon/3.2.0 (iOS)" },
+                timeout: 5,
+              })
+            } catch {
+              throw err
+            }
+          } else {
+            throw err
+          }
         }
-        const res = await fetch(requestUrl, {
-          headers: {
-            "User-Agent": "Loon/3.2.0 (iOS)",
-          },
-          timeout: 6,
-        })
         const latency = Math.max(1, Date.now() - startTime)
         let subInfo: { upload: number; download: number; total: number; expire: number } | null = null
-        if (res.headers) {
+        if (res && res.headers) {
           const rawHeader =
             (typeof res.headers.get === "function" ? res.headers.get("subscription-userinfo") : null) ||
             (res.headers as any)["subscription-userinfo"] ||
@@ -3633,9 +3645,12 @@ export async function fetchLoonData(
         }
         let bodyJson: any = null
         try {
-          const text = await res.text()
-          if (text.startsWith("{") && text.endsWith("}")) {
-            bodyJson = JSON.parse(text)
+          if (res) {
+            const rawText = await res.text()
+            const trimmed = typeof rawText === "string" ? rawText.trim() : ""
+            if (trimmed) {
+              bodyJson = JSON.parse(trimmed)
+            }
           }
         } catch {}
         return { bodyJson, subInfo, latency }
@@ -3665,9 +3680,10 @@ export async function fetchLoonData(
         }
         let bodyJson: any = null
         try {
-          const text = await res.text()
-          if (text.startsWith("{") && text.endsWith("}")) {
-            bodyJson = JSON.parse(text)
+          const rawText = await res.text()
+          const trimmed = typeof rawText === "string" ? rawText.trim() : ""
+          if (trimmed) {
+            bodyJson = JSON.parse(trimmed)
           }
         } catch {}
         return { subInfo, bodyJson, latency }
