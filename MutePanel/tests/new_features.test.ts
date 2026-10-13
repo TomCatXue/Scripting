@@ -207,8 +207,8 @@ async function testFuelSmallTagAlignment(): Promise<void> {
         "涨跌列固定宽度，保证金额与百分比完整可读"
     );
     assert.ok(
-        tpl.includes("export const PRICE_CHANGE_COLUMN_WIDTH = 38"),
-        "涨跌列宽度按最长文本「-1.52%」实测值取 38pt"
+        tpl.includes("export const PRICE_CHANGE_COLUMN_WIDTH = 46"),
+        "涨跌列宽度按最长文本「+0.27%」/「-12.34%」实测值取 46pt"
     );
     assert.ok(
         !tpl.includes("PRICE_COLUMN_WIDTH"),
