@@ -3248,13 +3248,23 @@ export async function fetchGitHubData(
     const totalStars = repoList.reduce((sum: number, r: any) => sum + (Number(r?.stargazers_count) || 0), 0)
     const totalForks = repoList.reduce((sum: number, r: any) => sum + (Number(r?.forks_count) || 0), 0)
 
-    const topRepos = [...repoList]
+    // 优先展示原创仓库（非 Fork），若原创不足 7 个再用 Fork 补充；同类按 Star 倒序
+    const originalRepos = repoList.filter((r: any) => r?.fork !== true)
+    const forkRepos = repoList.filter((r: any) => r?.fork === true)
+    const sortedOriginals = [...originalRepos].sort(
+      (a: any, b: any) => (Number(b?.stargazers_count) || 0) - (Number(a?.stargazers_count) || 0)
+    )
+    const sortedForks = [...forkRepos].sort(
+      (a: any, b: any) => (Number(b?.stargazers_count) || 0) - (Number(a?.stargazers_count) || 0)
+    )
+    const displayList = [...sortedOriginals, ...sortedForks]
+
+    const topRepos = displayList
       .map((r: any) => ({
         name: String(r?.name || ""),
         stars: Number(r?.stargazers_count) || 0,
         forks: Number(r?.forks_count) || 0,
       }))
-      .sort((a, b) => b.stars - a.stars)
       .slice(0, 7)
 
     const old =
@@ -3983,17 +3993,39 @@ export function getLoonData(): LoonMonitorData {
       Storage.get<any>(LOON_CACHE_KEY, { shared: true }) ||
       Storage.get<any>(LOON_CACHE_KEY)
     if (cached) {
-      if (cached.data && typeof cached.data === "object" && cached.data.uploadText) {
-        return cached.data
+      const target = cached.data && typeof cached.data === "object" ? cached.data : cached
+      if (target && typeof target === "object") {
+        if (target.uploadText || (target.runningMode && target.runningMode !== "--") || target.nodeName) {
+          return {
+            ...DEFAULT_LOON,
+            ...target,
+            uploadText: target.uploadText || (target.hasTrafficData ? formatBytes(target.uploadBytes || 0) : "--"),
+            downloadText: target.downloadText || (target.hasTrafficData ? formatBytes(target.downloadBytes || 0) : "--"),
+            totalText: target.totalText || (target.hasTrafficData ? formatBytes(target.totalBytes || 0) : "--"),
+            remainingText: target.remainingText || (target.hasTrafficData ? formatBytes(target.remainingBytes || 0) : "--"),
+            delayText: target.delayText || (target.delayMs > 0 ? `${target.delayMs} ms` : "--"),
+            configured: target.configured ?? true,
+          }
+        }
       }
-      if (cached.uploadText) return cached
     }
 
     if (FileManager.existsSync ? FileManager.existsSync(LOON_FILE_CACHE_PATH) : (FileManager as any).fileExists?.(LOON_FILE_CACHE_PATH)) {
       const raw = FileManager.readAsStringSync(LOON_FILE_CACHE_PATH)
       if (raw) {
         const parsed = JSON.parse(raw)
-        if (parsed && parsed.uploadText) return parsed
+        if (parsed && typeof parsed === "object") {
+          return {
+            ...DEFAULT_LOON,
+            ...parsed,
+            uploadText: parsed.uploadText || (parsed.hasTrafficData ? formatBytes(parsed.uploadBytes || 0) : "--"),
+            downloadText: parsed.downloadText || (parsed.hasTrafficData ? formatBytes(parsed.downloadBytes || 0) : "--"),
+            totalText: parsed.totalText || (parsed.hasTrafficData ? formatBytes(parsed.totalBytes || 0) : "--"),
+            remainingText: parsed.remainingText || (parsed.hasTrafficData ? formatBytes(parsed.remainingBytes || 0) : "--"),
+            delayText: parsed.delayText || (parsed.delayMs > 0 ? `${parsed.delayMs} ms` : "--"),
+            configured: parsed.configured ?? true,
+          }
+        }
       }
     }
   } catch {}
