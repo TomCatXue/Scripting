@@ -80,9 +80,11 @@ export function signedText(value: number, digits = 2, suffix = ""): string {
  * 这里选一个「最长价格也能完整放下」的字号，并给价格一个固定宽度，
  * 两张卡片的数字实际渲染尺寸因此完全相同。
  */
-// 26pt 是「最长价格（904.48）也能完整放下」的实测值；直接复用
-// HIG_FONT.heroNumber(28) 会在小屏上挤压涨跌列，故此处保留独立常量。
-export const PRICE_FONT_SIZE = 26
+// 宽度预算：小号组件内容区 ≈ 130pt（158pt 机型扣掉 SMALL_PAD 28pt）。
+// 最长价格 904.48（6 字符）在 22pt 粗体下约 80pt，加上 4pt 间隔与 46pt 涨跌列
+// 正好 ≈ 130pt —— 价格与「涨跌额/涨跌幅」两行都能以原字号完整渲染。
+// 旧值 26pt 时价格就要吃掉 90pt+，涨跌列被挤到截断（用户反馈「百分比看不见」）。
+export const PRICE_FONT_SIZE = 22
 /**
  * 价格行不设固定列宽，改用「弹性价格 + 固定涨跌列」。
  *
@@ -94,10 +96,11 @@ export const PRICE_FONT_SIZE = 26
  * 涨跌列 —— 表现正是用户反馈的「涨跌金额看不见」。
  *
  * 现在只固定涨跌列（它必须完整：金额与百分比两行都不能截断），价格改为
- * 可伸缩并由字号缩放兜底。涨跌列宽度按最长实际文本（「-1.52%」≈37pt）
- * 留 1pt 余量取 38pt。
+ * 可伸缩并由字号缩放兜底。列宽按最长实际文本（「+0.27%」「-1.52%」在 11pt
+ * 下 ≈ 37–41pt，三位数涨跌幅「-12.34%」≈ 48pt）取 46pt，留出余量；
+ * 旧值 38pt 时「+0.27%」这类六字符文本必然被压缩/截断。
  */
-export const PRICE_CHANGE_COLUMN_WIDTH = 38
+export const PRICE_CHANGE_COLUMN_WIDTH = 46
 
 export interface TrendSmallTemplateProps {
   /** 标题，如「Au9999」「92# 汽油」 */
@@ -164,12 +167,12 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
       {/*
         Header：涨跌三角 + 标题 + 右上角调价胶囊。
 
-        小号组件宽 158pt，去掉 SMALL_PAD 只剩 130pt。实测这一行：
-        三角 13 + 标题「92#」29 + 间距 5 + 胶囊「10月15日调价」74 + 间隔 4
-        ≈ 125pt，可以放下；但若胶囊没有布局优先级，SwiftUI 会优先压缩它
-        （胶囊本来是弹性最小的一方），一路压到接近 0 宽 —— 这正是之前
-        「调价信息完全不可见」的原因。这里给胶囊 layoutPriority，并让标题
-        承担缩放，保证调价信息在任何数据下都完整可见。
+        一行实测预算（158pt 机型，内容区 130pt）：
+        三角 13 +「92# 汽油」约 45 + 间距 5 + 胶囊「10月15日调价」约 62 + 留白 4
+        ≈ 129pt，可以放下。关键点：胶囊必须带 layoutPriority，否则 SwiftUI 会
+        优先压缩它（弹性最小的一方），一路压到接近 0 宽 —— 这正是之前
+        「调价信息完全不可见」的原因。此外调价日期文案已在数据层压缩成
+        「M月D日调价」（去掉「24时」等时间尾巴），避免 8 个字把胶囊撑爆。
       */}
       <HStack spacing={5} alignment="center">
         <Image
@@ -183,7 +186,7 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
           foregroundStyle={THEME.text}
           lineLimit={1}
           allowsTightening={true}
-          minScaleFactor={0.7}
+          minScaleFactor={0.65}
         >
           {props.title}
         </Text>
@@ -195,9 +198,9 @@ export function TrendSmallTemplate(props: TrendSmallTemplateProps) {
             foregroundStyle={color}
             lineLimit={1}
             allowsTightening={true}
-            minScaleFactor={0.9}
+            minScaleFactor={0.85}
             layoutPriority={1}
-            padding={{ leading: 5, trailing: 5, top: 2.5, bottom: 2.5 }}
+            padding={{ leading: 4, trailing: 4, top: 2.5, bottom: 2.5 }}
             background={softTint(color) as any}
             clipShape="capsule"
           >
