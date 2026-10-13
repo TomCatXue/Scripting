@@ -1745,6 +1745,11 @@ export default function ConfigView() {
                   if (hasCpamp) tasks.push(refreshCpampData().catch((e) => console.log("cpamp err:", e)))
                   tasks.push(refreshVpnData().catch((e) => console.log("vpn err:", e)))
                   tasks.push(refreshFuelData().catch((e) => console.log("fuel err:", e)))
+                  // Loon / 黄金 / GitHub 也要刷新：旧实现漏了这三个，
+                  // 用户点「立即刷新」修不好 Loon 卡片（它依旧吃旧缓存甚至空状态）。
+                  if (hasLoonConfigured()) tasks.push(refreshLoonData().catch((e) => console.log("loon err:", e)))
+                  tasks.push(refreshGoldData().catch((e) => console.log("gold err:", e)))
+                  if (hasGitHubConfigured()) tasks.push(refreshGitHubData().catch((e) => console.log("gh err:", e)))
 
                   await Promise.all(tasks)
                   Widget.reloadAll()
