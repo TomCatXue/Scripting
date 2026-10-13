@@ -3633,6 +3633,12 @@ export async function fetchLoonData(
       pluginPromise = (async () => {
         const startTime = Date.now()
         let requestUrl = pluginTargetUrl
+        if (subTargetUrl && (requestUrl.includes("loon.box") || requestUrl.includes("198.18.0.1") || requestUrl.includes("loon.local"))) {
+          const sep = requestUrl.includes("?") ? "&" : "?"
+          if (!requestUrl.includes("sub_url=")) {
+            requestUrl = `${requestUrl}${sep}sub_url=${encodeURIComponent(subTargetUrl)}`
+          }
+        }
         let res: any = null
         try {
           res = await fetch(requestUrl, {
@@ -3666,11 +3672,22 @@ export async function fetchLoonData(
         const latency = Math.max(1, Date.now() - startTime)
         let subInfo: { upload: number; download: number; total: number; expire: number } | null = null
         if (res && res.headers) {
-          const rawHeader =
-            (typeof res.headers.get === "function" ? res.headers.get("subscription-userinfo") : null) ||
-            (res.headers as any)["subscription-userinfo"] ||
-            (res.headers as any)["Subscription-Userinfo"] ||
-            ""
+          let rawHeader = ""
+          if (typeof res.headers.get === "function") {
+            rawHeader =
+              res.headers.get("subscription-userinfo") ||
+              res.headers.get("Subscription-Userinfo") ||
+              res.headers.get("Subscription-UserInfo") ||
+              ""
+          }
+          if (!rawHeader && typeof res.headers === "object") {
+            for (const k of Object.keys(res.headers)) {
+              if (k.toLowerCase() === "subscription-userinfo") {
+                rawHeader = String((res.headers as any)[k] || "")
+                break
+              }
+            }
+          }
           if (rawHeader) {
             subInfo = parseSubscriptionUserInfo(rawHeader)
           }
@@ -3694,7 +3711,7 @@ export async function fetchLoonData(
         const startTime = Date.now()
         const res = await fetch(subTargetUrl, {
           headers: {
-            "User-Agent": "ClashMeta; Loon/3.2.0; QuantumultX",
+            "User-Agent": "ClashforWindows/0.20.39; Clash.Meta",
           },
           timeout: 8,
         })
@@ -3980,7 +3997,7 @@ export async function fetchLoonData(
       updatedAt: new Date().toISOString(),
       configured: true,
       errorText: carriedFromText
-        ? `订阅流量本次同步失败${subStatusHint ? `（订阅返回 ${subStatusHint}）` : ""}，展示 ${carriedFromText} 的缓存流量`
+        ? (hasPluginSuccess ? `订阅直连返回 ${subStatusHint || "204"}，已联动展示 ${carriedFromText} 的缓存流量` : `订阅流量本次同步失败${subStatusHint ? `（订阅返回 ${subStatusHint}）` : ""}，展示 ${carriedFromText} 的缓存流量`)
         : undefined,
       // 流量是否为沿用上次的值：卡片据此把失败压成短标签，数据照旧展示
       trafficStale: carriedFromText ? true : undefined,
