@@ -2629,10 +2629,24 @@ export async function refreshFuelData(): Promise<FuelCardData | null> {
     const oilName = oilThemeNames[focusOilKey] || "92#"
     const oilFullName = focusOilKey === "oil0" ? "0 号柴油" : `${oilName.replace("#", "")} 号汽油`
     const subTitle = `${targetProvince} ${oilFullName}`
-    const cleanDateText = `${(nextAdjustDate || "近期").replace(/调整.*$/, "").replace(/调价.*$/, "").trim()}调价`
+    /**
+     * 调价日期压缩：源站给的是「10月15日24时」，小号组件右上角胶囊放不下 8 个字
+     * （含胶囊内边距与标题、三角后必被压缩/截断）。这里只保留「M月D日」，
+     * 去掉年份与「24时」这类时间尾巴，保证胶囊完整可见。
+     */
+    const shortenAdjustDate = (raw: string): string => {
+      const s = String(raw || "")
+        .replace(/调整.*$/, "")
+        .replace(/调价.*$/, "")
+        .replace(/^\d{4}\s*年/, "")
+        .replace(/\d{1,2}\s*时.*$/, "")
+        .trim()
+      return s || "近期"
+    }
+    const cleanDateText = `${shortenAdjustDate(nextAdjustDate)}调价`
     const focusPrice = prices[focusOilKey] || prices.oil92 || "--"
 
-    let cleanDate = (nextAdjustDate || "近期").replace(/调整.*$/, "").replace(/调价.*$/, "").trim()
+    let cleanDate = shortenAdjustDate(nextAdjustDate)
     let mediumForecast = `${cleanDate}调价`
     const arrow = trendType === "down" ? "↓" : trendType === "up" ? "↑" : "-"
     if (cleanLiter) {
