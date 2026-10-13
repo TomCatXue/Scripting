@@ -2059,33 +2059,53 @@ export function LoonMediumCard({ data }: { data: LoonMonitorData }) {
       </HStack>
 
       {/*
-        底部状态栏：正常时显示订阅统计；本次刷新失败时**就地替换**为失败原因。
+        底部状态栏：**始终**保留「到期 / 策略组 / 总额」这些上次已知的信息，
+        失败只在左侧压成一个带图标的短标签。
 
-        data.errorText 只在「本次拉取失败」时由数据层写入（成功会清空）。
-        此前失败时界面完全无变化，点右上角刷新看起来就是「没反应」。
-        这里复用同一行而不是新增一行，避免撑破中号组件的高度预算。
+        背景：订阅通道偶发失败（例如机场返回 204）时，旧实现把整行替换成失败原因，
+        用户反而看不到「策略组 23 · 总额 128 GB」这些仍然有效的数据。现在失败只是
+        一个橙色三角 + 短标签，数据照旧显示；详细原因仍在 data.errorText 里，
+        供设置页「测试双通道连接」展示。同一行布局也是为了不撑破中号组件高度。
       */}
-      {data.errorText ? (
-        <Text
-          font={HIG_FONT.caption}
-          foregroundStyle={THEME.orange}
-          lineLimit={1}
-          allowsTightening={true}
-          minScaleFactor={0.6}
-        >
-          {data.errorText}
+      <HStack alignment="center" spacing={0} frame={{ maxWidth: "infinity" }}>
+        {data.errorText ? (
+          <HStack spacing={2} alignment="center">
+            <Image
+              systemName="exclamationmark.triangle.fill"
+              font={HIG_FONT.caption}
+              foregroundStyle={THEME.orange}
+            />
+            <Text
+              font={HIG_FONT.caption}
+              foregroundStyle={THEME.orange}
+              lineLimit={1}
+              allowsTightening={true}
+              minScaleFactor={0.6}
+            >
+              {data.trafficStale ? "订阅未同步" : "刷新失败"}
+            </Text>
+            <Text font={HIG_FONT.caption} foregroundStyle={THEME.dim}>
+              {" · "}
+            </Text>
+          </HStack>
+        ) : (
+          <Text
+            font={HIG_FONT.caption}
+            foregroundStyle={THEME.dim}
+            lineLimit={1}
+            minScaleFactor={0.75}
+          >
+            {"订阅统计 · "}
+          </Text>
+        )}
+        <Text font={HIG_FONT.caption} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.75}>
+          {data.resetDaysText}
         </Text>
-      ) : (
-        <HStack alignment="center" spacing={0} frame={{ maxWidth: "infinity" }}>
-          <Text font={HIG_FONT.caption} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.75}>
-            {`订阅统计 · ${data.resetDaysText}`}
-          </Text>
-          <Spacer />
-          <Text font={HIG_FONT.caption} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.75}>
-            {`策略组 ${data.policyGroupCount} · 总额 ${data.totalText}`}
-          </Text>
-        </HStack>
-      )}
+        <Spacer />
+        <Text font={HIG_FONT.caption} foregroundStyle={THEME.dim} lineLimit={1} minScaleFactor={0.75}>
+          {`策略组 ${data.policyGroupCount} · 总额 ${data.totalText}`}
+        </Text>
+      </HStack>
     </VStack>
   )
 }
