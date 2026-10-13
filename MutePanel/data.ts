@@ -3603,6 +3603,8 @@ export async function fetchLoonData(
       subInfo: { upload: number; download: number; total: number; expire: number } | null
       bodyJson: any
       latency: number
+      /** 订阅响应的 HTTP 状态码：用于在“拿不到流量”时给出可排障的提示 */
+      status?: number
     }
     type PluginResult = {
       bodyJson: any
@@ -3696,7 +3698,7 @@ export async function fetchLoonData(
             bodyJson = JSON.parse(trimmed)
           }
         } catch {}
-        return { subInfo, bodyJson, latency }
+        return { subInfo, bodyJson, latency, status: res.status }
       })()
     }
 
@@ -3707,6 +3709,9 @@ export async function fetchLoonData(
 
     const pluginRes: PluginResult | null = pluginSettled && !("error" in pluginSettled) ? (pluginSettled as PluginResult) : null
     const subRes: SubResult | null = subSettled && !("error" in subSettled) ? (subSettled as SubResult) : null
+    // 订阅通道“响应了但没带回 subscription-userinfo”时，记下状态码用于告知用户原因
+    // （典型：机场返回 204 / 403，链接被限流或失效，而非组件没配好）
+    const subStatusHint = subRes && subRes.status ? `HTTP ${subRes.status}` : ""
 
     if ((pluginTargetUrl || subTargetUrl) && !pluginRes && !subRes) {
       const pErr = pluginSettled && "error" in pluginSettled ? (pluginSettled as any).error : null
@@ -3955,7 +3960,7 @@ export async function fetchLoonData(
       updatedAt: new Date().toISOString(),
       configured: true,
       errorText: carriedFromText
-        ? `订阅流量本次同步失败，展示 ${carriedFromText} 的缓存流量`
+        ? `订阅流量本次同步失败${subStatusHint ? `（订阅返回 ${subStatusHint}）` : ""}，展示 ${carriedFromText} 的缓存流量`
         : undefined,
       isFused,
     }
