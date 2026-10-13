@@ -11,6 +11,7 @@ import {
   CodexSmallCard,
   CpampSmallCard,
   DeepSeekSmallCard,
+  EmptyStateCard,
   FuelPriceCard,
   GitHubMediumCard,
   GoldPriceCard,
@@ -452,6 +453,27 @@ export function getWidgetView(paramOverride?: string, familyOverride?: string) {
 
   // 3. 小型组件 (Small Widget)
   const sService = param || CONFIG.smallStyle || pickDefaultService()
+
+  // 参数**显式**要求了只有中号版式的看板（Loon / Media / GitHub）时，明确提示尺寸不符，
+  // 而不是静默回落到 DeepSeek 小卡 —— 后者会显示一张无关的「未配置」卡片，
+  // 让用户误以为自己的订阅/账号没配置上。
+  const explicitParam = Boolean((paramOverride || Widget.parameter || "").trim())
+  const mediumOnly: Record<string, string> = {
+    loon: "Loon 监控",
+    media: "Media Nexus",
+    github: "GitHub 监控",
+  }
+  if (explicitParam && mediumOnly[sService]) {
+    return (
+      <EmptyStateCard
+        icon="rectangle.grid.1x2"
+        title={mediumOnly[sService]}
+        message="该看板仅提供中号版式"
+        hint="长按组件 → 编辑小组件 → 把「尺寸」改为中号即可正常显示数据"
+      />
+    )
+  }
+
   if (sService === "workbuddy") {
     return <WorkBuddySmallCard data={getWbDirectData()} />
   } else if (sService === "codex") {
@@ -494,6 +516,16 @@ const REFRESH_TIMEOUT_MS = 1500
 const PREVIEW_REFRESH_TIMEOUT_MS = 800
 
 /**
+ * Loon 刷新在小组件里的独立预算。
+ *
+ * Loon 的刷新要等两条通道（本地插件虚拟域名 + 远端机场订阅），其中本地通道在
+ * Loon 未运行/未装插件时会挂到自身超时。用通用的 1.5s 预算时它几乎必然被切断，
+ * 于是缓存写不进去、卡片长期显示「尚未配置 Loon 订阅或 OpenAPI」——即使用户
+ * 明明配好了订阅。这里给 Loon 单独放宽到 3s（仍远小于 iOS 出图上限）。
+ */
+export const LOON_REFRESH_BUDGET_MS = 3000
+
+/**
  * 本文件是否真的在「小组件宿主」里成功渲染过。
  *
  * widget.tsx 是入口文件，但设置页会从它导入共享常量——一旦被当成普通模块
@@ -505,6 +537,10 @@ let presentedInWidgetHost = false
 
 async function refreshForWidget(p: string, timeoutMs: number): Promise<void> {
   const jobs: Promise<any>[] = []
+  // Loon 需要同时打「Loon 本地插件虚拟域名」和「远端机场订阅」两条通道，
+  // 本地通道不可达时要等它自己超时；沿用 1.5s 通用预算时刷新几乎必被切断，
+  // 缓存写不进去 → 卡片长期停在「尚未配置 Loon 订阅或 OpenAPI」。这里单独放宽。
+  let loonJob: Promise<any> | null = null
   if (p.includes("antigravity") || p === "ag" || p.includes("anti-gravity")) {
     jobs.push(refreshAntigravityData())
   } else if (p.includes("codex")) {
@@ -525,16 +561,41 @@ async function refreshForWidget(p: string, timeoutMs: number): Promise<void> {
   } else if (p.includes("github") || p === "gh") {
     jobs.push(refreshGitHubData())
   } else if (p.includes("loon")) {
-    jobs.push(refreshLoonData())
+    loonJob = refreshLoonData()
   } else if (p.includes("gold") || p.includes("黄金") || p.includes("金价")) {
     jobs.push(refreshGoldData())
-  } else if (Widget.family === "systemMedium" || Widget.family === "systemLarge") {
-    jobs.push(refreshGoldData(), refreshDeepSeekData(), refreshFuelData())
   } else {
-    jobs.push(refreshDeepSeekData())
+    // 未显式指定参数时，刷新「渲染侧实际会选中的那个服务」。
+    //
+    // 旧实现固定刷新 gold/deepseek/fuel，而 getWidgetView 走的是
+    // `CONFIG.*Style || pickDefaultService()`；两边算法不一致时会出现
+    // 「渲染 Loon、却去刷新 Gold/DeepSeek」——Loon 卡片永远读不到新数据，
+    // 缓存为空时就一直显示「尚未配置 Loon 订阅或 OpenAPI」（用户明明配了订阅）。
+    const isWide = Widget.family === "systemMedium" || Widget.family === "systemLarge"
+    const auto = isWide
+      ? CONFIG.mediumStyle || pickDefaultService()
+      : CONFIG.smallStyle || pickDefaultService()
+
+    if (auto === "loon") jobs.push(refreshLoonData())
+    else if (auto === "github") jobs.push(refreshGitHubData())
+    else if (auto === "media") jobs.push(refreshMediaData())
+    else if (auto === "vpn") jobs.push(refreshVpnData())
+    else if (auto === "gold") jobs.push(refreshGoldData())
+    else if (auto === "fuel") jobs.push(refreshFuelData())
+    else if (auto === "workbuddy") jobs.push(refreshWbDirectData())
+    else if (auto === "codex") jobs.push(refreshCodexData())
+    else if (auto === "antigravity") jobs.push(refreshAntigravityData())
+    else if (auto === "cpamp") jobs.push(refreshCpampData())
+    else jobs.push(refreshDeepSeekData())
+
+    // 中/大号默认视图还会用到市场类看板，保留原有预热（并发执行，不额外等时）
+    if (isWide) jobs.push(refreshGoldData(), refreshDeepSeekData(), refreshFuelData())
   }
 
   await Promise.all(jobs.map((job) => withTimeout(job, timeoutMs)))
+
+  // Loon 单独用更宽的预算（仍需有上限，避免拖住出图）
+  if (loonJob) await withTimeout(loonJob, Math.max(timeoutMs, LOON_REFRESH_BUDGET_MS))
 }
 
 async function main() {
