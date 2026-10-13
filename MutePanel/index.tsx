@@ -1088,7 +1088,7 @@ async function configureLoonSettings() {
       "✓ 已切换为 Loon 本地插件直连模式！\n\n" +
         "地址：http://loon.box/api/monitor\n\n" +
         "请先在 Loon 导入 LoonMonitor 插件（插件 → 右上角 + → URL 导入）：\n" +
-        "https://cdn.jsdelivr.net/gh/TomCatXue/MyCookieCenter@142f10d/loon/LoonMonitor.plugin\n\n" +
+        "https://cdn.jsdelivr.net/gh/TomCatXue/MyCookieCenter@7a47817/loon/LoonMonitor.plugin\n\n" +
         "导入后点下方「测试双通道连接并立即刷新」确认已接通。"
     )
   } else if (action === "自定义 Loon 插件 / OpenAPI 地址") {
@@ -1135,7 +1135,7 @@ async function configureLoonSettings() {
           `原因：${res.errorText || "LoonMonitor 插件未返回数据"}\n\n` +
           "排查说明：\n" +
           "1. 规则分流未显示：请确认 Loon 已开启并启用了 LoonMonitor 插件（直连地址 http://loon.box/api/monitor）；\n" +
-          "2. 插件安装地址：https://cdn.jsdelivr.net/gh/TomCatXue/MyCookieCenter@142f10d/loon/LoonMonitor.plugin\n" +
+          "2. 插件安装地址：https://cdn.jsdelivr.net/gh/TomCatXue/MyCookieCenter@7a47817/loon/LoonMonitor.plugin\n" +
           "3. 上下行流量未显示：请在菜单中点击「配置机场订阅链接」填入机场订阅地址。"
       )
     }
