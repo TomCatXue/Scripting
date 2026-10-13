@@ -3962,6 +3962,8 @@ export async function fetchLoonData(
       errorText: carriedFromText
         ? `订阅流量本次同步失败${subStatusHint ? `（订阅返回 ${subStatusHint}）` : ""}，展示 ${carriedFromText} 的缓存流量`
         : undefined,
+      // 流量是否为沿用上次的值：卡片据此把失败压成短标签，数据照旧展示
+      trafficStale: carriedFromText ? true : undefined,
       isFused,
     }
 
@@ -4004,6 +4006,11 @@ export function getLoonData(): LoonMonitorData {
           return {
             ...DEFAULT_LOON,
             ...target,
+            // 必须显式接管 errorText：成功抓取的缓存里 errorText 是 undefined，
+            // JSON 落盘时该键会被丢掉，于是 `...DEFAULT_LOON` 会把默认的
+            // 「尚未配置 Loon 订阅或 OpenAPI」顶替上去 —— 导致一切正常的组件
+            // 在底栏显示「尚未配置…」（用户：我明明配了订阅）。
+            errorText: target.errorText,
             uploadText: target.uploadText || (target.hasTrafficData ? formatBytes(target.uploadBytes || 0) : "--"),
             downloadText: target.downloadText || (target.hasTrafficData ? formatBytes(target.downloadBytes || 0) : "--"),
             totalText: target.totalText || (target.hasTrafficData ? formatBytes(target.totalBytes || 0) : "--"),
@@ -4023,6 +4030,8 @@ export function getLoonData(): LoonMonitorData {
           return {
             ...DEFAULT_LOON,
             ...parsed,
+            // 同 Storage 分支：不能把默认的「尚未配置…」文案带进健康缓存
+            errorText: parsed.errorText,
             uploadText: parsed.uploadText || (parsed.hasTrafficData ? formatBytes(parsed.uploadBytes || 0) : "--"),
             downloadText: parsed.downloadText || (parsed.hasTrafficData ? formatBytes(parsed.downloadBytes || 0) : "--"),
             totalText: parsed.totalText || (parsed.hasTrafficData ? formatBytes(parsed.totalBytes || 0) : "--"),
