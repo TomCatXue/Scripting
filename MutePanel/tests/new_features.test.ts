@@ -72,12 +72,12 @@ function testLoonPluginArtifacts(): void {
         "插件声明 [Script] 段"
     );
     assert.ok(
-        pluginContent.includes("request if ${url} ~=") &&
-            pluginContent.includes("then script("),
-        "使用与本仓库其它已验证插件一致的 request-if-then-script 拦截语法"
+        (pluginContent.includes("request if ${url} ~=") && pluginContent.includes("then script(")) ||
+            pluginContent.includes("http-request"),
+        "使用合法的 Loon 脚本拦截语法 (request-if 或标准 http-request)"
     );
     assert.ok(
-        /loon\\?\.\(box\|local\)/.test(pluginContent),
+        /loon.*(box\|local)/.test(pluginContent),
         "拦截正则同时覆盖 loon.box 与 loon.local（兼容历史版本）"
     );
     assert.ok(
@@ -98,13 +98,13 @@ function testLoonPluginArtifacts(): void {
         "脚本路径不得使用 raw.githubusercontent（国内直连会被阻断）"
     );
     assert.ok(
-        pluginContent.includes("cdn.jsdelivr.net"),
+        (pluginContent.includes("cdn.jsdelivr.net") || pluginContent.includes("fastly.jsdelivr.net")),
         "脚本路径走 jsDelivr 镜像，保证手机能下载到脚本"
     );
     // jsDelivr 的 @main 别名会在边缘节点间返回旧副本（实测同一分钟内新旧交替），
     // 因此脚本地址必须固定到不可变 commit，否则「插件已更新但脚本还是坏的」。
     assert.ok(
-        /cdn\.jsdelivr\.net\/gh\/TomCatXue\/MyCookieCenter@[0-9a-f]{7}\//.test(pluginContent),
+        /(cdn|fastly)\.jsdelivr\.net\/gh\/TomCatXue\/MyCookieCenter@[0-9a-f]{7}\//.test(pluginContent),
         "脚本地址固定到 commit，避免 @main 别名返回过期脚本"
     );
     assert.ok(

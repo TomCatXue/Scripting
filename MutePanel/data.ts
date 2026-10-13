@@ -3641,6 +3641,9 @@ export async function fetchLoonData(
             },
             timeout: 6,
           })
+          if (res && typeof res.status === "number" && res.status !== 200) {
+            throw new Error(`HTTP ${res.status}`)
+          }
         } catch (err) {
           // 若 loon.box 域名解析失败，降级直连 198.18.0.1 (绕过 DNS 直接进入 TUN)
           if (requestUrl.includes("loon.box") || requestUrl.includes("loon.local")) {
@@ -3650,6 +3653,9 @@ export async function fetchLoonData(
                 headers: { "User-Agent": "Loon/3.2.0 (iOS)" },
                 timeout: 5,
               })
+              if (res && typeof res.status === "number" && res.status !== 200) {
+                throw new Error(`Fallback HTTP ${res.status}`)
+              }
             } catch {
               throw err
             }
@@ -3828,7 +3834,7 @@ export async function fetchLoonData(
     }
 
     // 2. 处理 Loon 插件通道 (权威运行状态来源，若订阅通道未提供流量也可作为流量兜底)
-    if (pluginRes) {
+    if (pluginRes && pluginRes.bodyJson) {
       hasPluginSuccess = true
       if (pluginRes.latency) delayMs = pluginRes.latency
 
