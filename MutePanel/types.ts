@@ -514,6 +514,11 @@ export interface LoonMonitorData {
   configured?: boolean
   errorText?: string
   /**
+   * 本次的流量数字是否为「沿用上次成功抓取的值」（订阅通道没带回数据时）。
+   * 卡片据此把失败压成一句话标签，同时照旧展示策略组/总额/到期等信息。
+   */
+  trafficStale?: boolean
+  /**
    * 是否成功融合双通道数据（同时包含 Loon 插件运行状态与机场订阅流量）。
    */
   isFused?: boolean
