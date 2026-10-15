@@ -18,3 +18,8 @@ dist/
 .comparison/
 _search_web.mjs
 _*.mjs
+
+# 本地设计预览与截图草稿（不推送）
+design_preview/
+*_preview/
+*.preview.*
