@@ -264,8 +264,8 @@ function getBasicFields(): string[] {
         "Z5g_rsrp", "Z5g_rsrq", "Z5g_snr", "5g_rsrp", "5g_rsrq", "5g_snr",
         // LTE 信号指标
         "lte_rsrp", "lte_rsrq", "lte_snr",
-        // NR 信号指标（兼容字段名）
-        "nr_rsrp", "nr_rssi", "nr_rsrq", "Nr_rsrq", "nr_snr", "Nr_snr", "nr5g_rsrq", "nr5g_snr", "Nr_signal_strength", "sinr",
+                // 关键规避：绝不在 cmd 中显式包含 nr_rsrp/nr_rsrq/Nr_snr（避免 F50 固件清零 dump 字段）
+        "qci", "ambr", "dl_ambr", "ul_ambr",
         // 频段
         "Nr_bands", "Lte_bands", "wan_active_band", "lte_band", "lte_ca_pcell_band",
         "nr5g_action_band", "nr5g_action_nsa_band", "ZCELLINFO_band", "Z5g_CELLINFO_band", "nr_ca_pcell_band",
@@ -1078,14 +1078,89 @@ const PLUGINS_SET_PATH = "/api/set_custom_head";
  */
 export async function fetchAT(command: string, slot = 0): Promise<string> {
     const path = AT_PATH + "?command=" + encodeURIComponent(command) + "&slot=" + String(slot);
-    const req = new Request(getKanoUrl() + path);
-    req.allowInsecureRequest = true;
-    req.method = "GET";
-    applyHeaders(req, buildKanoHeaders("GET", AT_PATH));
-    req.timeout = 20;
-    const json = await readJSONResponse(await fetch(req), "AT");
-    if (json && typeof json.error === "string" && json.error !== "") throw new Error(json.error);
-    return json && json.result !== undefined && json.result !== null ? String(json.result) : "";
+    const tokens = candidateTokens();
+    let lastError: any = null;
+    for (const token of tokens) {
+        try {
+            const req = new Request(getKanoUrl() + path);
+            req.allowInsecureRequest = true;
+            req.method = "GET";
+            applyHeaders(req, buildKanoHeadersWithToken("GET", AT_PATH, token));
+            req.timeout = 15;
+            const resp = await fetch(req);
+            if (resp.status === 401 || resp.status === 403) continue;
+            const json = await readJSONResponse(resp, "AT");
+            if (json && typeof json.error === "string" && json.error !== "") throw new Error(json.error);
+            return json && json.result !== undefined && json.result !== null ? String(json.result) : "";
+        } catch (e) {
+            lastError = e;
+            if (String(e).indexOf("401") >= 0) continue;
+            throw e;
+        }
+    }
+    if (lastError) throw lastError;
+    throw new Error("AT 指令执行失败：所有候选凭据均返回 401/403");
+}
+
+/** 多通道呼叫透传：AT -> Shell -> Android Binder (配合 Magisk 模块修复的音频通路) */
+export async function dialCall(number: string, slot = 0): Promise<{ ok: boolean; channel: string; raw?: string }> {
+    const clean = String(number || "").replace(/[^0-9+*#,]/g, "");
+    if (!clean) return { ok: false, channel: "none", raw: "号码为空" };
+    const atCmd = "ATD" + clean + ";";
+
+    // 通道 1: UFI /api/AT
+    try {
+        const atResult = await fetchAT(atCmd, slot);
+        if (atResult && atResult.toUpperCase().indexOf("ERROR") < 0) {
+            return { ok: true, channel: "ufi-at", raw: atResult };
+        }
+    } catch (e) {
+        console.log("UFI AT dial failed, trying shell fallback:", String(e));
+    }
+
+    // 通道 2: Shell sendat
+    try {
+        const shellCmd = "sendat -n " + slot + " -c '" + atCmd + "' || sendat -c '" + atCmd + "'";
+        const shellRes = await postShell(shellCmd, ROOT_SHELL_PATH);
+        if (shellRes) return { ok: true, channel: "shell-sendat", raw: String(shellRes) };
+    } catch (se) {
+        console.log("Shell sendat failed, trying service call fallback:", String(se));
+    }
+
+    // 通道 3: Android Phone service call (Telephony)
+    try {
+        const serviceCmd = "service call phone 2 s16 '" + clean + "' || service call vendor.sprd.hardware.tool.IToolControl/default 3 i32 " + slot + " s16 '" + atCmd + "'";
+        const svcRes = await postShell(serviceCmd, ROOT_SHELL_PATH);
+        if (svcRes) return { ok: true, channel: "service-call", raw: String(svcRes) };
+    } catch (pe) {
+        console.log("Service call dial failed:", String(pe));
+    }
+
+    return { ok: false, channel: "failed", raw: "所有呼叫通道均未响应" };
+}
+
+export async function hangupCall(slot = 0): Promise<{ ok: boolean; channel: string }> {
+    try {
+        await fetchAT("ATH", slot);
+        return { ok: true, channel: "ufi-at" };
+    } catch (_) { }
+    try {
+        await postShell("sendat -n " + slot + " -c 'ATH' || sendat -c 'ATH' || service call phone 5", ROOT_SHELL_PATH);
+        return { ok: true, channel: "shell" };
+    } catch (_) { }
+    return { ok: false, channel: "failed" };
+}
+
+export async function answerCall(slot = 0): Promise<{ ok: boolean; channel: string }> {
+    try {
+        await fetchAT("ATA", slot);
+        return { ok: true, channel: "ufi-at" };
+    } catch (_) { }
+    try {
+        await postShell("sendat -n " + slot + " -c 'ATA' || sendat -c 'ATA' || service call phone 3", ROOT_SHELL_PATH);
+        return { ok: true, channel: "shell" };
+    } catch (_) { }
+    return { ok: false, channel: "failed" };
 }
 
 /**

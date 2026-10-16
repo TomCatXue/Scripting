@@ -36,21 +36,23 @@ export const THEME = {
         info: { light: "#00C7BE", dark: "#63E6E2" } as SchemeColor,
     },
     /** 卡片背景：浅色略灰于系统背景，深色略亮于纯黑 */
-    card: { light: "#F2F2F7", dark: "#1C1C1E" } as SchemeColor,
+    card: { light: "#FFFFFF", dark: "#1C232E" } as SchemeColor,
+    /** 次级内嵌胶囊/浅底容器 */
+    capsule: { light: "#F4F6F9", dark: "#252D3A" } as SchemeColor,
     /** 页面背景渐变 */
     background: {
         light: {
             gradient: [
-                { color: "#F7F8FA", location: 0 },
-                { color: "#EDEFF3", location: 1 },
+                { color: "#F2F4F8", location: 0 },
+                { color: "#EAEFF5", location: 1 },
             ],
             startPoint: { x: 0.5, y: 0 },
             endPoint: { x: 0.5, y: 1 },
         },
         dark: {
             gradient: [
-                { color: "#141517", location: 0 },
-                { color: "#0E0F11", location: 1 },
+                { color: "#0E1217", location: 0 },
+                { color: "#161B22", location: 1 },
             ],
             startPoint: { x: 0.5, y: 0 },
             endPoint: { x: 0.5, y: 1 },
@@ -61,7 +63,7 @@ export const THEME = {
      * 半透明描边叠在浅灰卡片与白底系统背景上会呈现两种灰度，同一条边看起来一边深一边浅；
      * 不透明色可保证四边观感一致（MutePanel 已验证的同一取舍）。
      */
-    border: { light: "#D9D9DE", dark: "#3A3A3C" } as SchemeColor,
+    border: { light: "#E5E7EB", dark: "#2C3542" } as SchemeColor,
 } as const;
 
 /** 预设强调色（用户可在设置中一键切换） */

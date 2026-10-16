@@ -1,3 +1,18 @@
+
+/** 从 network_information 字符串 dump 中提取键值（避免显式请求导致 F50 固件清零 dump 字段） */
+export function extractFromNetworkInformation(netInfo: any, target: any): void {
+    if (!netInfo || typeof netInfo !== "string") return;
+    const pairs = netInfo.split(/[,;\r\n]+/);
+    for (const pair of pairs) {
+        const sep = pair.indexOf("=") >= 0 ? pair.indexOf("=") : pair.indexOf(":");
+        if (sep < 0) continue;
+        const key = pair.slice(0, sep).trim();
+        const val = pair.slice(sep + 1).trim();
+        if (key && val && (target[key] === undefined || target[key] === null || target[key] === "")) {
+            target[key] = val;
+        }
+    }
+}
 // @ts-nocheck
 // F50 Widget 数据层：将 API 原始数据组装为小组件状态，并提供缓存读写与格式化工具
 // 注意：Storage 是全局 API，不能从 "scripting" 导入（导入会是 undefined）
@@ -106,9 +121,12 @@ export function buildState(deviceInfo: any, goformData: any, wifiFreq: number, m
 
     buildDevicePart(state, d, g);
     buildBatteryPart(state, d, g);
+    if (g && g.network_information) {
+        extractFromNetworkInformation(g.network_information, g);
+    }
     buildSignalPart(state, d, g);
     buildTrafficWifiPart(state, d, g, wifiFreq);
-    buildMemoryPart(state, memInfo);
+    buildMemoryPart(state, memInfo, g);
     buildSpeedPart(state, d, g);
     buildTrafficLimitPart(state, d, g);
     buildSignalQualityPart(state, g);
@@ -190,8 +208,21 @@ function buildDevicePart(state: WidgetState, d: any, g: any): void {
     state.ufi_ver = buildUfiVersion(d);
     let temp = normalizeTemp(d.cpu_temp);
     if (!isNum(temp)) temp = normalizeTemp(maxTemp(d.cpu_temp_list));
+    if (!isNum(temp)) {
+        const gTemp = pickRaw(g.temperature, g.cpu_temp, g.internal_temperature, g.ic_temp);
+        if (gTemp !== null) {
+            let n = toNum(gTemp);
+            if (isNum(n)) {
+                if (n > 1000) n = n / 1000;
+                if (n > 0 && n < 130) temp = n;
+            }
+        }
+    }
     state.cputemp = isNum(temp) ? roundText(temp, 1) : "--";
-    state.cpuusage = isNum(toNum(d.cpu_usage)) ? roundText(toNum(d.cpu_usage), 0) : "--";
+
+    let cpu = toNum(d.cpu_usage);
+    if (!isNum(cpu)) cpu = toNum(pickRaw(g.cpu_utility, g.cpu_usage));
+    state.cpuusage = isNum(cpu) && cpu >= 0 ? roundText(Math.min(100, cpu), 0) : "--";
 }
 
 function buildBatteryPart(state: WidgetState, d: any, g: any): void {
@@ -300,7 +331,11 @@ function buildTrafficWifiPart(state: WidgetState, d: any, g: any, wifiFreq: numb
     }
     if (Array.isArray(staList)) wifiCount = staList.length;
     else if (staList && typeof staList === "object") wifiCount = Object.keys(staList).length;
-    state.wifi_device_count = wifiCount > 0 ? String(wifiCount) : "0";
+    if (wifiCount === 0) {
+        const directNum = toNum(pickRaw(g.wifi_access_sta_num, g.station_num, g.client_count));
+        if (isNum(directNum) && directNum >= 0) wifiCount = Math.floor(directNum);
+    }
+    state.wifi_device_count = String(wifiCount);
 
     state.band_text = buildBandText(g.Nr_bands, g.Lte_bands);
     const wifiBandRaw = pickRaw(g.wifi_band, g.wifi_band_text, d.wifi_band, d.wifi_band_text, g.wifi_bandwidth, d.wifi_freq, d.wifiFreq);
@@ -319,9 +354,20 @@ function buildTrafficWifiPart(state: WidgetState, d: any, g: any, wifiFreq: numb
     }
 }
 
-function buildMemoryPart(state: WidgetState, memInfo: { total: number; available: number }): void {
-    const memUsedKb = (memInfo.total > 0 && memInfo.available >= 0) ? memInfo.total - memInfo.available : 0;
-    state.mem_text = memInfo.total > 0 ? Math.round(memUsedKb / memInfo.total * 100) + "%" : "--";
+function buildMemoryPart(state: WidgetState, memInfo: { total: number; available: number }, g?: any): void {
+    const memUsedKb = (memInfo && memInfo.total > 0 && memInfo.available >= 0) ? memInfo.total - memInfo.available : 0;
+    if (memInfo && memInfo.total > 0) {
+        state.mem_text = Math.round(memUsedKb / memInfo.total * 100) + "%";
+        return;
+    }
+    if (g) {
+        const memU = toNum(pickRaw(g.mem_utility, g.mem_usage));
+        if (isNum(memU) && memU > 0) {
+            state.mem_text = Math.round(Math.min(100, memU)) + "%";
+            return;
+        }
+    }
+    state.mem_text = "--";
 }
 
 // ===================== 新增：实时速率 =====================
