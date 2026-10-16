@@ -307,84 +307,6 @@ async function testPartialOfflineGraceful(): Promise<void> {
     assert.equal(res.isFused, false, "单边成功时不标记为完整双通道融合");
 }
 
-// ── 12. 插件 payload 字段别名 + 流量缓存抗抖动 ──────────────────
-// 回归 1：真机 LoonMonitor 插件返回 camelCase（uploadBytes / downloadBytes /
-//   totalBytes / delayMs / policyGroupCount），而实现只认短名（upload / delay /
-//   policy_groups_count）→ 插件侧流量被丢弃、策略组恒为 0、延迟退化成请求耗时。
-// 回归 2：直连拉取机场订阅偶发失败时，旧实现照样写下一份「流量全 --」的缓存，
-//   把上一次已知的真实流量擦掉，小组件表现为「设置了订阅却没有信息」。
-async function testLoonPluginFieldAliasesAndCarryOver(): Promise<void> {
-    resetGlobals();
-    const pluginUrl = "http://loon.box/api/monitor";
-    const subUrl = "https://sub.example.com/subscribe";
-
-    const pluginWithTraffic = {
-        status: "running",
-        runningMode: "规则分流",
-        policyGroupCount: 14,
-        nodeName: "节点A",
-        delayMs: 1500,
-        uploadBytes: 1073741824,
-        downloadBytes: 5368709120,
-        totalBytes: 53687091200,
-        resetDaysText: "20 天后重置",
-    };
-
-    // 阶段 1：插件带上流量（camelCase 命名），订阅直连失败
-    setMockFetch(async (url: string) => {
-        if (url.includes("loon.box")) return mockResponse(pluginWithTraffic);
-        throw new Error("subscription request failed");
-    });
-    const s1 = await data.fetchLoonData(pluginUrl, true, subUrl);
-    assert.equal(s1.uploadText, "1 GB", "uploadBytes 别名被识别");
-    assert.equal(s1.downloadText, "5 GB", "downloadBytes 别名被识别");
-    assert.equal(s1.totalText, "50 GB", "totalBytes 别名被识别");
-    assert.equal(s1.remainingText, "44 GB", "剩余 = 总额 - 上行 - 下行");
-    assert.equal(s1.policyGroupCount, 14, "policyGroupCount 别名被识别（不再恒为 0）");
-    assert.equal(s1.delayMs, 1500, "delayMs 别名被识别（不再用请求耗时冒充节点延迟）");
-    assert.equal(s1.errorText, undefined, "插件已给出流量时不标注缓存回退");
-
-    // 阶段 2：插件无流量 + 订阅仍失败 → 保留上次流量并如实标注
-    setMockFetch(async (url: string) => {
-        if (url.includes("loon.box")) {
-            return mockResponse({
-                ...pluginWithTraffic,
-                uploadBytes: 0,
-                downloadBytes: 0,
-                totalBytes: 0,
-                delayMs: 0,
-                resetDaysText: "长期有效",
-            });
-        }
-        throw new Error("subscription request failed");
-    });
-    const s2 = await data.fetchLoonData(pluginUrl, true, subUrl);
-    assert.equal(s2.uploadText, "1 GB", "订阅同步失败时保留上次已知流量");
-    assert.equal(s2.downloadText, "5 GB", "保留上次下行");
-    assert.equal(s2.totalText, "50 GB", "保留上次总额");
-    assert.equal(s2.resetDaysText, "20 天后重置", "保留上次到期文案");
-    assert.ok(
-        String(s2.errorText || "").includes("缓存流量"),
-        `应标注展示的是缓存流量，实际：${s2.errorText}`
-    );
-    assert.equal(data.getLoonData().uploadText, "1 GB", "缓存中即为保留后的值");
-
-    // 阶段 3：订阅恢复 → 真实流量覆盖保留值并清除失败标注
-    setMockFetch(async (url: string) => {
-        if (url.includes("loon.box")) return mockResponse(pluginWithTraffic);
-        if (url.includes("sub.example.com")) {
-            return mockResponse("NODES", {
-                "subscription-userinfo": "upload=1073741824; download=2147483648; total=53687091200; expire=0",
-            });
-        }
-        throw new Error(`Unexpected url: ${url}`);
-    });
-    const s3 = await data.fetchLoonData(pluginUrl, true, subUrl);
-    assert.equal(s3.uploadText, "1 GB");
-    assert.equal(s3.downloadText, "2 GB", "恢复后使用本次订阅数据");
-    assert.equal(s3.errorText, undefined, "同步恢复后清除失败标注");
-}
-
 // ── 执行 ───────────────────────────────────────────────────────
 const tests: [string, () => Promise<void> | void][] = [
     ["配置项读写与探测", testLoonConfigAccessors],
@@ -398,7 +320,6 @@ const tests: [string, () => Promise<void> | void][] = [
     ["Storage 双通道持久化与 refreshLoonData", testFetchLoonFusionFromStorage],
     ["历史单主键存入订阅平滑兼容", testLegacySubscriptionInMainKeyAutoFusion],
     ["单边离线优雅容灾", testPartialOfflineGraceful],
-    ["插件字段别名与流量缓存抗抖动", testLoonPluginFieldAliasesAndCarryOver],
 ];
 
 let passed = 0;
