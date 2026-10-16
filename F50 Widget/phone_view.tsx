@@ -40,8 +40,12 @@ const CLCC_INTERVAL_MS = 3000;
 
 // 同步锁：避免标签切换重渲染时重复探测设备能力
 let _probeStarted = false;
+// 探测结果缓存到模块级：标签切走会卸载组件、state 归零，只存 state 会导致再次进入时永远停在「检测中」
+let _probeResult: boolean | null = null;
 // 通话中状态轮询句柄（模块级：重渲染不会产生第二个定时器）
 let _clccTimer: any = null;
+// 通话开始时间（模块级：定时器回调里读 state 会拿到创建时的旧值，计时将永远停在 0）
+let _callStartedAt: number | null = null;
 
 // ===================== 通话记录（本地存储，设备接口未提供） =====================
 
@@ -127,7 +131,7 @@ const DIAL_KEYS: Array<{ label: string; value: string; letters?: string }> = [
 
 export function PhoneView() {
     // null = 尚未探测；false = 无通话能力；true = 可用
-    const [capability, setCapability] = useState<boolean | null>(null);
+    const [capability, setCapability] = useState<boolean | null>(_probeResult);
     const [probeError, setProbeError] = useState<string | null>(null);
     const [dialNumber, setDialNumber] = useState("");
     const [calls, setCalls] = useState<CallInfo[]>([]);
@@ -135,7 +139,6 @@ export function PhoneView() {
     const [busy, setBusy] = useState(false);
     const [logs, setLogs] = useState<CallLogEntry[]>(readCallLog());
     const [tab, setTab] = useState<"keypad" | "recent">("keypad");
-    const [inCallAt, setInCallAt] = useState<number | null>(null);
     const [elapsed, setElapsed] = useState(0);
 
     const status = summarizeCall(calls);
@@ -145,11 +148,13 @@ export function PhoneView() {
         setProbeError(null);
         try {
             const enabled = await fetchVolteState(0);
-            setCapability(enabled !== null);
+            _probeResult = enabled !== null;
+            setCapability(_probeResult);
             if (enabled === null) {
                 setProbeError("设备未返回通话接口。请确认已安装 UFI-TOOLS 完整版，且面具模块已启用语音能力。");
             }
         } catch (e) {
+            _probeResult = false;
             setCapability(false);
             setProbeError(String((e as Error)?.message || e));
         }
@@ -171,7 +176,7 @@ export function PhoneView() {
                 const list = parseClcc(raw);
                 setCalls(list);
                 // 计时在同一次轮询里更新，避免在渲染期做时间计算
-                if (inCallAt !== null) setElapsed(Math.floor((Date.now() - inCallAt) / 1000));
+                if (_callStartedAt !== null) setElapsed(Math.floor((Date.now() - _callStartedAt) / 1000));
                 if (list.length === 0) stopPolling();
             } catch (_) {
                 // 轮询失败不打断界面，等待下一次
@@ -204,9 +209,9 @@ export function PhoneView() {
         try {
             const raw = await fetchAT(command);
             if (!parseAtsSuccess(raw)) throw new Error(raw || "设备未接受拨号指令");
-            setInCallAt(Date.now());
+            _callStartedAt = Date.now();
             setElapsed(0);
-            appendCallLog({ number: dialNumber, kind: "outgoing", at: Date.now(), durationSec: 0 });
+            appendCallLog({ number: dialNumber, kind: "outgoing", at: _callStartedAt, durationSec: 0 });
             setLogs(readCallLog());
             await refreshCalls();
             startPolling();
@@ -232,7 +237,8 @@ export function PhoneView() {
         try {
             const raw = await fetchAT(buildAnswerCommand());
             if (!parseAtsSuccess(raw)) throw new Error(raw || "接听失败");
-            setInCallAt(Date.now());
+            _callStartedAt = Date.now();
+            setElapsed(0);
             startPolling();
         } catch (e) {
             setCallError(String((e as Error)?.message || e));
@@ -247,18 +253,19 @@ export function PhoneView() {
         try {
             const raw = await fetchAT(buildHangupCommand());
             if (!parseAtsSuccess(raw, true)) throw new Error(raw || "挂断失败");
-            const duration = inCallAt ? Math.round((Date.now() - inCallAt) / 1000) : 0;
-            if (inCallAt && calls.length > 0) {
+            const startedAt = _callStartedAt;
+            const duration = startedAt ? Math.round((Date.now() - startedAt) / 1000) : 0;
+            if (startedAt && calls.length > 0) {
                 appendCallLog({
                     number: calls[0].number || dialNumber,
                     kind: calls[0].direction === "mt" ? "incoming" : "outgoing",
-                    at: inCallAt,
+                    at: startedAt,
                     durationSec: duration,
                 });
                 setLogs(readCallLog());
             }
             setCalls([]);
-            setInCallAt(null);
+            _callStartedAt = null;
             setElapsed(0);
             stopPolling();
         } catch (e) {

@@ -14,13 +14,11 @@ import {
     Toolbar,
     ToolbarItem,
     useState,
-    ForEach,
     Chart,
     LineChart,
     AreaChart,
     ChartPlotStyle,
     modifiers,
-    Widget,
 } from "scripting";
 import { fetchWidgetSnapshot, WidgetState, WifiClient, readWidgetCache, saveWidgetCache, appendSpeedSample, readSpeedHistory, toChartSeries } from "./widget_data";
 import { SPACING, RADIUS, FONT, THEME, softTint } from "./theme";
@@ -28,6 +26,12 @@ import { SectionCard, DataRow, MetricTile, RingGauge, StatusPill, EmptyState, Er
 import { rebootDevice } from "./api";
 
 let _statusLoaded = false;
+// 最近一次成功的数据缓存到模块级：标签切走会卸载视图、state 归零，
+// 只依赖 state 会卡在「加载中」或谎报空数据。
+let _statusCache: WidgetState | null = null;
+// 最近一次成功刷新时间：重新进入页面时若缓存过旧则自动刷新，避免展示陈旧状态
+let _statusLoadedAt = 0;
+const STATUS_STALE_MS = 30 * 1000;
 let _chartHistory: Array<{ id: string; value: number }> = [];
 let _chartHistoryUl: Array<{ id: string; value: number }> = [];
 
@@ -85,7 +89,7 @@ function signalBarsFill(bars: string): number {
 }
 
 export function StatusView({ onOpenPlugins, onOpenSms, onOpenPhone }: any = {}) {
-    const [state, setState] = useState<WidgetState | null>(null);
+    const [state, setState] = useState<WidgetState | null>(_statusCache ?? readWidgetCache());
     const [error, setError] = useState<string | null>(null);
     const [loading, setLoading] = useState(false);
     const [notice, setNotice] = useState<string | null>(null);
@@ -96,6 +100,8 @@ export function StatusView({ onOpenPlugins, onOpenSms, onOpenPhone }: any = {}) 
         setError(null);
         try {
             const { state: next, error: err } = await fetchWidgetSnapshot();
+            _statusCache = next;
+            _statusLoadedAt = Date.now();
             setState(next);
             if (err) setError(err);
             saveWidgetCache(next);
@@ -106,17 +112,28 @@ export function StatusView({ onOpenPlugins, onOpenSms, onOpenPhone }: any = {}) 
         } catch (e) {
             setError(String((e as Error)?.message || e));
             const cached = readWidgetCache();
-            if (cached) setState(cached);
+            if (cached) {
+                _statusCache = cached;
+                setState(cached);
+            }
         } finally {
             setLoading(false);
         }
     }
 
-    if (!state && !_statusLoaded) {
+    // 首次进入、重挂载后缓存过旧、或从未加载过时，自动刷新一次
+    const shouldAutoLoad = !_statusLoaded || Date.now() - _statusLoadedAt > STATUS_STALE_MS;
+    if (shouldAutoLoad) {
         _statusLoaded = true;
         (async () => {
-            const cached = readWidgetCache();
-            if (cached) setState(cached);
+            // 优先展示已有缓存（模块级 > 磁盘），再在后台刷新
+            if (!_statusCache) {
+                const cached = readWidgetCache();
+                if (cached) {
+                    _statusCache = cached;
+                    setState(cached);
+                }
+            }
             const samples = readSpeedHistory();
             if (samples.length > 0) {
                 _chartHistory = toChartSeries(samples, "dl");

@@ -5,10 +5,6 @@
 //   status_view.tsx / sms_view.tsx / phone_view.tsx / plugins_view.tsx / settings_view.tsx
 import {
     Navigation,
-    NavigationStack,
-    List,
-    Section,
-    Text,
     TabView,
     Tab,
     Script,

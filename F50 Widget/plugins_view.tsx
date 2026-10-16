@@ -17,7 +17,6 @@ import {
     Toolbar,
     ToolbarItem,
     useState,
-    useObservable,
     modifiers,
 } from "scripting";
 import { fetchPluginsText, savePluginsText } from "./api";
@@ -49,10 +48,14 @@ export function pluginSummary(entry: PluginEntry): string {
 }
 
 let _pluginsLoaded = false;
+// 最近一次插件列表缓存到模块级：标签切走会卸载视图、state 归零，
+// 只依赖 state 会导致再次进入时误报「设备上没有插件」。
+let _pluginsCache: PluginEntry[] | null = null;
+let _pluginsTextCache: string | null = null;
 
 export function PluginsView() {
-    const [text, setText] = useState<string | null>(null);
-    const [list, setList] = useState<PluginEntry[]>([]);
+    const [text, setText] = useState<string | null>(_pluginsTextCache);
+    const [list, setList] = useState<PluginEntry[]>(_pluginsCache ?? []);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [notice, setNotice] = useState<string | null>(null);
@@ -63,8 +66,10 @@ export function PluginsView() {
         setError(null);
         try {
             const raw = await fetchPluginsText();
+            _pluginsTextCache = raw;
+            _pluginsCache = parsePlugins(raw);
             setText(raw);
-            setList(parsePlugins(raw));
+            setList(_pluginsCache);
         } catch (e) {
             setError(String((e as Error)?.message || e));
         } finally {
@@ -75,7 +80,9 @@ export function PluginsView() {
     if (!_pluginsLoaded) {
         _pluginsLoaded = true;
         (async () => {
-            await load();
+            // 已有模块级缓存时先渲染，再后台刷新；避免重挂载后空列表误报
+            if (_pluginsCache === null) await load();
+            else load();
         })();
     }
 
@@ -91,7 +98,9 @@ export function PluginsView() {
             return;
         }
         setText(nextText);
-        setList(parsePlugins(nextText));
+        _pluginsTextCache = nextText;
+        _pluginsCache = parsePlugins(nextText);
+        setList(_pluginsCache);
         setError(null);
         flash(successMessage);
     }

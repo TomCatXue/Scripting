@@ -33,6 +33,28 @@ function testStatusRefreshable(): void {
     assert.equal(status.includes("refreshable"), true, "状态页应支持下拉刷新");
 }
 
+// 标签切走会卸载视图、state 归零。若已加载数据只存在 state 里，
+// 再次进入时加载锁已置位 → 页面卡在「加载中」或谎称「暂无数据」。
+function testViewsCacheLoadedDataAtModuleScope(): void {
+    assert.equal(/_statusCache/.test(status), true, "状态页应将最近数据缓存到模块级");
+    assert.equal(
+        /if \(!_statusLoaded\)[\s\S]{0,400}?_statusCache/.test(status) || status.includes("_statusCache ?? readWidgetCache()"),
+        true,
+        "状态页重挂载时应先水合模块级缓存，避免卡在加载中",
+    );
+    assert.equal(/_smsCache/.test(sms), true, "短信页应将最近数据缓存到模块级");
+    assert.equal(/_pluginsCache/.test(src_plugins()), true, "插件页应将最近数据缓存到模块级");
+    assert.equal(
+        /if \(!_pluginsLoaded\)[\s\S]{0,400}?_pluginsCache/.test(src_plugins()),
+        true,
+        "插件页重挂载时应先水合缓存，避免误报「设备上没有插件」",
+    );
+}
+
+function src_plugins(): string {
+    return read("../plugins_view.tsx");
+}
+
 // ── 短信页 ──────────────────────────────────────────
 function testSmsReusesApi(): void {
     for (const fn of ["fetchSMSMessages", "sendSMS", "extractVerifyCode"]) {
@@ -77,6 +99,7 @@ const tests: Array<[string, () => void]> = [
     ["status sim and wifi", testStatusShowsSimAndWifi],
     ["status reboot confirm", testStatusQuickActionsConfirmReboot],
     ["status refreshable", testStatusRefreshable],
+    ["views cache loaded data", testViewsCacheLoadedDataAtModuleScope],
     ["sms reuses api", testSmsReusesApi],
     ["sms conversation and detail", testSmsHasConversationAndDetail],
     ["sms failure surfaced", testSmsSendFailureIsSurfaced],

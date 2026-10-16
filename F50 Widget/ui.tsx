@@ -10,11 +10,8 @@ import {
     Image,
     Button,
     ProgressView,
-    Gauge,
     Circle,
     RoundedRectangle,
-    Rectangle,
-    Group,
     modifiers,
 } from "scripting";
 import { SPACING, RADIUS, FONT, THEME, softTint } from "./theme";

@@ -37,6 +37,28 @@ function testPollsOnlyWhileInCall(): void {
     assert.equal(src.includes("clearInterval"), true, "离开通话必须停止轮询（避免耗尽设备）");
 }
 
+function testTimerUsesModuleScopeNotStaleClosure(): void {
+    // 定时器回调里读 state 会拿到创建时的旧值（null），计时会永远停在 0。
+    // 因此开始时间必须存在模块级变量里。
+    assert.equal(/_callStartedAt\s*=/.test(src), true, "通话开始时间必须存模块级变量");
+    assert.equal(
+        /if\s*\(\s*inCallAt\s*!==\s*null\s*\)\s*setElapsed/.test(src),
+        false,
+        "不得在定时器回调里读 inCallAt（闭包会拿到旧值）",
+    );
+}
+
+function testProbeResultSurvivesTabSwitch(): void {
+    // 标签切走再切回会重新挂载组件、state 归零；若结果只存在 state 里，
+    // 探测锁已置位 → 页面会永远停在「正在检测」，再也探测不了。
+    assert.equal(/_probeResult\s*[:=]/.test(src), true, "探测结果必须缓存到模块级");
+    assert.equal(
+        /useState<boolean \| null>\(_probeResult\)/.test(src),
+        true,
+        "capability 初值应取模块级缓存结果",
+    );
+}
+
 function testNoHardcodedPhoneNumbersOrSecrets(): void {
     assert.equal(/1[3-9]\d{9}/.test(src), false, "不得硬编码真实手机号");
     assert.equal(/password\s*[:=]\s*["'][^"']+["']/.test(src), false, "不得硬编码密码");
@@ -48,6 +70,8 @@ const tests: Array<[string, () => void]> = [
     ["dial requires confirmation", testDialRequiresConfirmation],
     ["unavailable state honest", testUnavailableStateIsHonest],
     ["polls only while in call", testPollsOnlyWhileInCall],
+    ["timer avoids stale closure", testTimerUsesModuleScopeNotStaleClosure],
+    ["probe result survives tab switch", testProbeResultSurvivesTabSwitch],
     ["no hardcoded secrets", testNoHardcodedPhoneNumbersOrSecrets],
 ];
 

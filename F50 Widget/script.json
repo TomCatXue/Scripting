@@ -4,8 +4,8 @@
   "icon": "wifi.router.fill",
   "iconImage": "https://raw.githubusercontent.com/TomCatXue/Scripting/main/F50%20Widget/icons/icon-512.png",
   "color": "#0A84FF",
-  "version": "3.2.0",
-  "description": "UFI-TOOLS / ZTE F50 network status widget (traffic, signal, battery, CPU, memory, Wi-Fi) with tap-to-refresh and offline cache.",
+  "version": "4.0.0",
+  "description": "ZTE F50 / U60 UFI manager: status, SMS, phone, plugins and settings, plus a network status widget with tap-to-refresh and offline cache.",
   "author": {
     "name": "TomCatXue",
     "homepage": "https://github.com/TomCatXue",
@@ -17,8 +17,8 @@
     "zh-Hans": "F50 Widget"
   },
   "localizedDescriptions": {
-    "zh-Hans": "ZTE F50 网络状态小组件：流量、信号、电池、CPU、内存、Wi-Fi，支持点击刷新与离线缓存",
-    "en": "ZTE F50 network status widget: traffic, signal, battery, CPU, memory, Wi-Fi"
+    "zh-Hans": "ZTE F50 / U60 随身 Wi-Fi 管理：状态、短信、电话、插件、设置五标签，另含网络状态小组件",
+    "en": "ZTE F50 / U60 UFI manager with status, SMS, phone, plugins and settings tabs, plus a status widget"
   },
   "permissions": null,
   "intentInputTypes": [],

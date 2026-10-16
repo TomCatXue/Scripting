@@ -54,9 +54,15 @@ export function groupConversations(messages: SMSMessage[]): Conversation[] {
 }
 
 let _smsLoaded = false;
+// 最近一次短信列表缓存到模块级：标签切走会卸载视图、state 归零，
+// 只依赖 state 会导致再次进入时误报「暂无短信」。
+let _smsCache: SMSMessage[] | null = null;
+// 最近一次成功拉取时间：重挂载后数据过旧则自动刷新
+let _smsLoadedAt = 0;
+const SMS_STALE_MS = 60 * 1000;
 
 export function SMSView() {
-    const [messages, setMessages] = useState<SMSMessage[]>([]);
+    const [messages, setMessages] = useState<SMSMessage[]>(_smsCache ?? []);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [selectedNumber, setSelectedNumber] = useState<string | null>(null);
@@ -67,7 +73,10 @@ export function SMSView() {
         setLoading(true);
         setError(null);
         try {
-            setMessages(await fetchSMSMessages());
+            const list = await fetchSMSMessages();
+            _smsCache = list;
+            _smsLoadedAt = Date.now();
+            setMessages(list);
         } catch (e) {
             setError(String((e as Error)?.message || e));
         } finally {
@@ -75,7 +84,7 @@ export function SMSView() {
         }
     }
 
-    if (!_smsLoaded) {
+    if (!_smsLoaded || Date.now() - _smsLoadedAt > SMS_STALE_MS) {
         _smsLoaded = true;
         (async () => {
             await loadSMS();
