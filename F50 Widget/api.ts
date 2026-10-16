@@ -273,6 +273,8 @@ function getBasicFields(): string[] {
         "temperature", "cpu_temp", "internal_temperature", "ic_temp", "cpu_utility", "mem_utility",
         // SMS
         "sms_unread_num", "sms_sim_unread_num", "sms_received_flag",
+        // SIM 卡信息
+        "iccid", "msisdn", "sim_msisdn", "imsi", "imei", "pin_status", "sim_pin_status",
         // Wi-Fi
         "SSID1", "RadioOff", "station_list", "wifi_access_sta_num",
         // 鉴权
@@ -1031,6 +1033,118 @@ export async function fetchSystemInfo(): Promise<{ wifiFreq: number; memInfo: { 
         console.log("system info fail:", String(e));
     }
     return out;
+}
+
+// ===================== 通话（UFI-TOOLS 完整版 AT 透传） =====================
+
+const AT_PATH = "/api/AT";
+const VOLTE_PATH = "/api/volte_status";
+const VONR_PATH = "/api/vonr_status";
+const PLUGINS_PATH = "/api/get_custom_head";
+const PLUGINS_SET_PATH = "/api/set_custom_head";
+
+/**
+ * 透传一条 AT 指令（UFI-TOOLS 完整版 atModule：GET /api/AT?command=..&slot=..）。
+ * 设备未安装完整版时该接口返回 404，调用方据此判定通话能力不可用。
+ */
+export async function fetchAT(command: string, slot = 0): Promise<string> {
+    const path = AT_PATH + "?command=" + encodeURIComponent(command) + "&slot=" + String(slot);
+    const req = new Request(getKanoUrl() + path);
+    req.allowInsecureRequest = true;
+    req.method = "GET";
+    applyHeaders(req, buildKanoHeaders("GET", AT_PATH));
+    req.timeout = 20;
+    const json = await readJSONResponse(await fetch(req), "AT");
+    if (json && typeof json.error === "string" && json.error !== "") throw new Error(json.error);
+    return json && json.result !== undefined && json.result !== null ? String(json.result) : "";
+}
+
+/**
+ * 查询 VoLTE 开关状态（GET /api/volte_status）。
+ * 返回 null 表示该设备/固件未提供通话接口（404/401/网络错误），UI 据此展示不可用态。
+ */
+export async function fetchVolteState(slot = 0): Promise<boolean | null> {
+    return await queryVolteLike(VOLTE_PATH, slot);
+}
+
+/** 查询 VoNR（5G 语音）开关状态；语义同 fetchVolteState */
+export async function fetchVonrState(slot = 0): Promise<boolean | null> {
+    return await queryVolteLike(VONR_PATH, slot);
+}
+
+async function queryVolteLike(path: string, slot: number): Promise<boolean | null> {
+    try {
+        const req = new Request(getKanoUrl() + path + "?slot=" + String(slot));
+        req.allowInsecureRequest = true;
+        req.method = "GET";
+        applyHeaders(req, buildKanoHeaders("GET", path));
+        req.timeout = 8;
+        const resp = await fetch(req);
+        if (resp.status === 404 || resp.status === 401 || resp.status === 403) return null;
+        const json = await readJSONResponse(resp, "volte");
+        if (json && typeof json.error === "string" && json.error !== "") return null;
+        if (json && typeof json.enabled === "boolean") return json.enabled;
+        if (json && json.enabled !== undefined) return String(json.enabled) === "true";
+        return null;
+    } catch (_) {
+        return null;
+    }
+}
+
+/** 设置 VoLTE/VoNR 开关；返回是否成功 */
+export async function setVolteState(enabled: boolean, slot = 0): Promise<boolean> {
+    return await postVolteLike(VOLTE_PATH, enabled, slot);
+}
+
+export async function setVonrState(enabled: boolean, slot = 0): Promise<boolean> {
+    return await postVolteLike(VONR_PATH, enabled, slot);
+}
+
+async function postVolteLike(path: string, enabled: boolean, slot: number): Promise<boolean> {
+    try {
+        const req = new Request(getKanoUrl() + path);
+        req.allowInsecureRequest = true;
+        req.method = "POST";
+        applyHeaders(req, buildKanoHeaders("POST", path));
+        req.headers.set("Content-Type", "application/json");
+        req.body = JSON.stringify({ enabled: enabled ? "1" : "0", slot: String(slot) });
+        req.timeout = 15;
+        const json = await readJSONResponse(await fetch(req), "volte-set");
+        if (json && typeof json.error === "string" && json.error !== "") return false;
+        return true;
+    } catch (_) {
+        return false;
+    }
+}
+
+/** 读取 UFI-TOOLS 自定义头（插件）原始文本 */
+export async function fetchPluginsText(): Promise<string> {
+    const req = new Request(getKanoUrl() + PLUGINS_PATH);
+    req.allowInsecureRequest = true;
+    req.method = "GET";
+    applyHeaders(req, buildKanoHeaders("GET", PLUGINS_PATH));
+    req.timeout = 15;
+    const json = await readJSONResponse(await fetch(req), "plugins");
+    if (json && typeof json.error === "string" && json.error !== "") throw new Error(json.error);
+    return json && json.text !== undefined && json.text !== null ? String(json.text) : "";
+}
+
+/** 保存插件文本；失败（含容量超限）返回 false */
+export async function savePluginsText(text: string): Promise<boolean> {
+    try {
+        const req = new Request(getKanoUrl() + PLUGINS_SET_PATH);
+        req.allowInsecureRequest = true;
+        req.method = "POST";
+        applyHeaders(req, buildKanoHeaders("POST", PLUGINS_SET_PATH));
+        req.headers.set("Content-Type", "application/json");
+        req.body = JSON.stringify({ text: text });
+        req.timeout = 20;
+        const json = await readJSONResponse(await fetch(req), "plugins-set");
+        if (json && typeof json.error === "string" && json.error !== "") return false;
+        return true;
+    } catch (_) {
+        return false;
+    }
 }
 
 // ===================== UFI-TOOLS 签名（HMAC-MD5 + 双 SHA256） =====================
