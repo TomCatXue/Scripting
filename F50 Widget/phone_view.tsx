@@ -36,10 +36,10 @@ import { SectionCard, StatusPill, EmptyState, ErrorState, LoadingState, confirmA
 const KEYCALL_LOG = "F50.callLog";
 const CLCC_INTERVAL_MS = 3000;
 
-// 同步锁：避免标签切换重渲染时重复探测设备能力
-let _probeStarted = false;
 // 探测结果缓存到模块级：标签切走会卸载组件、state 归零，只存 state 会导致再次进入时永远停在「检测中」
 let _probeResult: boolean | null = null;
+// 进行中的探测：复用同一个 Promise，避免重复探测，也避免第二次进入时直接跳过
+let _probePromise: Promise<void> | null = null;
 // 通话中状态轮询句柄（模块级：重渲染不会产生第二个定时器）
 let _clccTimer: any = null;
 // 通话开始时间（模块级：定时器回调里读 state 会拿到创建时的旧值，计时将永远停在 0）
@@ -158,10 +158,22 @@ export function PhoneView() {
         }
     }
 
-    if (capability === null && !_probeStarted) {
-        _probeStarted = true;
+    /** 复用进行中的探测；结束后允许下一次重新探测（重试按钮 / 再次进入） */
+    function startProbe(): Promise<void> {
+        if (_probePromise === null) {
+            _probePromise = probe().finally(() => {
+                _probePromise = null;
+            });
+        }
+        return _probePromise;
+    }
+
+    if (capability === null) {
+        // 用模块级结果回填，兼顾「探测进行中切走再切回」的情况
+        const pending = startProbe();
         (async () => {
-            await probe();
+            await pending;
+            if (_probeResult !== null) setCapability(_probeResult);
         })();
     }
 
@@ -293,7 +305,7 @@ export function PhoneView() {
                         </VStack>
                     </Section>
                     <Section footer={<Text font={FONT.caption}>通话的语音链路由设备侧模块负责，应用只做控制与状态显示。</Text>}>
-                        <Button title="重新检测" systemImage="arrow.clockwise" action={probe} />
+                        <Button title="重新检测" systemImage="arrow.clockwise" action={startProbe} />
                     </Section>
                 </List>
             </NavigationStack>
@@ -372,7 +384,7 @@ export function PhoneView() {
             <List
                 listStyle="insetGrouped"
                 toolbar={{
-                    topBarTrailing: <Button title="检测" systemImage="antenna.radiowaves.left.and.right" action={probe} />,
+                        topBarTrailing: <Button title="检测" systemImage="antenna.radiowaves.left.and.right" action={startProbe} />,
                 }}
             >
                 <Section>

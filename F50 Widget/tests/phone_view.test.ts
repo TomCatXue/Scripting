@@ -64,6 +64,17 @@ function testNoHardcodedPhoneNumbersOrSecrets(): void {
     assert.equal(/password\s*[:=]\s*["'][^"']+["']/.test(src), false, "不得硬编码密码");
 }
 
+function testProbeInFlightIsJoinedNotSkipped(): void {
+    // 探测进行中切走再切回：若只用「是否已启动」做锁，第二次进入会跳过探测，
+    // 而模块级结果仍为 null → 永远停在「正在检测」。
+    assert.equal(/_probePromise/.test(src), true, "应以模块级 Promise 记录进行中的探测");
+    assert.equal(
+        /_probePromise\s*=\s*probe\(\)|await\s+_probePromise/.test(src),
+        true,
+        "重挂载时应复用同一个探测 Promise",
+    );
+}
+
 function testUsesToolbarProp(): void {
     assert.equal(/<Toolbar\b/.test(src), false, "不应把 Toolbar 作为子组件使用");
     assert.equal(/<ToolbarItem\b/.test(src), false, "不应使用 ToolbarItem");
@@ -78,6 +89,7 @@ const tests: Array<[string, () => void]> = [
     ["polls only while in call", testPollsOnlyWhileInCall],
     ["timer avoids stale closure", testTimerUsesModuleScopeNotStaleClosure],
     ["probe result survives tab switch", testProbeResultSurvivesTabSwitch],
+    ["probe in flight is joined", testProbeInFlightIsJoinedNotSkipped],
     ["no hardcoded secrets", testNoHardcodedPhoneNumbersOrSecrets],
     ["uses toolbar prop", testUsesToolbarProp],
 ];
