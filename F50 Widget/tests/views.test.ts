@@ -51,6 +51,16 @@ function testViewsCacheLoadedDataAtModuleScope(): void {
     );
 }
 
+// toolbar 是「可见页面内容」上的属性（toolbar={{...}}），
+// 不是塞进 List 的子组件。用错的写法在真机上工具栏按钮不会出现。
+function testViewsUseToolbarPropNotChildren(): void {
+    for (const [name, source] of [["status", status], ["sms", sms], ["settings", settings]] as const) {
+        assert.equal(/<Toolbar\b/.test(source), false, `${name} 页不应把 Toolbar 作为子组件使用`);
+        assert.equal(/<ToolbarItem\b/.test(source), false, `${name} 页不应使用 ToolbarItem`);
+        assert.equal(source.includes("toolbar={{"), true, `${name} 页应使用 toolbar 属性`);
+    }
+}
+
 function src_plugins(): string {
     return read("../plugins_view.tsx");
 }
@@ -100,6 +110,7 @@ const tests: Array<[string, () => void]> = [
     ["status reboot confirm", testStatusQuickActionsConfirmReboot],
     ["status refreshable", testStatusRefreshable],
     ["views cache loaded data", testViewsCacheLoadedDataAtModuleScope],
+    ["views use toolbar prop", testViewsUseToolbarPropNotChildren],
     ["sms reuses api", testSmsReusesApi],
     ["sms conversation and detail", testSmsHasConversationAndDetail],
     ["sms failure surfaced", testSmsSendFailureIsSurfaced],

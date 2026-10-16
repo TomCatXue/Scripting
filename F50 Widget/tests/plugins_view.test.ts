@@ -32,12 +32,24 @@ function testNoFabricatedPluginData(): void {
     assert.equal(/mockPlugins/.test(src), false, "不得使用 mock 插件列表");
 }
 
+function testUsesToolbarProp(): void {
+    assert.equal(/<Toolbar\b/.test(src), false, "不应把 Toolbar 作为子组件使用");
+    assert.equal(/<ToolbarItem\b/.test(src), false, "不应使用 ToolbarItem");
+    assert.equal(src.includes("toolbar={{"), true, "应使用 toolbar 属性");
+}
+
+function testUsesPullToRefresh(): void {
+    assert.equal(src.includes("refreshable"), true, "插件列表应支持下拉刷新");
+}
+
 const tests: Array<[string, () => void]> = [
     ["uses plugin layer", testUsesPluginLayer],
     ["reads and writes device text", testReadsAndWritesDeviceText],
     ["destructive ops confirmed", testDestructiveOpsConfirmed],
     ["honest empty and error states", testHonestEmptyAndErrorStates],
     ["no fabricated plugin data", testNoFabricatedPluginData],
+    ["uses toolbar prop", testUsesToolbarProp],
+    ["uses pull to refresh", testUsesPullToRefresh],
 ];
 
 let passed = 0;

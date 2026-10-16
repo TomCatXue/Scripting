@@ -11,8 +11,6 @@ import {
     VStack,
     Spacer,
     Image,
-    Toolbar,
-    ToolbarItem,
     useState,
     modifiers,
 } from "scripting";
@@ -135,13 +133,7 @@ export function SMSView() {
                     navigationBarTitleDisplayMode="inline"
                     toolbar={{
                         topBarLeading: <Button title="返回" systemImage="chevron.left" action={() => setSelectedNumber(null)} />,
-                        topBarTrailing: (
-                            <Button
-                                title="发送"
-                                systemImage="square.and.pencil"
-                                action={() => setComposing(true)}
-                            />
-                        ),
+                        topBarTrailing: <Button title="发送" systemImage="square.and.pencil" action={() => setComposing(true)} />,
                     }}
                 >
                     {conv.messages.map((msg, index) => {
@@ -233,13 +225,13 @@ export function SMSView() {
     const unreadTotal = conversations.reduce((sum, c) => sum + c.unread, 0);
     return (
         <NavigationStack navigationTitle="短信" navigationBarTitleDisplayMode="large">
-            <List listStyle="insetGrouped" refreshable={loadSMS}>
-                <Toolbar>
-                    <ToolbarItem placement="topBarTrailing">
-                        <Button title="写短信" systemImage="square.and.pencil" action={() => setComposing(true)} />
-                    </ToolbarItem>
-                </Toolbar>
-
+            <List
+                listStyle="insetGrouped"
+                refreshable={loadSMS}
+                toolbar={{
+                    topBarTrailing: <Button title="写短信" systemImage="square.and.pencil" action={() => setComposing(true)} />,
+                }}
+            >
                 {loading && messages.length === 0 ? (
                     <Section>
                         <LoadingState message="正在读取短信…" />

@@ -11,8 +11,6 @@ import {
     Spacer,
     Image,
     Rectangle,
-    Toolbar,
-    ToolbarItem,
     useState,
     Chart,
     LineChart,
@@ -240,13 +238,13 @@ export function StatusView({ onOpenPlugins, onOpenSms, onOpenPhone }: any = {}) 
 
     return (
         <NavigationStack navigationTitle={online ? state.model_name : "状态"} navigationBarTitleDisplayMode="large">
-            <List listStyle="insetGrouped" refreshable={refresh}>
-                <Toolbar>
-                    <ToolbarItem placement="topBarTrailing">
-                        <Button title="刷新" systemImage="arrow.clockwise" action={refresh} />
-                    </ToolbarItem>
-                </Toolbar>
-
+            <List
+                listStyle="insetGrouped"
+                refreshable={refresh}
+                toolbar={{
+                    topBarTrailing: <Button title="刷新" systemImage="arrow.clockwise" action={refresh} />,
+                }}
+            >
                 {/* 设备概览 */}
                 <Section>
                     <SectionCard>

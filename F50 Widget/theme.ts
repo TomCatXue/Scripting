@@ -56,8 +56,12 @@ export const THEME = {
             endPoint: { x: 0.5, y: 1 },
         },
     },
-    /** 细描边 */
-    border: { light: "rgba(60,60,67,0.10)", dark: "rgba(255,255,255,0.12)" } as SchemeColor,
+    /**
+     * 细描边：使用不透明灰。
+     * 半透明描边叠在浅灰卡片与白底系统背景上会呈现两种灰度，同一条边看起来一边深一边浅；
+     * 不透明色可保证四边观感一致（MutePanel 已验证的同一取舍）。
+     */
+    border: { light: "#D9D9DE", dark: "#3A3A3C" } as SchemeColor,
 } as const;
 
 /** 预设强调色（用户可在设置中一键切换） */

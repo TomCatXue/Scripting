@@ -64,6 +64,12 @@ function testNoHardcodedPhoneNumbersOrSecrets(): void {
     assert.equal(/password\s*[:=]\s*["'][^"']+["']/.test(src), false, "不得硬编码密码");
 }
 
+function testUsesToolbarProp(): void {
+    assert.equal(/<Toolbar\b/.test(src), false, "不应把 Toolbar 作为子组件使用");
+    assert.equal(/<ToolbarItem\b/.test(src), false, "不应使用 ToolbarItem");
+    assert.equal(src.includes("toolbar={{"), true, "应使用 toolbar 属性");
+}
+
 const tests: Array<[string, () => void]> = [
     ["probes capability", testProbesCapabilityBeforeUse],
     ["reuses pure builders", testUsesPureCommandBuilders],
@@ -73,6 +79,7 @@ const tests: Array<[string, () => void]> = [
     ["timer avoids stale closure", testTimerUsesModuleScopeNotStaleClosure],
     ["probe result survives tab switch", testProbeResultSurvivesTabSwitch],
     ["no hardcoded secrets", testNoHardcodedPhoneNumbersOrSecrets],
+    ["uses toolbar prop", testUsesToolbarProp],
 ];
 
 let passed = 0;

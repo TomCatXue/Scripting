@@ -14,8 +14,6 @@ import {
     VStack,
     Spacer,
     Image,
-    Toolbar,
-    ToolbarItem,
     useState,
     useColorScheme,
     modifiers,
@@ -174,13 +172,12 @@ export function SettingsView() {
 
     return (
         <NavigationStack navigationTitle="设置" navigationBarTitleDisplayMode="large">
-            <List listStyle="insetGrouped">
-                <Toolbar>
-                    <ToolbarItem placement="topBarTrailing">
-                        <Button title="保存" action={() => (persistConfig() ? flash("已保存") : setError("保存失败"))} />
-                    </ToolbarItem>
-                </Toolbar>
-
+            <List
+                listStyle="insetGrouped"
+                toolbar={{
+                    topBarTrailing: <Button title="保存" action={() => (persistConfig() ? flash("已保存") : setError("保存失败"))} />,
+                }}
+            >
                 {/* 概览 */}
                 <Section>
                     <SectionCard>

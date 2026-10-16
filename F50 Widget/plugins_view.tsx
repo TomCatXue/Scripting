@@ -14,8 +14,6 @@ import {
     VStack,
     Spacer,
     Image,
-    Toolbar,
-    ToolbarItem,
     useState,
     modifiers,
 } from "scripting";
@@ -199,13 +197,13 @@ export function PluginsView() {
     const enabledCount = list.filter((item) => item.enabled).length;
     return (
         <NavigationStack navigationTitle="插件" navigationBarTitleDisplayMode="large">
-            <List listStyle="insetGrouped">
-                <Toolbar>
-                    <ToolbarItem placement="topBarTrailing">
-                        <Button title="刷新" systemImage="arrow.clockwise" action={load} />
-                    </ToolbarItem>
-                </Toolbar>
-
+            <List
+                listStyle="insetGrouped"
+                refreshable={load}
+                toolbar={{
+                    topBarTrailing: <Button title="刷新" systemImage="arrow.clockwise" action={load} />,
+                }}
+            >
                 {loading && list.length === 0 ? (
                     <Section>
                         <LoadingState message="正在读取设备插件…" />

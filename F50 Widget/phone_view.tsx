@@ -15,8 +15,6 @@ import {
     VStack,
     Spacer,
     Image,
-    Toolbar,
-    ToolbarItem,
     useState,
     modifiers,
 } from "scripting";
@@ -371,13 +369,12 @@ export function PhoneView() {
     // ---------- 主页：拨号盘 / 最近通话 ----------
     return (
         <NavigationStack navigationTitle="电话" navigationBarTitleDisplayMode="large">
-            <List listStyle="insetGrouped">
-                <Toolbar>
-                    <ToolbarItem placement="topBarTrailing">
-                        <Button title="检测" systemImage="antenna.radiowaves.left.and.right" action={probe} />
-                    </ToolbarItem>
-                </Toolbar>
-
+            <List
+                listStyle="insetGrouped"
+                toolbar={{
+                    topBarTrailing: <Button title="检测" systemImage="antenna.radiowaves.left.and.right" action={probe} />,
+                }}
+            >
                 <Section>
                     <HStack spacing={4}>
                         <Button
