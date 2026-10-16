@@ -2534,6 +2534,47 @@ export function getFuelData(): FuelCardData {
   return DEFAULT_FUEL
 }
 
+/**
+ * 调价日期「已过期 / 未来」判定。
+ *
+ * 源站（汽油价格网）只给「M月D日[时]」不给年份，而且它的「下次油价…调整」
+ * 公示更新很滞后：上一轮调价已过、源站却仍写着上一轮日期。若直接当「下次调价」
+ * 展示就会误导用户（「都 16 号了怎么还显示 15 号」）。
+ *
+ * 只给到月日时用 ±180 天规则还原年份：与今天相差超过半年就换一年，
+ * 这样「12周30日」在 1 月初仍能正确判为未来。
+ */
+export function classifyAdjustDate(raw: string, now: Date = new Date()): "future" | "past" | "unknown" {
+  const m = String(raw || "").match(/^(\d{1,2})月(\d{1,2})日/)
+  if (!m) return "unknown"
+  const month = Number(m[1])
+  const day = Number(m[2])
+  if (!Number.isFinite(month) || !Number.isFinite(day) || month < 1 || month > 12 || day < 1 || day > 31) {
+    return "unknown"
+  }
+  const dayMs = 86400000
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()
+  let d = new Date(now.getFullYear(), month - 1, day).getTime()
+  if (d - today > 180 * dayMs) d = new Date(now.getFullYear() - 1, month - 1, day).getTime()
+  if (today - d > 180 * dayMs) d = new Date(now.getFullYear() + 1, month - 1, day).getTime()
+  return d >= today ? "future" : "past"
+}
+
+/**
+ * 调价日期压缩：源站给的是「10月15日24时」，小号组件右上角胶囊放不下 8 个字
+ * （含胶囊内边距与标题、三角后必被压缩/截断）。这里只保留「M月D日」，
+ * 去掉年份与「24时」这类时间尾巴，保证胶囊完整可见。
+ */
+export function shortenAdjustDate(raw: string): string {
+  const s = String(raw || "")
+    .replace(/调整.*$/, "")
+    .replace(/调价.*$/, "")
+    .replace(/^\d{4}\s*年/, "")
+    .replace(/\d{1,2}\s*时.*$/, "")
+    .trim()
+  return s || "近期"
+}
+
 export async function refreshFuelData(): Promise<FuelCardData | null> {
   try {
     let targetProvince =
@@ -2634,27 +2675,27 @@ export async function refreshFuelData(): Promise<FuelCardData | null> {
      * （含胶囊内边距与标题、三角后必被压缩/截断）。这里只保留「M月D日」，
      * 去掉年份与「24时」这类时间尾巴，保证胶囊完整可见。
      */
-    const shortenAdjustDate = (raw: string): string => {
-      const s = String(raw || "")
-        .replace(/调整.*$/, "")
-        .replace(/调价.*$/, "")
-        .replace(/^\d{4}\s*年/, "")
-        .replace(/\d{1,2}\s*时.*$/, "")
-        .trim()
-      return s || "近期"
-    }
-    const cleanDateText = `${shortenAdjustDate(nextAdjustDate)}调价`
+    const adjustDateText = shortenAdjustDate(nextAdjustDate)
+    /**
+     * 源站的调价公示会滞后：调价已过、源站还写着上一轮日期时，直接当「下次调价」
+     * 展示会误导（用户：都 16 号了怎么还显示 15 号）。过期的标成「上轮 M月D日」。
+     */
+    const adjustIsPast = classifyAdjustDate(nextAdjustDate) === "past"
+    // 调价已过期时统一用「上轮 M月D日」，避免被读成「下次调价」
+    const adjustLabel = adjustIsPast ? `上轮${adjustDateText}` : `${adjustDateText}调价`
+    const cleanDateText = adjustLabel
     const focusPrice = prices[focusOilKey] || prices.oil92 || "--"
 
-    let cleanDate = shortenAdjustDate(nextAdjustDate)
-    let mediumForecast = `${cleanDate}调价`
+    const cleanDate = adjustDateText
+    let mediumForecast = adjustLabel
     const arrow = trendType === "down" ? "↓" : trendType === "up" ? "↑" : "-"
     if (cleanLiter) {
-      mediumForecast = `${cleanDate}调价 ${arrow} ${cleanLiter}`
+      mediumForecast = `${adjustLabel} ${arrow} ${cleanLiter}`
     } else if (trendType === "flat") {
-      mediumForecast = `${cleanDate}调价 预计搁浅`
+      // 已过期的调价不该再说「预计搁浅」——那是上一轮已经发生的事
+      mediumForecast = `${adjustLabel} ${adjustIsPast ? "搁浅" : "预计搁浅"}`
     } else {
-      mediumForecast = `${cleanDate}调价 ${arrow}`
+      mediumForecast = `${adjustLabel} ${arrow}`
     }
 
     // ── 累积价格历史 ──────────────────────────────────────────────
