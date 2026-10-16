@@ -1037,6 +1037,35 @@ export async function fetchSystemInfo(): Promise<{ wifiFreq: number; memInfo: { 
 
 // ===================== 通话（UFI-TOOLS 完整版 AT 透传） =====================
 
+/**
+ * 重启设备。
+ *
+ * 走 ZTE goform 的 REBOOT_DEVICE（UFI-TOOLS requests.js 的 reboot() 同款），
+ * 不是 AT 指令：设备重启会立即断开网络，调用前必须由 UI 二次确认。
+ */
+export async function rebootDevice(): Promise<boolean> {
+    try {
+        const routerBase = getRouterBaseURL();
+        const cookie = getZtePassword() !== "" ? await performRouterLogin() : null;
+        const req = new Request(routerBase + "/goform/goform_set_cmd_process?isTest=false&_=" + Date.now());
+        req.allowInsecureRequest = true;
+        req.method = "POST";
+        req.headers.set("Referer", routerBase + "/index.html");
+        req.headers.set("Content-Type", "application/x-www-form-urlencoded");
+        if (cookie) req.headers.set("Cookie", cookie);
+        req.body = "isTest=false&goformId=REBOOT_DEVICE";
+        req.timeout = 10;
+        const resp = await fetch(req);
+        if (resp.status !== 200) return false;
+        const json = await readJSONResponse(resp, "reboot");
+        // 固件通常返回 result=success / success
+        const result = json && (json.result !== undefined ? json.result : json.response);
+        return String(result || "").toLowerCase().indexOf("fail") < 0;
+    } catch (_) {
+        return false;
+    }
+}
+
 const AT_PATH = "/api/AT";
 const VOLTE_PATH = "/api/volte_status";
 const VONR_PATH = "/api/vonr_status";

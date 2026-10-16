@@ -161,11 +161,13 @@ function testEmptyAndLoadedWidgetsShareLayout(): void {
 }
 
 function testStatusSignalQualityUsesBarsIcon(): void {
-    const source = readFileSync(new URL("../index.tsx", import.meta.url), "utf8");
+    // 状态页已从 index.tsx 拆到 status_view.tsx：断言意图不变（信号用 cellularbars 阶梯图标）
+    const source = readFileSync(new URL("../status_view.tsx", import.meta.url), "utf8");
     assert.equal(source.includes("checkmark.seal.fill"), false);
     const barsCount = (source.match(/systemName="cellularbars"/g) || []).length;
-    assert.equal(barsCount >= 2, true);
-    assert.equal(source.includes("signalBarColor(state.signalbar)"), true);
+    assert.equal(barsCount >= 1, true);
+    // 信号颜色由 signalTint 决定，且必须与信号格数联动（不得写死颜色）
+    assert.equal(source.includes("signalTint(state.signalbar)"), true);
 }
 
 function signalState(g: any) {

@@ -1,0 +1,100 @@
+// 源码断言：状态页 / 短信页 / 设置页的关键契约
+import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
+
+const read = (rel: string) => readFileSync(new URL(rel, import.meta.url), "utf8");
+const status = read("../status_view.tsx");
+const sms = read("../sms_view.tsx");
+const settings = read("../settings_view.tsx");
+
+// ── 状态页 ──────────────────────────────────────────
+function testStatusUsesSnapshotAndCache(): void {
+    assert.equal(status.includes("fetchWidgetSnapshot"), true, "状态页应使用快照抓取");
+    assert.equal(status.includes("readWidgetCache"), true, "状态页应支持离线缓存展示");
+    assert.equal(status.includes("saveWidgetCache"), true, "刷新后应写入缓存供小组件复用");
+}
+
+function testStatusHasTrafficChart(): void {
+    assert.equal(status.includes("Chart"), true, "实时流量需要曲线图");
+    assert.equal(status.includes("dlHistory") || status.includes("dl_speed"), true, "曲线需要上下行数据");
+}
+
+function testStatusShowsSimAndWifi(): void {
+    assert.equal(/ICCID|iccid/.test(status), true, "SIM 卡区块应包含 ICCID");
+    assert.equal(/暂不支持/.test(status), true, "缺失字段应明确标注不支持");
+}
+
+function testStatusQuickActionsConfirmReboot(): void {
+    assert.equal(status.includes("confirmAction"), true, "重启等操作需要二次确认");
+    assert.equal(/reboot|重启/.test(status), true, "快捷操作应包含重启入口");
+}
+
+function testStatusRefreshable(): void {
+    assert.equal(status.includes("refreshable"), true, "状态页应支持下拉刷新");
+}
+
+// ── 短信页 ──────────────────────────────────────────
+function testSmsReusesApi(): void {
+    for (const fn of ["fetchSMSMessages", "sendSMS", "extractVerifyCode"]) {
+        assert.equal(sms.includes(fn), true, `短信页应复用 ${fn}`);
+    }
+}
+
+function testSmsHasConversationAndDetail(): void {
+    assert.equal(sms.includes("groupConversations"), true, "应有会话分组逻辑");
+    assert.equal(sms.includes("selectedNumber"), true, "应支持进入会话详情");
+}
+
+function testSmsSendFailureIsSurfaced(): void {
+    assert.equal(/发送失败|error/i.test(sms), true, "发送失败必须有明确提示");
+}
+
+// ── 设置页 ──────────────────────────────────────────
+function testSettingsReusesConfigLayer(): void {
+    assert.equal(settings.includes("readSetting"), true, "设置页应读取现有配置");
+    assert.equal(settings.includes("saveSetting"), true, "设置页应写入现有配置");
+}
+
+function testSettingsHasAppearanceControls(): void {
+    for (const fn of ["loadAccent", "saveAccent", "loadAppearance", "saveAppearance", "loadMotion", "saveMotion"]) {
+        assert.equal(settings.includes(fn), true, `设置页应包含 ${fn}`);
+    }
+}
+
+function testSettingsSeparatesPasswords(): void {
+    assert.equal(/UFI/.test(settings) && /ZTE/.test(settings), true, "UFI-TOOLS 与 ZTE 密码必须分组区分");
+    assert.equal(settings.includes("SecureField"), true, "密码默认隐藏");
+}
+
+function testSettingsHasVolteAndReset(): void {
+    assert.equal(settings.includes("fetchVolteState") && settings.includes("setVolteState"), true, "应提供 VoLTE 开关");
+    assert.equal(settings.includes("confirmAction"), true, "重置/清除操作需要确认");
+}
+
+const tests: Array<[string, () => void]> = [
+    ["status snapshot + cache", testStatusUsesSnapshotAndCache],
+    ["status traffic chart", testStatusHasTrafficChart],
+    ["status sim and wifi", testStatusShowsSimAndWifi],
+    ["status reboot confirm", testStatusQuickActionsConfirmReboot],
+    ["status refreshable", testStatusRefreshable],
+    ["sms reuses api", testSmsReusesApi],
+    ["sms conversation and detail", testSmsHasConversationAndDetail],
+    ["sms failure surfaced", testSmsSendFailureIsSurfaced],
+    ["settings config layer", testSettingsReusesConfigLayer],
+    ["settings appearance", testSettingsHasAppearanceControls],
+    ["settings passwords separated", testSettingsSeparatesPasswords],
+    ["settings volte and reset", testSettingsHasVolteAndReset],
+];
+
+let passed = 0;
+try {
+    for (const [name, fn] of tests) {
+        fn();
+        passed += 1;
+    }
+    console.log(`PASS ${passed} view checks`);
+} catch (error) {
+    console.error(`FAIL after ${passed}/${tests.length} checks`);
+    console.error((error as Error)?.stack || error);
+    process.exitCode = 1;
+}
