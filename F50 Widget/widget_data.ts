@@ -1,18 +1,3 @@
-
-/** 从 network_information 字符串 dump 中提取键值（避免显式请求导致 F50 固件清零 dump 字段） */
-export function extractFromNetworkInformation(netInfo: any, target: any): void {
-    if (!netInfo || typeof netInfo !== "string") return;
-    const pairs = netInfo.split(/[,;\r\n]+/);
-    for (const pair of pairs) {
-        const sep = pair.indexOf("=") >= 0 ? pair.indexOf("=") : pair.indexOf(":");
-        if (sep < 0) continue;
-        const key = pair.slice(0, sep).trim();
-        const val = pair.slice(sep + 1).trim();
-        if (key && val && (target[key] === undefined || target[key] === null || target[key] === "")) {
-            target[key] = val;
-        }
-    }
-}
 // @ts-nocheck
 // F50 Widget 数据层：将 API 原始数据组装为小组件状态，并提供缓存读写与格式化工具
 // 注意：Storage 是全局 API，不能从 "scripting" 导入（导入会是 undefined）
@@ -65,26 +50,6 @@ export interface WidgetState {
     signal_quality: string;      // 信号质量评级
     signal_quality_color: ColorName;
     verify_code: string | null;   // 最新验证码
-    // ---- SIM 卡（新增） ----
-    iccid_text: string;
-    msisdn_text: string;
-    imsi_text: string;
-    imei_text: string;
-    sim_pin_text: string;
-    // ---- Wi-Fi 客户端（新增） ----
-    wifi_clients: WifiClient[];
-    wifi_ssid: string;
-    // ---- 上下行历史（新增，用于实时流量曲线） ----
-    dl_history: number[];
-    ul_history: number[];
-    dl_bps: number;
-    ul_bps: number;
-}
-
-export interface WifiClient {
-    name: string;
-    ip: string;
-    mac: string;
 }
 
 const CACHE_KEY = "F50Widget.widget.cache.v5";
@@ -107,9 +72,6 @@ export function emptyState(): WidgetState {
         qci: "", qos_dl: "", qos_ul: "",
         signal_quality: "--", signal_quality_color: "secondaryLabel",
         verify_code: null,
-        iccid_text: "--", msisdn_text: "--", imsi_text: "--", imei_text: "--", sim_pin_text: "--",
-        wifi_clients: [], wifi_ssid: "--",
-        dl_history: [], ul_history: [], dl_bps: 0, ul_bps: 0,
     };
 }
 
@@ -121,86 +83,15 @@ export function buildState(deviceInfo: any, goformData: any, wifiFreq: number, m
 
     buildDevicePart(state, d, g);
     buildBatteryPart(state, d, g);
-    if (g && g.network_information) {
-        extractFromNetworkInformation(g.network_information, g);
-    }
     buildSignalPart(state, d, g);
     buildTrafficWifiPart(state, d, g, wifiFreq);
-    buildMemoryPart(state, memInfo, g);
+    buildMemoryPart(state, memInfo);
     buildSpeedPart(state, d, g);
     buildTrafficLimitPart(state, d, g);
     buildSignalQualityPart(state, g);
-    buildSimPart(state, g);
-    buildWifiClientsPart(state, g);
 
     state.update_time = makeUpdateTime();
     return state;
-}
-
-/** SIM 卡信息：未插入 / 未识别时保持 "--"，由 UI 显示「暂不支持」，不编造号码 */
-function buildSimPart(state: WidgetState, g: any): void {
-    state.iccid_text = maskIccid(pickRaw(g.iccid));
-    state.msisdn_text = maskPhone(pickRaw(g.sim_msisdn, g.msisdn));
-    state.imsi_text = maskTail(pickRaw(g.imsi), 4);
-    state.imei_text = maskTail(pickRaw(g.imei), 4);
-    const pinRaw = pickRaw(g.sim_pin_status, g.pin_status);
-    if (pinRaw === null) state.sim_pin_text = "--";
-    else {
-        const s = String(pinRaw).toLowerCase();
-        state.sim_pin_text = s === "0" || s === "1" ? "已启用" : s === "2" ? "未启用" : String(pinRaw);
-    }
-    state.wifi_ssid = pick(g.SSID1, "--");
-}
-
-/** Wi-Fi 客户端列表：设备固件多为 JSON 字符串，做容错解析 */
-function buildWifiClientsPart(state: WidgetState, g: any): void {
-    let list = g.station_list;
-    if (typeof list === "string" && list.trim() !== "") {
-        try { list = JSON.parse(list); } catch (_) { list = null; }
-    }
-    if (!Array.isArray(list)) return;
-    state.wifi_clients = list.slice(0, 32).map((item: any) => {
-        if (!item || typeof item !== "object") return { name: "未知设备", ip: "--", mac: "--" };
-        return {
-            name: String(item.hostname || item.name || item.host_name || "未知设备"),
-            ip: String(item.ip || item.ip_addr || item.ipAddress || "--"),
-            mac: maskMac(item.mac || item.mac_addr || item.macAddress),
-        };
-    });
-}
-
-/** ICCID 只保留首 6 位与末 4 位（完整卡号属敏感信息） */
-function maskIccid(v: any): string {
-    const s = String(v === undefined || v === null ? "" : v).replace(/\s/g, "");
-    if (!/^\d{6,}$/.test(s)) return s === "" ? "--" : s;
-    if (s.length <= 12) return s;
-    return s.slice(0, 6) + "****" + s.slice(-4);
-}
-
-/** 手机号脱敏：138****8000 */
-export function maskPhone(v: any): string {
-    const s = String(v === undefined || v === null ? "" : v).replace(/\s/g, "");
-    if (s === "" || s === "--") return "--";
-    // 仅对 11 位手机号脱敏；服务号（10086 等）本身不是隐私，遮蔽反而制造歧义
-    if (/^1\d{10}$/.test(s)) return s.slice(0, 3) + "****" + s.slice(-4);
-    return s;
-}
-
-/** 尾部保留 n 位，前部用 * 遮蔽 */
-function maskTail(v: any, keep: number): string {
-    const s = String(v === undefined || v === null ? "" : v).replace(/\s/g, "");
-    if (s === "") return "--";
-    if (s.length <= keep) return s;
-    return "*".repeat(Math.max(4, s.length - keep)) + s.slice(-keep);
-}
-
-/** MAC 脱敏：保留 OUI 前 3 段 */
-export function maskMac(v: any): string {
-    const s = String(v === undefined || v === null ? "" : v).trim();
-    if (s === "" || s === "--") return "--";
-    const parts = s.split(":");
-    if (parts.length >= 4) return parts.slice(0, 3).join(":") + ":··:··:··";
-    return s;
 }
 
 function buildDevicePart(state: WidgetState, d: any, g: any): void {
@@ -208,21 +99,8 @@ function buildDevicePart(state: WidgetState, d: any, g: any): void {
     state.ufi_ver = buildUfiVersion(d);
     let temp = normalizeTemp(d.cpu_temp);
     if (!isNum(temp)) temp = normalizeTemp(maxTemp(d.cpu_temp_list));
-    if (!isNum(temp)) {
-        const gTemp = pickRaw(g.temperature, g.cpu_temp, g.internal_temperature, g.ic_temp);
-        if (gTemp !== null) {
-            let n = toNum(gTemp);
-            if (isNum(n)) {
-                if (n > 1000) n = n / 1000;
-                if (n > 0 && n < 130) temp = n;
-            }
-        }
-    }
     state.cputemp = isNum(temp) ? roundText(temp, 1) : "--";
-
-    let cpu = toNum(d.cpu_usage);
-    if (!isNum(cpu)) cpu = toNum(pickRaw(g.cpu_utility, g.cpu_usage));
-    state.cpuusage = isNum(cpu) && cpu >= 0 ? roundText(Math.min(100, cpu), 0) : "--";
+    state.cpuusage = isNum(toNum(d.cpu_usage)) ? roundText(toNum(d.cpu_usage), 0) : "--";
 }
 
 function buildBatteryPart(state: WidgetState, d: any, g: any): void {
@@ -331,11 +209,7 @@ function buildTrafficWifiPart(state: WidgetState, d: any, g: any, wifiFreq: numb
     }
     if (Array.isArray(staList)) wifiCount = staList.length;
     else if (staList && typeof staList === "object") wifiCount = Object.keys(staList).length;
-    if (wifiCount === 0) {
-        const directNum = toNum(pickRaw(g.wifi_access_sta_num, g.station_num, g.client_count));
-        if (isNum(directNum) && directNum >= 0) wifiCount = Math.floor(directNum);
-    }
-    state.wifi_device_count = String(wifiCount);
+    state.wifi_device_count = wifiCount > 0 ? String(wifiCount) : "0";
 
     state.band_text = buildBandText(g.Nr_bands, g.Lte_bands);
     const wifiBandRaw = pickRaw(g.wifi_band, g.wifi_band_text, d.wifi_band, d.wifi_band_text, g.wifi_bandwidth, d.wifi_freq, d.wifiFreq);
@@ -354,20 +228,9 @@ function buildTrafficWifiPart(state: WidgetState, d: any, g: any, wifiFreq: numb
     }
 }
 
-function buildMemoryPart(state: WidgetState, memInfo: { total: number; available: number }, g?: any): void {
-    const memUsedKb = (memInfo && memInfo.total > 0 && memInfo.available >= 0) ? memInfo.total - memInfo.available : 0;
-    if (memInfo && memInfo.total > 0) {
-        state.mem_text = Math.round(memUsedKb / memInfo.total * 100) + "%";
-        return;
-    }
-    if (g) {
-        const memU = toNum(pickRaw(g.mem_utility, g.mem_usage));
-        if (isNum(memU) && memU > 0) {
-            state.mem_text = Math.round(Math.min(100, memU)) + "%";
-            return;
-        }
-    }
-    state.mem_text = "--";
+function buildMemoryPart(state: WidgetState, memInfo: { total: number; available: number }): void {
+    const memUsedKb = (memInfo.total > 0 && memInfo.available >= 0) ? memInfo.total - memInfo.available : 0;
+    state.mem_text = memInfo.total > 0 ? Math.round(memUsedKb / memInfo.total * 100) + "%" : "--";
 }
 
 // ===================== 新增：实时速率 =====================
@@ -375,8 +238,6 @@ function buildMemoryPart(state: WidgetState, memInfo: { total: number; available
 function buildSpeedPart(state: WidgetState, d: any, g: any): void {
     const dlBps = toNum(pickRaw(g.realtime_rx_thrpt, d.realtime_rx_thrpt));
     const ulBps = toNum(pickRaw(g.realtime_tx_thrpt, d.realtime_tx_thrpt));
-    state.dl_bps = isNum(dlBps) && dlBps > 0 ? dlBps : 0;
-    state.ul_bps = isNum(ulBps) && ulBps > 0 ? ulBps : 0;
     if (isNum(dlBps) && dlBps > 0) {
         const parts = formatSpeedParts(dlBps);
         state.dl_speed = parts.value;
@@ -620,60 +481,6 @@ export function saveWidgetCache(state: WidgetState): void {
     } catch (e) {
         console.log("缓存保存失败:", String(e));
     }
-}
-
-// ===================== 实时流量曲线历史 =====================
-
-const HISTORY_KEY = "F50.speedHistory.v1";
-const HISTORY_MAX = 60; // 每分钟一个点，保留最近 60 分钟
-
-export interface SpeedSample {
-    t: number;   // 时间戳（毫秒）
-    dl: number;  // 下行 B/s
-    ul: number;  // 上行 B/s
-}
-
-export function readSpeedHistory(): SpeedSample[] {
-    try {
-        const raw = Storage.get(HISTORY_KEY);
-        if (!raw) return [];
-        const list = typeof raw === "string" ? JSON.parse(raw) : raw;
-        return Array.isArray(list) ? list : [];
-    } catch (_) {
-        return [];
-    }
-}
-
-/**
- * 追加一次速率采样。
- *
- * 设备只提供瞬时速率，因此曲线是「采样序列」而非设备端历史：
- * 同一分钟内的多次采样会覆盖该分钟的点，避免密集刷新把曲线挤成锯齿。
- */
-export function appendSpeedSample(sample: SpeedSample): SpeedSample[] {
-    const list = readSpeedHistory();
-    const minute = Math.floor(sample.t / 60000);
-    const last = list[list.length - 1];
-    if (last && Math.floor(last.t / 60000) === minute) {
-        list[list.length - 1] = sample;
-    } else {
-        list.push(sample);
-    }
-    const trimmed = list.slice(-HISTORY_MAX);
-    try {
-        Storage.set(HISTORY_KEY, JSON.stringify(trimmed));
-    } catch (_) {
-        // 存储失败时仍返回本轮数据，曲线退化为单点
-    }
-    return trimmed;
-}
-
-/** 把采样序列转换为曲线值（统一到 MB/s，便于 Y 轴量纲稳定） */
-export function toChartSeries(samples: SpeedSample[], key: "dl" | "ul"): Array<{ id: string; value: number }> {
-    return samples.map((sample, index) => ({
-        id: String(index),
-        value: Number((sample[key] / 1048576).toFixed(2)),
-    }));
 }
 
 // ===================== 格式化工具 =====================

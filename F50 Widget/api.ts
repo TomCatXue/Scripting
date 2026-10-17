@@ -264,8 +264,8 @@ function getBasicFields(): string[] {
         "Z5g_rsrp", "Z5g_rsrq", "Z5g_snr", "5g_rsrp", "5g_rsrq", "5g_snr",
         // LTE 信号指标
         "lte_rsrp", "lte_rsrq", "lte_snr",
-                // 关键规避：绝不在 cmd 中显式包含 nr_rsrp/nr_rsrq/Nr_snr（避免 F50 固件清零 dump 字段）
-        "qci", "ambr", "dl_ambr", "ul_ambr",
+        // NR 信号指标（兼容字段名）
+        "nr_rsrp", "nr_rssi", "nr_rsrq", "Nr_rsrq", "nr_snr", "Nr_snr", "nr5g_rsrq", "nr5g_snr", "Nr_signal_strength", "sinr",
         // 频段
         "Nr_bands", "Lte_bands", "wan_active_band", "lte_band", "lte_ca_pcell_band",
         "nr5g_action_band", "nr5g_action_nsa_band", "ZCELLINFO_band", "Z5g_CELLINFO_band", "nr_ca_pcell_band",
@@ -273,8 +273,6 @@ function getBasicFields(): string[] {
         "temperature", "cpu_temp", "internal_temperature", "ic_temp", "cpu_utility", "mem_utility",
         // SMS
         "sms_unread_num", "sms_sim_unread_num", "sms_received_flag",
-        // SIM 卡信息
-        "iccid", "msisdn", "sim_msisdn", "imsi", "imei", "pin_status", "sim_pin_status",
         // Wi-Fi
         "SSID1", "RadioOff", "station_list", "wifi_access_sta_num",
         // 鉴权
@@ -759,40 +757,94 @@ export function parseSMSMessages(json: any): SMSMessage[] | null {
     for (const row of msgs) {
         const id = String(row.id || "");
         if (!id) continue;
-        const encodedContent = String(row.content === undefined || row.content === null ? "" : row.content);
-        const decodedContent = decodeBase64Utf8(encodedContent);
+        const rawContent = String(row.content === undefined || row.content === null ? "" : row.content);
+        const decodedContent = decodeSMSContent(rawContent);
+        const tag = String(row.tag || "");
         messages.push({
             id: id,
             number: String(row.number || ""),
-            content: decodedContent || encodedContent,
+            content: decodedContent || rawContent,
             dateText: formatSMSDate(String(row.date || "")),
-            isUnread: String(row.tag || "") === "1",
-            isOutgoing: false,
+            isUnread: tag === "1",
+            isOutgoing: tag === "2" || tag === "3",
         });
     }
     return messages;
 }
 
-/** atob 返回的是 Latin-1 字符串；短信内容是 UTF-8 字节，需要逐字节还原 */
-function decodeBase64Utf8(encoded: string): string {
-    const clean = String(encoded).replace(/[^A-Za-z0-9+/=]/g, "");
+/**
+ * 智能短信解码：
+ * 1. UCS-2 (UTF-16BE) Hex 编码（中兴固件中文短信常见，如 4F60597D -> "你好"）
+ * 2. Base64 编码的 UTF-8 字节流（如 6L+Z5piv5rex5bqm77yB -> "这是深度！"）
+ * 3. 原始纯文本明文（未编码的 ASCII 或中文）
+ */
+export function decodeSMSContent(encoded: string): string {
+    const raw = String(encoded === undefined || encoded === null ? "" : encoded).trim();
+    if (!raw) return "";
+
+    // 1. 若已包含非 ASCII 字符，说明本身就是明文
+    if (/[^ -]/.test(raw)) return raw;
+
+    // 2. 尝试 UCS-2 Hex 解码（4 的倍数且全十六进制字符）
+    if (raw.length >= 4 && raw.length % 4 === 0 && /^[0-9A-Fa-f]+$/.test(raw)) {
+        try {
+            let ucs2Str = "";
+            let isValid = true;
+            for (let i = 0; i < raw.length; i += 4) {
+                const code = parseInt(raw.slice(i, i + 4), 16);
+                if (isNaN(code) || (code < 32 && code !== 9 && code !== 10 && code !== 13)) {
+                    isValid = false;
+                    break;
+                }
+                ucs2Str += String.fromCharCode(code);
+            }
+            if (isValid && ucs2Str.length > 0) {
+                return ucs2Str;
+            }
+        } catch (_) { }
+    }
+
+    // 3. 尝试 Base64 UTF-8 解码
+    const b64 = tryDecodeBase64Utf8(raw);
+    if (b64) return b64;
+
+    // 4. 原样返回
+    return raw;
+}
+
+function tryDecodeBase64Utf8(clean: string): string | null {
+    if (!clean || clean.length < 4 || clean.length % 4 !== 0 || /[^A-Za-z0-9+/=]/.test(clean)) {
+        return null;
+    }
     try {
         const binary = atob(clean);
         const bytes = new Uint8Array(binary.length);
         for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-        return new TextDecoder("utf-8").decode(bytes);
+        const decoded = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+        if (decoded && !/[ --]/.test(decoded)) {
+            return decoded;
+        }
     } catch (_) {
-        return "";
     }
+    return null;
 }
 
-/** 格式化固件短信时间：2026,08,13,14,25,09,+08 → 2026-08-13 14:25:09 */
-function formatSMSDate(raw: string): string {
-    const values = raw.split(",");
-    if (values.length < 6) return raw;
-    return values[0] + "-" + values[1] + "-" + values[2] + " " + values[3] + ":" + values[4] + ":" + values[5];
+/** 兼容导出：decodeBase64Utf8 */
+export function decodeBase64Utf8(encoded: string): string {
+    return decodeSMSContent(encoded);
 }
 
+/** 格式化固件短信时间：2026,08,13,14,25,09,+08 或 26,8,13,14,25,9 → 2026-08-13 14:25:09 */
+export function formatSMSDate(raw: string): string {
+    const values = String(raw || "").split(",");
+    if (values.length < 6) return String(raw || "");
+    let year = values[0].trim();
+    if (year.length === 2) {
+        year = "20" + year;
+    }
+    const pad = (v) => v.trim().padStart(2, "0");
+    return year + "-" + pad(values[1]) + "-" + pad(values[2]) + " " + pad(values[3]) + ":" + pad(values[4]) + ":" + pad(values[5]);
+}
 /** 发送短信（通过 root_shell Telephony service call） */
 export async function sendSMS(number: string, content: string): Promise<boolean> {
     const cleanNum = String(number).replace(/[^0-9+]/g, "");
@@ -842,7 +894,7 @@ async function sendSMSViaGoform(number: string, content: string): Promise<boolea
             const b64Content = gsmEncode(content);
             const sendBody = "goformId=SEND_MESSAGE&isTest=false&Number=" + number
                 + "&sms_content=" + b64Content
-                + "&sms_encode_type=GSM7_default"
+                + "&sms_encode_type=" + (/^[\x20-\x7E\r\n\t]*$/.test(content) ? "GSM7_default" : "UNICODE") + "&encode_type=" + (/^[\x20-\x7E\r\n\t]*$/.test(content) ? "GSM7_default" : "UNICODE")
                 + "&port=1&use_type=1&AD=" + ad + "&RD=" + rd;
 
             const sendReq = new Request(getKanoUrl() + GOFORM_SET_PATH);
@@ -1033,222 +1085,6 @@ export async function fetchSystemInfo(): Promise<{ wifiFreq: number; memInfo: { 
         console.log("system info fail:", String(e));
     }
     return out;
-}
-
-// ===================== 通话（UFI-TOOLS 完整版 AT 透传） =====================
-
-/**
- * 重启设备。
- *
- * 走 ZTE goform 的 REBOOT_DEVICE（UFI-TOOLS requests.js 的 reboot() 同款），
- * 不是 AT 指令：设备重启会立即断开网络，调用前必须由 UI 二次确认。
- */
-export async function rebootDevice(): Promise<boolean> {
-    try {
-        const routerBase = getRouterBaseURL();
-        const cookie = getZtePassword() !== "" ? await performRouterLogin() : null;
-        const req = new Request(routerBase + "/goform/goform_set_cmd_process?isTest=false&_=" + Date.now());
-        req.allowInsecureRequest = true;
-        req.method = "POST";
-        req.headers.set("Referer", routerBase + "/index.html");
-        req.headers.set("Content-Type", "application/x-www-form-urlencoded");
-        if (cookie) req.headers.set("Cookie", cookie);
-        req.body = "isTest=false&goformId=REBOOT_DEVICE";
-        req.timeout = 10;
-        const resp = await fetch(req);
-        if (resp.status !== 200) return false;
-        const json = await readJSONResponse(resp, "reboot");
-        // 固件通常返回 result=success / success
-        const result = json && (json.result !== undefined ? json.result : json.response);
-        return String(result || "").toLowerCase().indexOf("fail") < 0;
-    } catch (_) {
-        return false;
-    }
-}
-
-const AT_PATH = "/api/AT";
-const VOLTE_PATH = "/api/volte_status";
-const VONR_PATH = "/api/vonr_status";
-const PLUGINS_PATH = "/api/get_custom_head";
-const PLUGINS_SET_PATH = "/api/set_custom_head";
-
-/**
- * 透传一条 AT 指令（UFI-TOOLS 完整版 atModule：GET /api/AT?command=..&slot=..）。
- * 设备未安装完整版时该接口返回 404，调用方据此判定通话能力不可用。
- */
-export async function fetchAT(command: string, slot = 0): Promise<string> {
-    const path = AT_PATH + "?command=" + encodeURIComponent(command) + "&slot=" + String(slot);
-    const tokens = candidateTokens();
-    let lastError: any = null;
-    for (const token of tokens) {
-        try {
-            const req = new Request(getKanoUrl() + path);
-            req.allowInsecureRequest = true;
-            req.method = "GET";
-            applyHeaders(req, buildKanoHeadersWithToken("GET", AT_PATH, token));
-            req.timeout = 15;
-            const resp = await fetch(req);
-            if (resp.status === 401 || resp.status === 403) continue;
-            const json = await readJSONResponse(resp, "AT");
-            if (json && typeof json.error === "string" && json.error !== "") throw new Error(json.error);
-            return json && json.result !== undefined && json.result !== null ? String(json.result) : "";
-        } catch (e) {
-            lastError = e;
-            if (String(e).indexOf("401") >= 0) continue;
-            throw e;
-        }
-    }
-    if (lastError) throw lastError;
-    throw new Error("AT 指令执行失败：所有候选凭据均返回 401/403");
-}
-
-/** 多通道呼叫透传：AT -> Shell -> Android Binder (配合 Magisk 模块修复的音频通路) */
-export async function dialCall(number: string, slot = 0): Promise<{ ok: boolean; channel: string; raw?: string }> {
-    const clean = String(number || "").replace(/[^0-9+*#,]/g, "");
-    if (!clean) return { ok: false, channel: "none", raw: "号码为空" };
-    const atCmd = "ATD" + clean + ";";
-
-    // 通道 1: UFI /api/AT
-    try {
-        const atResult = await fetchAT(atCmd, slot);
-        if (atResult && atResult.toUpperCase().indexOf("ERROR") < 0) {
-            return { ok: true, channel: "ufi-at", raw: atResult };
-        }
-    } catch (e) {
-        console.log("UFI AT dial failed, trying shell fallback:", String(e));
-    }
-
-    // 通道 2: Shell sendat
-    try {
-        const shellCmd = "sendat -n " + slot + " -c '" + atCmd + "' || sendat -c '" + atCmd + "'";
-        const shellRes = await postShell(shellCmd, ROOT_SHELL_PATH);
-        if (shellRes) return { ok: true, channel: "shell-sendat", raw: String(shellRes) };
-    } catch (se) {
-        console.log("Shell sendat failed, trying service call fallback:", String(se));
-    }
-
-    // 通道 3: Android Phone service call (Telephony)
-    try {
-        const serviceCmd = "service call phone 2 s16 '" + clean + "' || service call vendor.sprd.hardware.tool.IToolControl/default 3 i32 " + slot + " s16 '" + atCmd + "'";
-        const svcRes = await postShell(serviceCmd, ROOT_SHELL_PATH);
-        if (svcRes) return { ok: true, channel: "service-call", raw: String(svcRes) };
-    } catch (pe) {
-        console.log("Service call dial failed:", String(pe));
-    }
-
-    return { ok: false, channel: "failed", raw: "所有呼叫通道均未响应" };
-}
-
-export async function hangupCall(slot = 0): Promise<{ ok: boolean; channel: string }> {
-    try {
-        await fetchAT("ATH", slot);
-        return { ok: true, channel: "ufi-at" };
-    } catch (_) { }
-    try {
-        await postShell("sendat -n " + slot + " -c 'ATH' || sendat -c 'ATH' || service call phone 5", ROOT_SHELL_PATH);
-        return { ok: true, channel: "shell" };
-    } catch (_) { }
-    return { ok: false, channel: "failed" };
-}
-
-export async function answerCall(slot = 0): Promise<{ ok: boolean; channel: string }> {
-    try {
-        await fetchAT("ATA", slot);
-        return { ok: true, channel: "ufi-at" };
-    } catch (_) { }
-    try {
-        await postShell("sendat -n " + slot + " -c 'ATA' || sendat -c 'ATA' || service call phone 3", ROOT_SHELL_PATH);
-        return { ok: true, channel: "shell" };
-    } catch (_) { }
-    return { ok: false, channel: "failed" };
-}
-
-/**
- * 查询 VoLTE 开关状态（GET /api/volte_status）。
- * 返回 null 表示该设备/固件未提供通话接口（404/401/网络错误），UI 据此展示不可用态。
- */
-export async function fetchVolteState(slot = 0): Promise<boolean | null> {
-    return await queryVolteLike(VOLTE_PATH, slot);
-}
-
-/** 查询 VoNR（5G 语音）开关状态；语义同 fetchVolteState */
-export async function fetchVonrState(slot = 0): Promise<boolean | null> {
-    return await queryVolteLike(VONR_PATH, slot);
-}
-
-async function queryVolteLike(path: string, slot: number): Promise<boolean | null> {
-    try {
-        const req = new Request(getKanoUrl() + path + "?slot=" + String(slot));
-        req.allowInsecureRequest = true;
-        req.method = "GET";
-        applyHeaders(req, buildKanoHeaders("GET", path));
-        req.timeout = 8;
-        const resp = await fetch(req);
-        if (resp.status === 404 || resp.status === 401 || resp.status === 403) return null;
-        const json = await readJSONResponse(resp, "volte");
-        if (json && typeof json.error === "string" && json.error !== "") return null;
-        if (json && typeof json.enabled === "boolean") return json.enabled;
-        if (json && json.enabled !== undefined) return String(json.enabled) === "true";
-        return null;
-    } catch (_) {
-        return null;
-    }
-}
-
-/** 设置 VoLTE/VoNR 开关；返回是否成功 */
-export async function setVolteState(enabled: boolean, slot = 0): Promise<boolean> {
-    return await postVolteLike(VOLTE_PATH, enabled, slot);
-}
-
-export async function setVonrState(enabled: boolean, slot = 0): Promise<boolean> {
-    return await postVolteLike(VONR_PATH, enabled, slot);
-}
-
-async function postVolteLike(path: string, enabled: boolean, slot: number): Promise<boolean> {
-    try {
-        const req = new Request(getKanoUrl() + path);
-        req.allowInsecureRequest = true;
-        req.method = "POST";
-        applyHeaders(req, buildKanoHeaders("POST", path));
-        req.headers.set("Content-Type", "application/json");
-        req.body = JSON.stringify({ enabled: enabled ? "1" : "0", slot: String(slot) });
-        req.timeout = 15;
-        const json = await readJSONResponse(await fetch(req), "volte-set");
-        if (json && typeof json.error === "string" && json.error !== "") return false;
-        return true;
-    } catch (_) {
-        return false;
-    }
-}
-
-/** 读取 UFI-TOOLS 自定义头（插件）原始文本 */
-export async function fetchPluginsText(): Promise<string> {
-    const req = new Request(getKanoUrl() + PLUGINS_PATH);
-    req.allowInsecureRequest = true;
-    req.method = "GET";
-    applyHeaders(req, buildKanoHeaders("GET", PLUGINS_PATH));
-    req.timeout = 15;
-    const json = await readJSONResponse(await fetch(req), "plugins");
-    if (json && typeof json.error === "string" && json.error !== "") throw new Error(json.error);
-    return json && json.text !== undefined && json.text !== null ? String(json.text) : "";
-}
-
-/** 保存插件文本；失败（含容量超限）返回 false */
-export async function savePluginsText(text: string): Promise<boolean> {
-    try {
-        const req = new Request(getKanoUrl() + PLUGINS_SET_PATH);
-        req.allowInsecureRequest = true;
-        req.method = "POST";
-        applyHeaders(req, buildKanoHeaders("POST", PLUGINS_SET_PATH));
-        req.headers.set("Content-Type", "application/json");
-        req.body = JSON.stringify({ text: text });
-        req.timeout = 20;
-        const json = await readJSONResponse(await fetch(req), "plugins-set");
-        if (json && typeof json.error === "string" && json.error !== "") return false;
-        return true;
-    } catch (_) {
-        return false;
-    }
 }
 
 // ===================== UFI-TOOLS 签名（HMAC-MD5 + 双 SHA256） =====================

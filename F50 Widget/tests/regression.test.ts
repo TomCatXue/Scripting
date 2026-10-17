@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { setMockFetch } from "./scripting.mock.ts";
 import { buildState, emptyState } from "../widget_data.ts";
-import { fetchSMSMessages, setSessionSettings } from "../api.ts";
+import { fetchSMSMessages, setSessionSettings, decodeSMSContent, formatSMSDate, parseSMSMessages } from "../api.ts";
 
 async function testRouterSMSComesFirstAndDecodes(): Promise<void> {
     const requests: Array<{ url: string; referer: string | null }> = [];
@@ -161,13 +161,11 @@ function testEmptyAndLoadedWidgetsShareLayout(): void {
 }
 
 function testStatusSignalQualityUsesBarsIcon(): void {
-    // 状态页已从 index.tsx 拆到 status_view.tsx：断言意图不变（信号用 cellularbars 阶梯图标）
-    const source = readFileSync(new URL("../status_view.tsx", import.meta.url), "utf8");
+    const source = readFileSync(new URL("../index.tsx", import.meta.url), "utf8");
     assert.equal(source.includes("checkmark.seal.fill"), false);
     const barsCount = (source.match(/systemName="cellularbars"/g) || []).length;
-    assert.equal(barsCount >= 1, true);
-    // 信号颜色由 signalTint 决定，且必须与信号格数联动（不得写死颜色）
-    assert.equal(source.includes("signalTint(state.signalbar)"), true);
+    assert.equal(barsCount >= 2, true);
+    assert.equal(source.includes("signalBarColor(state.signalbar)"), true);
 }
 
 function signalState(g: any) {
@@ -212,6 +210,35 @@ function testWifiBandTextFallsBackToDeviceInfo(): void {
     assert.equal(freqState.wifi_band_text, "5G");
 }
 
+
+function testSMSDecodeHexUcs2(): void {
+    assert.equal(decodeSMSContent("4F60597D"), "你好");
+    assert.equal(decodeSMSContent("00310030003000380036"), "10086");
+    // 包含验证码的中文短信（十六进制格式）
+    const parsed = parseSMSMessages({
+        messages: [{
+            id: "1",
+            number: "10086",
+            content: "60A876849A8C8BC17801662F0038003800360036", // "您的验证码是8866"
+            date: "26,10,17,14,25,09,+08",
+            tag: "1",
+        }]
+    });
+    assert.ok(parsed);
+    assert.equal(parsed[0].content, "您的验证码是8866");
+    assert.equal(parsed[0].dateText, "2026-10-17 14:25:09");
+    assert.equal(parsed[0].isUnread, true);
+    assert.equal(parsed[0].isOutgoing, false);
+}
+
+function testSMSDecodeBase64AndPlain(): void {
+    // Base64 UTF-8
+    assert.equal(decodeSMSContent("6L+Z5piv5rex5bqm77yB"), "这是深度！");
+    // 纯文本明文
+    assert.equal(decodeSMSContent("您的验证码是 123456"), "您的验证码是 123456");
+    assert.equal(decodeSMSContent("Hello ZTE"), "Hello ZTE");
+}
+
 function testEmptyStateIsStable(): void {
     assert.equal(emptyState().traffic_limit_value, "--");
 }
@@ -227,9 +254,11 @@ try {
     testSignalFieldsUseReferenceAliases();
     testSignalFieldsSkipZeroAndNull();
     testWifiBandTextFallsBackToDeviceInfo();
+    testSMSDecodeHexUcs2();
+    testSMSDecodeBase64AndPlain();
     await testRouterSMSComesFirstAndDecodes();
     await testRouterSMSRetriesAfterLogin();
-    console.log("PASS 12 regression checks");
+    console.log("PASS 14 regression checks");
 } catch (error) {
     console.error((error as Error)?.stack || error);
     process.exitCode = 1;

@@ -1,13 +1,6 @@
 # F50 Widget
 
-ZTE F50 / U60 等随身 Wi-Fi（UFI）设备的网络状态监控**小组件** + **五标签应用**
-（状态 / 短信 / 电话 / 插件 / 设置）。
-
-## 设计原则：能力如实呈现，不造假
-
-应用只展示设备真实返回的数据；设备不支持的能力一律显示「暂不支持」而不是补零或伪造。
-通话能力取决于设备侧是否安装 UFI-TOOLS 完整版与面具模块（Magisk），应用进入电话页时会先探测，
-探测不到则明确提示并给出重试，不会出现「假装拨通」的界面。
+ZTE F50（UFI-TOOLS）网络状态监控**小组件** + **三标签应用**（状态 / 短信 / 设置）。
 
 ## 功能概览
 
@@ -20,47 +13,27 @@ ZTE F50 / U60 等随身 Wi-Fi（UFI）设备的网络状态监控**小组件** +
 - 点击刷新（AppIntent）与离线缓存容错
 
 ### 状态页（标签 1）
-- 设备概览：设备名、在线状态、信号格（图标 + 数值 + 文字三通道）
-- SIM 卡：运营商、信号质量、RSRP/RSRQ/SNR、ICCID（脱敏可复制）、SIM 号码（脱敏）、PIN 锁
-- 实时速率：上下行数值 + 采样曲线（Charts，双区分色）
-- 流量统计：今日/本月/套餐用量环形仪表/重置倒计时
-- 设备运行状态：芯片温度与内存环形仪表（含正常/偏高/过热文字）、CPU、网络制式、频段、电量、ZTE 登录态
-- Wi-Fi：SSID、频段、已连接数量、客户端列表（IP/MAC 脱敏）
-- 快捷操作：刷新、发送短信、打电话、插件中心、重启设备（二次确认，走真实 REBOOT_DEVICE）
+- 设备与信号：设备名、信号格、运营商、QCI 等级、频段、信号质量、RSRP/RSRQ/SNR
+- 实时速率：上下行速率动态着色
+- 流量统计：今日/本月/套餐用量/使用比例/重置倒计时
+- 硬件指标：温度/CPU/内存/Wi-Fi 设备数/Wi-Fi 频段/SSID
+- 电池与状态：电池电量/zreq 登录状态/UFI 版本/未读短信
+- QoS 速率：上下行 AMBR
 
 ### 短信页（标签 2）
-- 会话列表：按号码分组，未读标记，验证码高亮
-- 会话详情：左右气泡（收到靠左 / 发出靠右）、日期与状态、一键复制验证码
-- 写短信：号码 + 内容，发送前二次确认，失败给出明确原因
+- 会话列表：按号码分组，未读高亮，验证码自动提取（🔑 红色标记）
+- 会话详情：消息气泡，一键复制验证码到剪贴板
+- 写短信：号码 + 内容输入，root_shell / goform 双策略发送
 
-### 电话页（标签 3）
-- 进入即探测 `/api/volte_status`；不可用时显示「当前设备未提供通话接口」并给出重试
-- 拨号盘（0-9 / * / # / 删除 / 拨打，长按 0 输入 +）、最近通话（本机记录）
-- 通话中界面：来电/拨出/通话中/保持状态、计时、接听与挂断
-- AT 透传：`ATD<号码>;` / `ATA` / `ATH` / `AT+CLCC`（3 秒轮询，空闲即停）
-- 音频路由由设备侧面具模块负责，应用不做音频处理
-
-### 插件页（标签 4）
-- 数据源为设备侧 UFI-TOOLS 自定义头插件片段（`/api/get_custom_head`）
-- 列表：图标、名称、启用/禁用标签、内容摘要
-- 详情：完整片段、启用/停用、复制、删除（写入前二次确认）
-- 空状态与错误态明确，不内置示例插件冒充真实数据
-
-### 设置页（标签 5）
-- 外观：跟随系统/浅色/深色、强调色预设、完整动画开关
-- 设备与后台连接：UFI 地址、保存、测试连接、预览小组件
-- 凭据：UFI-TOOLS 密码与 ZTE 后台密码分组，默认密文、可切换显隐
-- 通话能力：VoLTE / VoNR 开关（不可用时如实提示）
-- 数据与设备：重置应用配置（二次确认）
-- 隐私与安全、关于
+### 设置页（标签 3）
+- URL / UFI 密码 / ZTE 密码配置（默认密文，可切换显隐）
+- 测试连接验证配置
+- 预览小组件（单按钮，预览中变色）
 
 ## 技术架构
 - **双端口轮询**：ZTE 80 端口匿名读取 + UFI 2333 端口签名读取，数据合并
 - **候选 Token 轮询**：SHA256 多变体 + admin 免底，遇 401 自动切换
 - **多策略登录**：zreq 二进制 > POST 登录 > GET-only 兑底
-- **通话通道**：UFI-TOOLS 完整版 `/api/AT` 透传（ATD / ATA / ATH / AT+CLCC）
-- **插件通道**：`/api/get_custom_head` + `/api/set_custom_head`（KANO_PLUGIN 片段）
-- **设计系统**：`theme.ts`（间距/圆角/字号/语义色 token）+ `ui.tsx`（卡片/数据行/环形仪表/状态胶囊/空-错-载态）
 
 ## 订阅
 
@@ -73,37 +46,12 @@ https://github.com/TomCatXue/Scripting/tree/main/F50%20Widget
 | 文件 | 说明 |
 |---|---|
 | `script.json` | 项目配置（含订阅 `remoteResource`） |
-| `index.tsx` | 入口（TabView 五标签） |
-| `status_view.tsx` | 状态页（设备 / SIM / 速率曲线 / 流量 / 硬件 / Wi-Fi / 快捷操作） |
-| `sms_view.tsx` | 短信页（会话列表 / 聊天详情 / 写短信） |
-| `phone_view.tsx` | 电话页（拨号盘 / 最近通话 / 通话中） |
-| `plugins_view.tsx` | 插件页（列表 / 详情 / 启停 / 删除） |
-| `settings_view.tsx` | 设置页（外观 / 连接 / 凭据 / 通话 / 数据 / 隐私 / 关于） |
-| `theme.ts` | 设计 token 与外观偏好 |
-| `ui.tsx` | 共享 UI 组件 |
-| `call.ts` | 通话 AT 指令构造与 `AT+CLCC` 解析 |
-| `plugins.ts` | 插件片段解析 / 序列化 / 启停 / 删除 |
+| `index.tsx` | 入口（TabView 三标签：状态页/短信页/设置页） |
 | `widget.tsx` | 小组件 UI（Small/Medium/Large，含速率/进度条/信号评级/QoS） |
 | `widget_data.ts` | 数据组装与缓存（双端口合并、速率/流量限额/信号评级/QoS） |
 | `api.ts` | UFI-TOOLS / ZTE 网络层（双端口轮询、签名、登录、SMS 收发、QoS、验证码提取） |
 | `app_intents.tsx` | 点击刷新 AppIntent |
 | `icons/` | 脚本图标（UFI-TOOLS 官方图标，透明背景） |
-
-## 测试
-
-```bash
-node --import "./F50 Widget/tests/register.mjs" "./F50 Widget/tests/regression.test.ts"
-node --import "./F50 Widget/tests/register.mjs" "./F50 Widget/tests/call.test.ts"
-node --import "./F50 Widget/tests/register.mjs" "./F50 Widget/tests/plugins.test.ts"
-node --import "./F50 Widget/tests/register.mjs" "./F50 Widget/tests/api_call.test.ts"
-node --import "./F50 Widget/tests/register.mjs" "./F50 Widget/tests/theme.test.ts"
-node --import "./F50 Widget/tests/register.mjs" "./F50 Widget/tests/ui.test.ts"
-node --import "./F50 Widget/tests/register.mjs" "./F50 Widget/tests/phone_view.test.ts"
-node --import "./F50 Widget/tests/register.mjs" "./F50 Widget/tests/plugins_view.test.ts"
-node --import "./F50 Widget/tests/register.mjs" "./F50 Widget/tests/views.test.ts"
-node --import "./F50 Widget/tests/register.mjs" "./F50 Widget/tests/data_sim.test.ts"
-node --import "./F50 Widget/tests/register.mjs" "./F50 Widget/tests/index.test.ts"
-```
 
 ## 配置参数
 
@@ -122,20 +70,6 @@ node --import "./F50 Widget/tests/register.mjs" "./F50 Widget/tests/index.test.t
 > 注：`api.ts` 中的 `SECRET_KEY` 是 UFI-TOOLS 客户端通用的签名常量，并非个人凭据。请通过参数配置自己的密码，勿提交真实密码。
 
 ## 更新记录
-
-### 2026-10-16：五标签重构（4.0.0）
-
-**新增**
-- **电话页**：能力探测 + 拨号盘 + 最近通话 + 通话中三态；AT 透传（`ATD`/`ATA`/`ATH`/`AT+CLCC`），3 秒轮询且空闲即停
-- **插件页**：设备侧 UFI-TOOLS 插件片段（解析/启停/删除/复制），无数据时不伪造
-- **状态页重做**：SIM 卡区块（ICCID / 号码 / PIN，脱敏）、实时速率双曲线、环形温度与内存仪表、Wi-Fi 客户端列表、快捷操作（含真实 `REBOOT_DEVICE` 重启）
-- **设置页重做**：外观（模式/强调色/动画强度）、UFI 与 ZTE 凭据分组、VoLTE/VoNR 开关、隐私与关于
-- **设计系统**：`theme.ts` token + `ui.tsx` 共享组件；所有页面对齐统一间距/圆角/字号/语义色
-
-**修复与加固**
-- 短号（如 10086）不再被错误脱敏为 `100****0086`
-- 重启改用真实 goform `REBOOT_DEVICE`（此前误用未经验证的 AT 指令）
-- 设备不支持的通话、套餐速率、客户端列表一律显示「暂不支持」而非补零
 
 ### 2026-08-26：三标签应用 + 双端口轮询 + SMS 短信功能
 
