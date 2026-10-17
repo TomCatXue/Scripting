@@ -1,22 +1,37 @@
-# Scripting Scripts
+<h1 align="center">Scripting Scripts</h1>
 
-为 iOS [Scripting App](https://scripting.today) 开发的脚本集合仓库，每个脚本独立文件夹，可直接**订阅下载**。
+<p align="center">
+  <b>iOS 桌面小组件 · 原生应用交互 · 自动化数据看板</b><br>
+  为 iOS <a href="https://scripting.today">Scripting App</a> 精心打造的轻量脚本与小组件集合
+</p>
+
+<p align="center">
+  <a href="https://github.com/TomCatXue/Scripting/stargazers"><img alt="stars" src="https://img.shields.io/github/stars/TomCatXue/Scripting?style=flat-square&color=4285dd" /></a>
+  <a href="https://github.com/TomCatXue/Scripting/issues"><img alt="issues" src="https://img.shields.io/github/issues/TomCatXue/Scripting?style=flat-square&color=4285dd" /></a>
+  <a href="./LICENSE"><img alt="license" src="https://img.shields.io/badge/license-MIT-4285dd?style=flat-square" /></a>
+</p>
+
+收拢随身 Wi-Fi 状态监控、模块化仪表盘看板与热搜资讯工具：
+支持 iOS 17+ 原生 AppIntent 静默点击刷新、Keychain 安全凭据存储与 Small / Medium / Large 三尺寸无缝适配。
+
+遇到问题、想加新脚本，欢迎提 [Issues](https://github.com/TomCatXue/Scripting/issues/new)；用着顺手的话，点个 ⭐ 就好。
 
 ## 脚本列表
 
-| 脚本 | 说明 | 尺寸 | 订阅链接 |
-|---|---|---|---|
-| [F50 Widget](./F50%20Widget) | ZTE F50（UFI-TOOLS）网络状态小组件 + 三标签应用（状态 / 短信 / 设置）：双端口轮询（80 匿名 + 2333 签名）+ 候选 Token 轮询；实时上下行速率、套餐流量进度条与重置倒计时、信号质量评级、QoS 指标；短信会话列表、验证码提取与一键复制、写短信；小组件支持 Small / Medium / Large 三种尺寸、点击刷新与离线缓存 | Small / Medium / Large | `https://github.com/TomCatXue/Scripting/tree/main/F50%20Widget` |
-| [MutePanel](./MutePanel) | 哑巴面板（DashBoard-Kit 仪表盘套件）：模块化聚合看板小组件套件，长按小组件在「参数」中自由切换类型。涵盖 Media Nexus（Emby / MoviePilot 影视库）、DeepSeek / WorkBuddy / Codex / Antigravity（多账号配额/余额/用量求和聚合）、CPAMP 监控、公网 IP/VPN 节点、今日油价（贝壳小号/四联中号）、Au9999 黄金实时行情、GitHub 热门库与粉丝监控、Loon 网络流量监控、2x2 Bento 大号栅格。支持 iOS 17+ 原生 AppIntent 静默点击刷新与 Keychain 安全凭据存储 | Small / Medium / Large | `https://github.com/TomCatXue/Scripting/tree/main/MutePanel` |
-| [Weibo](./Weibo) | 微博热搜小组件 + 热搜应用：实时热搜榜（热度角标、前 3 高亮）、右上角时钟与版本标记、点击条目按设置跳转（微博国际版深链 / H5 兜底）、点击 Logo 打开热搜总榜；App 内热搜列表（下拉刷新）、WebView 搜索页（深色样式适配）、设置页（字号 / 配色 / 背景 / 图标染色自定义） | Small / Medium / Large | `https://github.com/TomCatXue/Scripting/tree/main/Weibo` |
+|     | 名称 | 功能 | 尺寸 · 特性 | 安装 / 订阅 |
+| :-: | :--- | :--- | :---: | :---: |
+| <img src="F50%20Widget/icons/icon.png" height="20" /> | **[F50 Widget](./F50%20Widget)** | ZTE F50 / U60 网络状态监控与三标签原生应用（状态 / 短信 / 设置）：双端口轮询、实时速率、流量进度条、UCS-2 / Base64 多模态短信收发与验证码提取 | `Small / Medium / Large` · 点击刷新 | **[订阅](https://github.com/TomCatXue/Scripting/tree/main/F50%20Widget)** / **[说明](./F50%20Widget/README.md)** |
+| <img src="https://raw.githubusercontent.com/luestr/IconResource/main/App_icon/120px/Loon.png" height="20" /> | **[MutePanel](./MutePanel)** | 哑巴面板（DashBoard-Kit 聚合看板套件）：模块化聚合看板，长按切换类型。涵盖 Media Nexus、AI 配额/用量求和（DeepSeek / WorkBuddy / Codex / Antigravity）、黄金行情、Loon 流量、2x2 Bento 栅格 | `Small / Medium / Large` · 静默刷新 | **[订阅](https://github.com/TomCatXue/Scripting/tree/main/MutePanel)** / **[说明](./MutePanel/README.md)** |
+| <img src="https://weibo.com/favicon.ico" height="20" /> | **[Weibo](./Weibo)** | 微博热搜小组件 + 热搜原生浏览应用：实时热搜榜（热度角标、前 3 高亮）、深链直达微博国际版 / H5、应用内热搜列表下拉刷新与搜索 WebView 深色适配 | `Small / Medium / Large` · 原生跳转 | **[订阅](https://github.com/TomCatXue/Scripting/tree/main/Weibo)** / **[说明](./Weibo/README.md)** |
 
 ## 目录结构
 
-```
+```text
 Scripting/
 ├── README.md          # 仓库总览与订阅索引
+├── LICENSE            # MIT 开源许可证
 ├── WIDGET_GUIDE.md    # 小组件开发指南（创建/调试/审查规范）
-├── F50 Widget/        # 脚本 1：F50 Widget（ZTE F50 / UFI 状态监控）
+├── F50 Widget/        # 脚本 1：F50 Widget（ZTE F50 / UFI 状态监控与短信管理）
 │   ├── script.json    # 项目配置（含订阅 remoteResource、图标、版本）
 │   ├── index.tsx      # 入口（TabView 三标签：状态页/短信页/设置页）
 │   ├── widget.tsx     # 小组件 UI（Small / Medium / Large，含速率/进度条/信号评级/QoS）
@@ -61,7 +76,7 @@ Scripting/
 
 1. 在 iOS 设备上安装 [Scripting App](https://scripting.today)。
 2. 进入 App 底部导航「订阅」Tab，点击右上角「+」或「添加订阅」。
-3. 复制上方表格中对应脚本的 GitHub 目录链接（如 `https://github.com/TomCatXue/Scripting/tree/main/MutePanel`）并粘贴。
+3. 复制上方表格中对应脚本的 GitHub 目录链接（如 `https://github.com/TomCatXue/Scripting/tree/main/F50%20Widget`）并粘贴。
 4. 点击下载，安装完成后即可在「脚本」列表中点击运行或在桌面添加小组件使用。
 
 ## 本地测试
@@ -83,4 +98,12 @@ node --import "./MutePanel/tests/register.mjs" "./MutePanel/tests/entry.test.ts"
 
 ## License
 
-仅供学习参考。
+[MIT](./LICENSE)
+
+## 免责声明
+
+本项目仅供**个人学习研究与自用自动化**，请勿用于商业用途、批量操作或违反平台服务条款的行为。
+
+脚本会接触你的网络配置或账号凭据（如 UFI 访问密码、ZTE 路由器密码、API Token 等），但全部只保存在**你自己的设备 Keychain 与本地 Storage** 中，本仓库不上传、不收集任何敏感数据。
+
+使用所产生的网络变动、服务受限等后果由使用者自行承担。部分脚本改编自社区开源项目，版权归原作者所有；如认为内容侵权，请提 Issue 联系删除。
