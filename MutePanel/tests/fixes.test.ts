@@ -512,10 +512,50 @@ async function testFuelRealHistoryDerived(): Promise<void> {
     assert.equal(hist[hist.length - 1].value, 7.88, "末点为当前挂牌价");
 
     // 涨跌信息必须补全：方向 + 每升涨跌额 + 涨跌幅
-    // 末两点 8.08 → 7.88，差 -0.20，幅度 -0.20/8.08 ≈ -2.48%
-    assert.equal(r.trendLabel, "下调", "涨跌方向为下调");
-    assert.equal(r.changeText, "-0.20", "每升涨跌额 -0.20");
-    assert.equal(r.changeRateText, "-2.48%", "涨跌幅 -2.48%");
+    // 页面没有「下次调价」日期，无法确认这组历史覆盖到哪个当前窗口；
+    // 因此不能把 1/16 的旧调价直接标成本轮涨跌。走势图仍应完整回推。
+    assert.equal(r.trendLabel, "搁浅", "日期未知时不伪造本轮方向");
+    assert.equal(r.changeText, "", "日期未知时不伪造本轮涨跌额");
+    assert.equal(r.changeRateText, "", "日期未知时不伪造本轮涨跌幅");
+}
+
+// ── 13a. 油价跨年历史不得把旧调价误标成本轮结果 ─────────────
+// 回归（真实北京页）：10/15 本轮为搁浅，但历史表跨年含有
+// 2024/11/6 跌145（折合 -0.14 元/升）。旧逻辑沿整条历史向前找
+// 不同值，于是把这次旧调价显示成本轮 -0.14 / -1.60%。
+async function testFuelPastAdjustDoesNotBorrowStaleDiff(): Promise<void> {
+    resetGlobals();
+    storageRaw()["dashboard_kit_fuel_province"] = "北京";
+    storageRaw()["dashboard_kit_fuel_oil"] = "oil92";
+
+    const provinceHtml =
+        '<dd>8.61</dd><dd>9.17</dd><dd>10.67</dd><dd>8.36</dd>' +
+        '<a href="/tz/2025.shtml">历史油价</a>' +
+        '<script>var tishiContent="下次油价10月15日24时调整<br/>油价搁浅调整，维持目前价格不变。";</script>';
+    const tzHtml =
+        "<table>" +
+        "<tr><th>调价时间</th><th>汽油(元/吨)</th><th>柴油(元/吨)</th></tr>" +
+        "<tr><td>2024年11月6日</td><td>跌145</td><td>跌140</td></tr>" +
+        "<tr><td>2024年11月20日</td><td>搁浅调整</td><td>搁浅调整</td></tr>" +
+        "<tr><td>2024年12月4日</td><td>搁浅调整</td><td>搁浅调整</td></tr>" +
+        "<tr><td>2024年12月18日</td><td>搁浅调整</td><td>搁浅调整</td></tr>" +
+        "</table>";
+
+    setMockFetch(async (req: any) => {
+        const url = String(req?.url ?? req);
+        return {
+            status: 200,
+            ok: true,
+            text: async () => (url.includes("/tz/") ? tzHtml : provinceHtml),
+        };
+    });
+
+    const r = await data.refreshFuelData();
+    assert.ok(r, "刷新成功");
+    assert.equal(r.cleanDateText, "上轮10月15日", "过期调价标为上轮");
+    assert.equal(r.trendLabel, "搁浅", "本轮搁浅不得借用旧调价方向");
+    assert.equal(r.changeText, "", "本轮搁浅不得借用旧调价金额");
+    assert.equal(r.changeRateText, "", "本轮搁浅不得借用旧调价幅度");
 }
 
 // ── 13b. 油价变动数据缺失时不得伪造 0.00 ──────────────────────
@@ -895,7 +935,7 @@ function testMonitorEmptyStates(): void {
 function testFuelChangeDisplay(): void {
     // 数据层：涨跌方向文案 + 涨跌额 + 涨跌幅
     assert.ok(
-        dataSrc.includes('trendType === "up" ? "上调" : trendType === "down" ? "下调" : "搁浅"'),
+        /trendType === "up"\s*\?\s*"上调"\s*:\s*trendType === "down"\s*\?\s*"下调"\s*:\s*"搁浅"/.test(dataSrc),
         "数据层输出 trendLabel（上调/下调/搁浅）"
     );
     assert.ok(
@@ -936,6 +976,7 @@ const tests: [string, () => void | Promise<void>][] = [
     ["管理弹窗不跨服务串台", testManageAccountsNoCrossService],
     ["快照走势回填首值", testSnapshotSeriesBackfillsFirst],
     ["油价真实调价历史回推", testFuelRealHistoryDerived],
+    ["油价跨年历史不误标本轮", testFuelPastAdjustDoesNotBorrowStaleDiff],
     ["油价变动缺失不伪造", testFuelChangeHonestWhenMissing],
     ["预览限时等待不卡顿", testPreviewBoundedWait],
     ["预览激活 ID 有有效期", testPreviewActiveIsTimeBounded],

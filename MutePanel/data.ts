@@ -2781,20 +2781,34 @@ export async function refreshFuelData(): Promise<FuelCardData | null> {
       // 涨跌额 / 涨跌幅 / 方向文案。
       //
       // 口径优先级：
-      //   1) priceHistory 里**最近一次真实调价**（向前找最后一个与当前价不同的点）。
-      //      不能只取末两点 —— 调价之后会补「今天」的现价点，末两点往往同值，
-      //      于是最近一次真实涨跌会被漏掉。
+      //   1) 只在「与当前调价窗口匹配」的真实调价记录里做 diff。
+      //      不能拿整条历史往前找最后一个不同价：历史表会跨年累积，源站的
+      //      「下次调价」又可能滞后；这样会把几个月前那次涨跌误标成本轮结果。
+      //      （10/15 本轮明确是搁浅，却显示 -0.14，就是跨到了 2024/11/6 的记录。）
       //   2) 没有真实调价历史时，退化为调价预测里的每升涨跌额（cleanLiter）。
       //   3) 都没有则留空，由卡片显示「幅度待公布」，而不是会被误读的 0.00。
       // 方向以真实变动为准（有真实数据时不再依赖预测文案）。
       ...(() => {
+        const fallbackLabel =
+          trendType === "up" ? "上调" : trendType === "down" ? "下调" : "搁浅"
+
+        // 源站当前明确写「搁浅」时，本轮真实结果就是 0；不要去历史里找旧涨跌。
+        if (adjustIsPast && trendType === "flat") {
+          return { trendLabel: "搁浅", changeText: "", changeRateText: "" }
+        }
+
         const hist = (Array.isArray(priceHistory) ? priceHistory : [])
           .map((h: any) => Number(h?.value))
           .filter((v: number) => Number.isFinite(v))
 
-        if (hist.length >= 2) {
+        // 真实历史按「调价日」而非自然日绘制。只有当前调价日期已过期时，
+        // 末点才代表本轮 result；此时倒数第二个不同价才是本轮之前的价格。
+        // 若调价日仍在未来，越接近它时末点/今天同值的情况并不代表本轮结果，
+        // 此时仍使用源站预测幅度。
+        if (adjustIsPast && hist.length >= 2) {
           const last = hist[hist.length - 1]
-          // 向前找最后一个与当前价不同的点 = 上一次调价后的价位
+          // 向前找最后一个与当前价不同的点 = 本轮之前、上一次调价后的价位。
+          // 中间的相同点只是历史表里的搁浅记录，不影响 diff。
           let prevIdx = -1
           for (let i = hist.length - 2; i >= 0; i--) {
             if (hist[i] !== last) {
@@ -2816,8 +2830,6 @@ export async function refreshFuelData(): Promise<FuelCardData | null> {
         }
 
         // 回落到预测幅度（qiyoujiage 的「预计涨/跌 X 元/升」）
-        const fallbackLabel =
-          trendType === "up" ? "上调" : trendType === "down" ? "下调" : "搁浅"
         if (cleanLiter) {
           const sign = trendType === "up" ? "+" : trendType === "down" ? "-" : ""
           const liter = cleanLiter.includes("-") ? cleanLiter.split("-")[0] : cleanLiter
