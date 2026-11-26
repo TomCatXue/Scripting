@@ -23,7 +23,6 @@ import {
 import { C } from "./theme"
 import { loadSettings, saveSettings, type BillSettings, type Period } from "./widget_data"
 import { pingGateway } from "./api"
-import { ensureFont } from "./fonts"
 
 const PERIODS: [Period, string][] = [
   ["today", "今天"],
@@ -33,7 +32,6 @@ const PERIODS: [Period, string][] = [
 ]
 
 export default function SettingsView() {
-  ensureFont()
   const init = loadSettings()
   const [base, setBase] = useState(init.base)
   const [key, setKey] = useState(init.key)

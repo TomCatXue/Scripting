@@ -14,6 +14,7 @@
 // ============================================================
 import { HStack, RoundedRectangle, SVG, Spacer, Text, VStack, ZStack } from "scripting"
 import { C, F, FL, FONT } from "./theme"
+import { fontNameOrNull } from "./fonts"
 import { MAGPIE_SVG } from "./icons"
 import { count, money, percent, shortModel, upper, type BillSettings, type BillState } from "./widget_data"
 
@@ -32,7 +33,14 @@ function Dots({ color = C.rule, gap = 1.6 }: { color?: string; gap?: number }) {
   )
 }
 
-/** 纸张上的文字：等宽 + 单行 */
+/**
+ * 纸张上的文字：等宽 + 单行
+ *
+ * 关键：font 参数绝不能给一个系统里不存在的字体名 —— Scripting 的 Text
+ * 遇到未知字体名不会降级，而是直接让整个视图渲染失败（表现为「界面进不去」）。
+ * 所以这里先问 fontNameOrNull()：注册成功才用内嵌字体，否则退回纯数字字号
+ * （系统等宽），保证任何情况下都能渲染出来。
+ */
 function Ink({
   children,
   size = F.body,
@@ -44,8 +52,10 @@ function Ink({
   color?: string
   weight?: any
 }) {
+  const family = fontNameOrNull()
+  const font = family ? { name: family, size } : size
   return (
-    <Text font={{ name: FONT, size }} fontWeight={weight} foregroundStyle={color} lineLimit={1}>
+    <Text font={font} fontWeight={weight} foregroundStyle={color} lineLimit={1}>
       {children}
     </Text>
   )

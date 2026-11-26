@@ -27,29 +27,50 @@ const W800 =
  *   2. 若不支持，退化为系统等宽
  * 所以这里做成「尽力注册 + 返回字体名」，调用方无需关心成败。
  */
-let registered = false
+/**
+ * 注册状态：
+ *   "unknown"  还没试过
+ *   "ready"    注册成功，可以按名字用
+ *   "absent"   这个运行时没有 FontFace / document.fonts，必须退回系统字体
+ *   "failed"   注册时抛错
+ *
+ * 关键教训：Scripting 的 <Text font={{name}}> 拿一个不存在的字体名会直接
+ * 崩溃，整个视图进不去。所以「能不能用」必须在渲染前确定，绝不能在
+ * 渲染时才第一次尝试。
+ */
+type FontState = "unknown" | "ready" | "absent" | "failed"
+let state: FontState = "unknown"
 
-export function ensureFont(): string {
-  const FAMILY = "JetBrainsMono"
-  if (registered) return FAMILY
+export function ensureFont(): FontState {
+  if (state !== "unknown") return state
   try {
     const FF = (globalThis as any).FontFace
     const fonts = (globalThis as any).document?.fonts
-    if (FF && fonts) {
-      const add = (b64: string, weight: number) => {
-        const face = new FF(FAMILY, `url(data:font/woff2;base64,${b64}) format("woff2")`, { weight: String(weight) })
-        fonts.add(face)
-      }
-      add(W400, 400)
-      add(W700, 700)
-      add(W800, 800)
-      registered = true
+    if (!FF || !fonts || typeof fonts.add !== "function") {
+      state = "absent"
+      return state
     }
-  } catch {}
-  return FAMILY
+    const add = (b64: string, weight: number) => {
+      const face = new FF(FAMILY, "url(data:font/woff2;base64," + b64 + ') format("woff2")', { weight: String(weight) })
+      fonts.add(face)
+    }
+    add(W400, 400)
+    add(W700, 700)
+    add(W800, 800)
+    state = "ready"
+  } catch (e) {
+    state = "failed"
+  }
+  return state
 }
 
-/** 当前是否成功装载了内嵌字体 */
-export function hasEmbeddedFont(): boolean {
-  return registered
+/** 只有 ready 才返回内嵌字体名，其余情况返回 null（调用方退系统字体） */
+export function fontNameOrNull(): string | null {
+  return state === "ready" ? FAMILY : null
 }
+
+/** 当前状态，供设置页显示 */
+export function fontState(): FontState {
+  return state
+}
+

@@ -8,8 +8,8 @@
 //   · Script.exit() 必须调用，否则进程挂起
 //   · 抓取失败时用缓存兜底，绝不白屏
 // ============================================================
-import { Script, Widget } from "scripting"
-import { fetchBill, loadSettings, readCache, saveCache, type BillSettings, type BillState } from "./widget_data"
+import { Script, Text, VStack, Widget } from "scripting"
+import { fetchBill, loadSettings, money, readCache, saveCache, type BillSettings, type BillState } from "./widget_data"
 import { C } from "./theme"
 import { ensureFont } from "./fonts"
 import { LargeCard, MediumCard, SmallBudgetCard, SmallModelCard } from "./cards"
@@ -94,7 +94,14 @@ async function main() {
 
   // 没配置就先渲染空状态，避免卡在加载中
   if (!s.base) {
-    Widget.present(view(cached || emptyState(), s), {
+    let p: any
+    try {
+      p = view(cached || emptyState(), s)
+    } catch (e) {
+      console.log("空状态渲染失败:", String(e))
+      p = <Text font={12}>请先在 App 内配置 magpie 网关</Text>
+    }
+    Widget.present(p, {
       reloadPolicy: { policy: "after", date: new Date(Date.now() + RELOAD_MS) },
     })
     Script.exit()
@@ -113,7 +120,24 @@ async function main() {
     if (error) console.log("读取用量失败:", error)
   }
 
-  Widget.present(view(final, s), {
+  // 兜底：万一视图构建抛错（例如某个属性不被运行时支持），
+  // 也不能让小组件白屏或整个 App 进不去 —— 退化成纯文字卡。
+  let body: any
+  try {
+    body = view(final, s)
+  } catch (e) {
+    console.log("视图构建失败:", String(e))
+    body = (
+      <VStack alignment="leading" spacing={2} frame={{ maxWidth: "infinity", maxHeight: "infinity" }}
+        padding={{ top: 12, bottom: 12, leading: 12, trailing: 12 }}>
+        <Text font={10} fontWeight="bold">每日 AI 账单</Text>
+        <Text font={20}>{money(final.costUsd, s)}</Text>
+        <Text font={8}>请求 {final.calls} · 错误 {final.errors}</Text>
+      </VStack>
+    )
+  }
+
+  Widget.present(body, {
     reloadPolicy: { policy: "after", date: new Date(Date.now() + RELOAD_MS) },
   })
   Script.exit()
