@@ -1,0 +1,32 @@
+{
+  "name": "每日 AI 账单",
+  "icon": "doc.text.below.ecg.fill",
+  "color": "#8B7355",
+  "remoteResource": {
+    "url": "https://github.com/TomCatXue/Scripting/tree/main/DailyAIBill",
+    "autoUpdateInterval": 86400,
+    "hash": ""
+  },
+  "iconImage": "",
+  "permissions": null,
+  "localizedNames": {
+    "en": "AI Daily Bill",
+    "zh": "每日 AI 账单",
+    "zh-Hans": "每日 AI 账单"
+  },
+  "runInApp": true,
+  "version": "1.0.0",
+  "description": "每日 AI 账单：把 magpie 的用量打印成小票。支持 2x2 / 4x2 / 4x4 三种尺寸与模型层级账目。",
+  "contributors": [],
+  "author": {
+    "email": null,
+    "homepage": null,
+    "name": "TomCatXue"
+  },
+  "intentInputTypes": [],
+  "entry": "index.tsx",
+  "localizedDescriptions": {
+    "zh": "每日 AI 账单：把 magpie 的用量打印成小票。支持 2x2 / 4x2 / 4x4 三种尺寸与模型层级账目。",
+    "en": "AI Daily Bill: magpie usage as a receipt, in small, medium and large."
+  }
+}

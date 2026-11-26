@@ -23,6 +23,7 @@
 | <img src="F50%20Widget/icons/icon.png" height="20" /> | **[F50 Widget](./F50%20Widget)** | ZTE F50 / U60 网络状态监控与三标签原生应用（状态 / 短信 / 设置）：双端口轮询、实时速率、流量进度条、UCS-2 / Base64 多模态短信收发与验证码提取 | `Small / Medium / Large` · 点击刷新 | **[订阅](https://github.com/TomCatXue/Scripting/tree/main/F50%20Widget)** / **[说明](./F50%20Widget/README.md)** |
 | <img src="https://raw.githubusercontent.com/luestr/IconResource/main/App_icon/120px/Loon.png" height="20" /> | **[MutePanel](./MutePanel)** | 哑巴面板（DashBoard-Kit 聚合看板套件）：模块化聚合看板，长按切换类型。涵盖 Media Nexus、AI 配额/用量求和（DeepSeek / WorkBuddy / Codex / Antigravity）、黄金行情、Loon 流量、2x2 Bento 栅格 | `Small / Medium / Large` · 静默刷新 | **[订阅](https://github.com/TomCatXue/Scripting/tree/main/MutePanel)** / **[说明](./MutePanel/README.md)** |
 | <img src="https://weibo.com/favicon.ico" height="20" /> | **[Weibo](./Weibo)** | 微博热搜小组件 + 热搜原生浏览应用：实时热搜榜（热度角标、前 3 高亮）、深链直达微博国际版 / H5、应用内热搜列表下拉刷新与搜索 WebView 深色适配 | `Small / Medium / Large` · 原生跳转 | **[订阅](https://github.com/TomCatXue/Scripting/tree/main/Weibo)** / **[说明](./Weibo/README.md)** |
+| <img src="https://usemagpie.ai/favicon.ico" height="20" /> | **[DailyAIBill](./DailyAIBill)** | 每日 AI 账单：把 magpie 记录的 AI 用量打印成小票。总费用、请求/错误、Token 与缓存命中、连续使用天数，AGENT → 模型两级费用明细与堆叠占比。可配预算进度与汇率 | `Small / Medium / Large` · 小票质感 | **[订阅](https://github.com/TomCatXue/Scripting/tree/main/DailyAIBill)** / **[说明](./DailyAIBill/README.md)** |
 
 ## 目录结构
 
@@ -70,6 +71,17 @@ Scripting/
     ├── store/         # 设置状态管理（settings.ts）
     ├── styles/        # 搜索页深色样式（dark.css）
     └── README.md      # 脚本配置说明
+└── DailyAIBill/       # 脚本 4：每日 AI 账单
+    ├── script.json    # 项目配置（含订阅 remoteResource、图标、版本）
+    ├── index.tsx      # App 内设置页（网关/Key/汇率/预算/周期 + 三尺寸预览）
+    ├── widget.tsx     # 小组件入口（读缓存 → 抓取 → 渲染 → Widget.present）
+    ├── cards.tsx      # 三种尺寸的视图（2×2 / 4×2 / 4×4）
+    ├── widget_data.ts # 数据层（AGENT→模型聚合、格式化、缓存、设置读写）
+    ├── api.ts         # 网络层（magpie /v1/magpie/usage 系列接口）
+    ├── app_intents.tsx# 点击刷新 AppIntent
+    ├── theme.ts       # 小票配色与字号常量
+    ├── global.d.ts    # Scripting 全局运行时类型补全
+    └── README.md      # 配置与已知边界说明
 ```
 
 ## 订阅方式
