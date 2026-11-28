@@ -11,6 +11,8 @@
 import {
   Button,
   HStack,
+  Navigation,
+  Script,
   List,
   NavigationStack,
   Section,
@@ -31,7 +33,7 @@ const PERIODS: [Period, string][] = [
   ["all", "全部"],
 ]
 
-export default function SettingsView() {
+function ConfigView() {
   const init = loadSettings()
   const [base, setBase] = useState(init.base)
   const [key, setKey] = useState(init.key)
@@ -175,3 +177,18 @@ export default function SettingsView() {
     </NavigationStack>
   )
 }
+
+// ============================================================
+// 入口
+//
+// 关键：Scripting 的 App 内脚本不会自己退出。
+// Navigation.present 只是把界面推上去，之后进程仍然活着 ——
+// 不调 Script.exit() 的话，退出界面后脚本就一直在后台挂着。
+// 必须等 present 的 Promise resolve（用户关掉界面）再 exit。
+// ============================================================
+async function run() {
+  await Navigation.present({ element: <ConfigView /> })
+  Script.exit()
+}
+
+run()

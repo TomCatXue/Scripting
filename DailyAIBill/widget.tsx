@@ -143,4 +143,10 @@ async function main() {
   Script.exit()
 }
 
-main()
+
+// 最后一道保险：main 内部任何未捕获的异常都不能让进程挂着
+// （挂着 = 每次刷新都残留一个后台任务，久了会堆一堆）
+main().catch((e) => {
+  console.log("widget 运行失败:", String(e))
+  Script.exit()
+})
